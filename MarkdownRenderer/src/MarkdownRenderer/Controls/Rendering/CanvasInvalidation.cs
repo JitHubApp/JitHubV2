@@ -1,6 +1,6 @@
 using System;
-using MarkdownRenderer.Diagnostics;
 using Microsoft.UI.Xaml;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Controls.Rendering;
 

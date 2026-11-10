@@ -2,7 +2,6 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using MarkdownRenderer.Document.Internal;
 using MarkdownRenderer.Engine.Internal;
 using MarkdownRenderer.Extensions;
 

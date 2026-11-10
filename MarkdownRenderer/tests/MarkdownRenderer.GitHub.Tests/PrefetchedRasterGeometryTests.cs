@@ -1,8 +1,8 @@
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Windows.Foundation;
 using Xunit;
 

@@ -15,9 +15,10 @@ using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Controls.Threading;
-using MarkdownRenderer.Diagnostics;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 
 namespace MarkdownRenderer.Controls.Composition;
 

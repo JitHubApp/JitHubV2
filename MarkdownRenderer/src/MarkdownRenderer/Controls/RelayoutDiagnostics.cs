@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Controls;
 

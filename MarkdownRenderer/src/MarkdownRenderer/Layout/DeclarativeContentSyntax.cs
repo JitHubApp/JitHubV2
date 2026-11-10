@@ -1,6 +1,6 @@
 using System;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
 

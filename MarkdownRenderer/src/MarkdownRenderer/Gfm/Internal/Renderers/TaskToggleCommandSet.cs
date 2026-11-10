@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Windows.Input;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 
 namespace MarkdownRenderer.Gfm.Internal.Renderers;

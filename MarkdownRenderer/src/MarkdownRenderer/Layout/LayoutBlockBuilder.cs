@@ -4,8 +4,9 @@ using System.Threading;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout;

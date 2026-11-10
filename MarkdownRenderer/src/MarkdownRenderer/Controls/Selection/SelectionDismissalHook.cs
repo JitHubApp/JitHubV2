@@ -1,5 +1,6 @@
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;

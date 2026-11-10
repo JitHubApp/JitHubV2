@@ -2,7 +2,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

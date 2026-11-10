@@ -1,8 +1,9 @@
 using System;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;

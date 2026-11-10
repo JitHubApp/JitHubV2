@@ -5,7 +5,8 @@ using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;

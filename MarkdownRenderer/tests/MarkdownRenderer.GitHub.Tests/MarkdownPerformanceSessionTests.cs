@@ -1,7 +1,7 @@
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Math;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Parsing;
 using Markdig;
 using Xunit;
 

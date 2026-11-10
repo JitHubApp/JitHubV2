@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;

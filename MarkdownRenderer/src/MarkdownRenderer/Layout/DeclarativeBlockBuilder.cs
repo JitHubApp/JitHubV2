@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using Microsoft.Graphics.Canvas.Text;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
 

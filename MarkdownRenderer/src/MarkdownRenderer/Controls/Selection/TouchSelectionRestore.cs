@@ -1,5 +1,6 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 
 namespace MarkdownRenderer.Controls.Selection;
 

@@ -6,6 +6,7 @@ using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Automation;
 using Windows.Foundation;

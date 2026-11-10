@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Controls.Pipeline;

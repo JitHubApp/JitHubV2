@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;

@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Document.Internal;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using static MarkdownRenderer.Accessibility.MarkdownSemanticNodeFactory;

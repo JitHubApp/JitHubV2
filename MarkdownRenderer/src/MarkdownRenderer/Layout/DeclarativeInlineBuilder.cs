@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
 

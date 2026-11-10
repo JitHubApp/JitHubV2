@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Controls.Images;
 

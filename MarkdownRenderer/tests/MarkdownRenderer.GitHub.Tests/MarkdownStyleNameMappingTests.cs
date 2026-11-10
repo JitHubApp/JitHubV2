@@ -1,6 +1,7 @@
 using System.Globalization;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Theming;
 using Xunit;
 

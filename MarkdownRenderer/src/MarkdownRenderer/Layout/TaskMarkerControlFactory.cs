@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;

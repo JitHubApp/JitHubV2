@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Controls.Pipeline;

@@ -5,6 +5,7 @@ using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Xaml;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
@@ -175,7 +176,7 @@ internal sealed class GeometryRecovery
         }
         catch (Exception failure)
         {
-            Diagnostics.MarkdownDiagnostics.WriteLine(
+            MarkdownDiagnostics.WriteLine(
                 $"[MarkdownRendererControl] geometry recovery cleanup failed: {failure.Message}");
             return false;
         }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;

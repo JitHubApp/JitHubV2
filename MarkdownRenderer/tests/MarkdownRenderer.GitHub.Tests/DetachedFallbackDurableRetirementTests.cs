@@ -5,7 +5,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 
 namespace MarkdownRenderer.Engine.Internal;
 

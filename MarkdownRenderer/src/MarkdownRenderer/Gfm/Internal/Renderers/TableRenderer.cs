@@ -3,7 +3,7 @@ using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Gfm.Internal.Renderers;

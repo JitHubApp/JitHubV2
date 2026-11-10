@@ -1,6 +1,6 @@
 using System;
-using MarkdownRenderer.Diagnostics;
 using Xunit;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Tests;
 

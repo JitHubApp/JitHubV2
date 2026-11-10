@@ -2,6 +2,7 @@ using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;

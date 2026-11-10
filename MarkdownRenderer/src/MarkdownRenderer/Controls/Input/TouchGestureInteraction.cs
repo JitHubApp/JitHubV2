@@ -1,6 +1,7 @@
 using System;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 

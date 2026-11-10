@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using System.Threading;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Document.Internal;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;

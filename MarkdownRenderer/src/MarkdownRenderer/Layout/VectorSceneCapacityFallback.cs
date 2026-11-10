@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.ExceptionServices;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Performance;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;

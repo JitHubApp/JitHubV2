@@ -12,11 +12,12 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Parsing.Internal;
 
 namespace MarkdownRenderer.Layout;
 

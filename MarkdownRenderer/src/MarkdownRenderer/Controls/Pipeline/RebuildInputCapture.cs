@@ -2,7 +2,7 @@ using System;
 using MarkdownRenderer.Controls.Providers;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 

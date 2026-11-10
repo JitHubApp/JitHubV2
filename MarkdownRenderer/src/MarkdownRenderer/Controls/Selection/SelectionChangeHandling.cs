@@ -11,12 +11,10 @@ using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Controls.Composition;
@@ -30,6 +28,7 @@ using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Selection.Internal;
 
 namespace MarkdownRenderer.Controls.Selection;
 

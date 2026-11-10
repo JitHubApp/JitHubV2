@@ -1,6 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Controls.Images;
 

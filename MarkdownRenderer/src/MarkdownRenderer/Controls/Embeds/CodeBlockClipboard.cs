@@ -1,6 +1,6 @@
 using System;
 using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout.Boxes;
 using Windows.ApplicationModel.DataTransfer;
 

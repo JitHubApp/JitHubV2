@@ -1,9 +1,10 @@
 using System;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 
 namespace MarkdownRenderer.Controls.Selection;
 

@@ -1,6 +1,6 @@
 using System.Globalization;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

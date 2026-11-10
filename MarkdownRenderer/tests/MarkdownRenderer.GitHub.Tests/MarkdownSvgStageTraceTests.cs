@@ -1,7 +1,7 @@
 using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Threading;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 

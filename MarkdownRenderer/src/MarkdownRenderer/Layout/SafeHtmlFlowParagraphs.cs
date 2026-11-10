@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
 

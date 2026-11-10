@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Input;
 
 namespace MarkdownRenderer.Controls.Input;

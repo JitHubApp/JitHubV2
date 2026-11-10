@@ -9,7 +9,6 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Markdig.Syntax;
 using Microsoft.Graphics.Canvas;

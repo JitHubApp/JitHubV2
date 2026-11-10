@@ -4,6 +4,7 @@ using Markdig.Syntax;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 
 namespace MarkdownRenderer.Layout;
 

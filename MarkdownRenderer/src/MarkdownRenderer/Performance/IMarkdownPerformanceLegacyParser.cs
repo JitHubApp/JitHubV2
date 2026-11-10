@@ -1,6 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 
 namespace MarkdownRenderer.Performance;
 

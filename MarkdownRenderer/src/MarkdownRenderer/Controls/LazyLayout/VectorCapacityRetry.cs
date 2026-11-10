@@ -1,5 +1,5 @@
 using System;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using Microsoft.UI.Dispatching;

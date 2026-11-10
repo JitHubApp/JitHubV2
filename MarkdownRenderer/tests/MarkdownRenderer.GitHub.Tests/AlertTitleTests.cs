@@ -1,9 +1,9 @@
 using Markdig.Syntax;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.GitHub.Renderers;
+using MarkdownRenderer.GitHub.Internal.Renderers;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

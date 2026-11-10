@@ -2,7 +2,7 @@ using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Xunit;

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using Windows.UI;
 using Xunit;
 

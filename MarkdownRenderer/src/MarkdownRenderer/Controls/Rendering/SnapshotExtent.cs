@@ -2,6 +2,7 @@ using System;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 

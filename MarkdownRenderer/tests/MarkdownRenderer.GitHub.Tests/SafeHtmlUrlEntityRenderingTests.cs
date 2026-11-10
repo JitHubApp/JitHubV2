@@ -1,11 +1,13 @@
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Internal;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

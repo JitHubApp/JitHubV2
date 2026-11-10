@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Layout.Boxes;

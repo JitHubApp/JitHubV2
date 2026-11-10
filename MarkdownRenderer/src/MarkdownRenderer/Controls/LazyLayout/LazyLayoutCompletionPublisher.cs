@@ -2,7 +2,7 @@ using System;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Controls.LazyLayout;

@@ -1,6 +1,6 @@
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
-using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

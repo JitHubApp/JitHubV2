@@ -5,7 +5,6 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;

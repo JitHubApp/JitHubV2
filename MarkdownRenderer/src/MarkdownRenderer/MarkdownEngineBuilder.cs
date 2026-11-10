@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Engine.Internal;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 using MarkdownPipelineBuilder = Markdig.MarkdownPipelineBuilder;
 
 namespace MarkdownRenderer;

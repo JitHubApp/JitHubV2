@@ -1,5 +1,6 @@
 using System;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;

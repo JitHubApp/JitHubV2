@@ -3,7 +3,7 @@ using System.Diagnostics;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Selection;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

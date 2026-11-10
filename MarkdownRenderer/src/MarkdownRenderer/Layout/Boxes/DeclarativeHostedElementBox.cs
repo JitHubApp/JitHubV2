@@ -5,6 +5,7 @@ using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 

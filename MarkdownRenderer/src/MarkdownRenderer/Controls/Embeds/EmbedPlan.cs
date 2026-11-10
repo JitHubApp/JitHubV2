@@ -1,5 +1,4 @@
 using System;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Microsoft.UI.Xaml;

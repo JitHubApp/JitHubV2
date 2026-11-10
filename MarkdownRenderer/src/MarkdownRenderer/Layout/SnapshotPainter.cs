@@ -2,9 +2,9 @@ using System;
 using System.Numerics;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.Layout;
 

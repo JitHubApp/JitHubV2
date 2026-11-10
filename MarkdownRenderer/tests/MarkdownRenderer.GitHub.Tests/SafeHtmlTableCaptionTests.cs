@@ -8,13 +8,14 @@ using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Selection.Internal;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

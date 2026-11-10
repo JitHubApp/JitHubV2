@@ -1,8 +1,8 @@
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Internal;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Parsing;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

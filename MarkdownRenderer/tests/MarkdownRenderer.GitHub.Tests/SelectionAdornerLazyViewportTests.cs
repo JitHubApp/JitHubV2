@@ -1,6 +1,7 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Windows.Foundation;
 using Xunit.Abstractions;
 using Xunit;

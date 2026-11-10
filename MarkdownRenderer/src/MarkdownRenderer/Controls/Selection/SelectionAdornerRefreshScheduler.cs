@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;

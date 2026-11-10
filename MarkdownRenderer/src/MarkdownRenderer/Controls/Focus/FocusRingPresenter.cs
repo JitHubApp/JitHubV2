@@ -1,10 +1,10 @@
 using System;
-using MarkdownRenderer.Diagnostics;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Controls.Focus;
 

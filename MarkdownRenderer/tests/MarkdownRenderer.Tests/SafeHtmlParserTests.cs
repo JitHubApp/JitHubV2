@@ -1,5 +1,5 @@
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

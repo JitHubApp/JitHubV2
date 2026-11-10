@@ -1,8 +1,9 @@
 using System;
 using System.Globalization;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 
 namespace MarkdownRenderer.Controls;
 

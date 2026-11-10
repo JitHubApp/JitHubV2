@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
 

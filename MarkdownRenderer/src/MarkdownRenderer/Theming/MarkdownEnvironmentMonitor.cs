@@ -7,7 +7,7 @@ using Microsoft.UI.System;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Windows.UI.ViewManagement;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Theming;
 

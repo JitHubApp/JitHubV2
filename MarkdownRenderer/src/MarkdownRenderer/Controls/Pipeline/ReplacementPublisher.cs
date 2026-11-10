@@ -10,6 +10,7 @@ using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 
 namespace MarkdownRenderer.Controls.Pipeline;
 

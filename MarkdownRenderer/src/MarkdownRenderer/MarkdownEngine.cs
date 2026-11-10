@@ -6,6 +6,7 @@ using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Engine.Internal;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer;

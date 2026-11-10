@@ -7,8 +7,9 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Parsing.Internal;
 
 namespace MarkdownRenderer.Gfm.Internal.Renderers;
 

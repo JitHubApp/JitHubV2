@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

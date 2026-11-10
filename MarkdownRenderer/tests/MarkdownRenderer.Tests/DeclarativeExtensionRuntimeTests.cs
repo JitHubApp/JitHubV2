@@ -3,6 +3,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Hosting.Internal;
 using Markdig.Syntax;
 using Xunit;
 

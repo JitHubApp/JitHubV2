@@ -1,4 +1,4 @@
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using Xunit;
 

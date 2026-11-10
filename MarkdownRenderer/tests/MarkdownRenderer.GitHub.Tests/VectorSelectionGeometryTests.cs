@@ -4,6 +4,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;

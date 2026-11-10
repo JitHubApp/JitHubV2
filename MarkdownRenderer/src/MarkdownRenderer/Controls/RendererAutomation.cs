@@ -7,6 +7,7 @@ using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

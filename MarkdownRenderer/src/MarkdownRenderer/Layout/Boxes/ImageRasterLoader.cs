@@ -8,9 +8,9 @@ using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.UI;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

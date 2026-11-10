@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 using Windows.Foundation;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Internal.Concurrency;
 

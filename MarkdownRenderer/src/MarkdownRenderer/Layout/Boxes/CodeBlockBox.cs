@@ -6,6 +6,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
 

@@ -1,6 +1,6 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 

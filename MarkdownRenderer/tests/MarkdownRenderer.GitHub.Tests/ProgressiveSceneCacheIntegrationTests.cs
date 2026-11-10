@@ -1,7 +1,6 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using System.Runtime.CompilerServices;
 using Xunit;

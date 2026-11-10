@@ -1,7 +1,8 @@
 using System;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
 

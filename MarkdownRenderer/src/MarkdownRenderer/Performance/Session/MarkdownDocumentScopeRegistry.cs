@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Performance;
@@ -40,7 +40,7 @@ internal sealed class MarkdownDocumentScopeRegistry
         string source,
         int registryRevision,
         Markdig.Syntax.MarkdownDocument document,
-        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        MarkdownRenderer.Parsing.Internal.SafeHtml.SafeHtmlRenderPolicy? safeHtmlPolicy,
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context)
     {
@@ -121,7 +121,7 @@ internal sealed class MarkdownDocumentScopeRegistry
 
     private static async Task PrefetchDocumentImagesObservedAsync(
         Markdig.Syntax.MarkdownDocument document,
-        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        MarkdownRenderer.Parsing.Internal.SafeHtml.SafeHtmlRenderPolicy? safeHtmlPolicy,
         IMarkdownPerformanceDocumentScope scope)
     {
         try

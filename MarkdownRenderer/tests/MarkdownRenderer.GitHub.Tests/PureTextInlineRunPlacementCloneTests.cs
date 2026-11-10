@@ -1,6 +1,5 @@
 using System;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Xunit;
 

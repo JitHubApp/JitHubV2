@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Document.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

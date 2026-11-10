@@ -1,7 +1,7 @@
 ﻿using MarkdownRenderer.Html;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
 

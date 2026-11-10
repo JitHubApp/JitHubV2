@@ -1,7 +1,7 @@
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;

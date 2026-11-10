@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

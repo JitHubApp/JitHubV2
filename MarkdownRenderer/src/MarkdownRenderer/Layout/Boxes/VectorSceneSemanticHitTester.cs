@@ -2,6 +2,7 @@ using System;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

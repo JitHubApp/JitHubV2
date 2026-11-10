@@ -3,9 +3,9 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 
 namespace MarkdownRenderer.Controls.Pipeline;

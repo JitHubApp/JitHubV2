@@ -4,6 +4,7 @@ using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Xaml;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 

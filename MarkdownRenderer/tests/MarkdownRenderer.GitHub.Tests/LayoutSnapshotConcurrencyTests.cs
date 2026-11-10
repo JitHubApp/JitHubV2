@@ -3,6 +3,7 @@ using System.Threading;
 using Microsoft.Graphics.Canvas;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Microsoft.UI.Xaml;

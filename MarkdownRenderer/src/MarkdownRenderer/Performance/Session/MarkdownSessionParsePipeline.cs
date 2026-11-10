@@ -42,7 +42,7 @@ internal sealed class MarkdownSessionParsePipeline
         MarkdownEngine? engine,
         MarkdownDocument? document,
         string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         CancellationToken cancellationToken)
     {
@@ -80,7 +80,7 @@ internal sealed class MarkdownSessionParsePipeline
         MarkdownEngine? engine,
         MarkdownDocument? document,
         string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         CancellationToken cancellationToken)
     {
@@ -104,7 +104,7 @@ internal sealed class MarkdownSessionParsePipeline
         MarkdownEngine? engine,
         MarkdownDocument? document,
         string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         CancellationToken cancellationToken)
     {
@@ -169,7 +169,7 @@ internal sealed class MarkdownSessionParsePipeline
     private static async ValueTask<MarkdownDocument?> ParseSourceAsync(
         MarkdownEngine? engine,
         string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         bool parseProgressively,
         MarkdownParseStageTimer timer,
@@ -204,7 +204,7 @@ internal sealed class MarkdownSessionParsePipeline
     private static async ValueTask<MarkdownDocument> ReparseEagerlyAsync(
         MarkdownEngine? engine,
         MarkdownDocument document,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         MarkdownParseStageTimer timer,
         CancellationToken cancellationToken)
@@ -263,7 +263,7 @@ internal sealed class MarkdownSessionParsePipeline
         MarkdownEngine? engine,
         MarkdownDocument? document,
         string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         CancellationToken cancellationToken)
     {
@@ -303,10 +303,10 @@ internal sealed class MarkdownSessionParsePipeline
     private static async ValueTask<MarkdownDocument?> ParseLegacyDocumentAsync(
         IMarkdownPerformanceLegacyParser legacyParser,
         string source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         CancellationToken cancellationToken)
     {
-        MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser
+        MarkdownRenderer.Parsing.Internal.ParsedMarkdown? parsed = await legacyParser
             .ParseLegacyMarkdownAsync(source, legacyRegistry, cancellationToken)
             .ConfigureAwait(false);
         if (parsed is null)

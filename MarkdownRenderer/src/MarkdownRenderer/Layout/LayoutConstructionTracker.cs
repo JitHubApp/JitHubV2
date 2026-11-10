@@ -1,5 +1,6 @@
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Layout;

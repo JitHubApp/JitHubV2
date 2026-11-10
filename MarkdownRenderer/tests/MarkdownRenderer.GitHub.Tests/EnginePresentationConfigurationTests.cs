@@ -5,7 +5,8 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
@@ -229,7 +230,7 @@ public sealed class EnginePresentationConfigurationTests
         Assert.False(viewRegistry.HasUnclassifiedStyleRoleRenderers);
         Assert.False(effectiveRegistry.HasUnclassifiedStyleRoleRenderers);
         Assert.True(registry.TryGetRenderer(typeof(HtmlBlock), out var htmlRenderer));
-        Assert.IsType<MarkdownRenderer.Html.Renderers.HtmlBlockRenderer>(htmlRenderer);
+        Assert.IsType<MarkdownRenderer.Html.Internal.Renderers.HtmlBlockRenderer>(htmlRenderer);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
 using Windows.Foundation;

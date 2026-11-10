@@ -9,7 +9,7 @@ using Windows.Graphics.DirectX;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.UI;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 

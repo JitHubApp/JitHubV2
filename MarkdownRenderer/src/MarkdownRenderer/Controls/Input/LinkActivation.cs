@@ -1,6 +1,6 @@
 using System;
 using MarkdownRenderer.Controls.Navigation;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 

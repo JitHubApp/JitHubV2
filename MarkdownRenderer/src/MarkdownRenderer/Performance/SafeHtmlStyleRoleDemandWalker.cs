@@ -4,7 +4,7 @@ using System.Threading;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Performance;
 

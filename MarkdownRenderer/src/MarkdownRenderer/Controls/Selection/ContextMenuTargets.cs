@@ -1,8 +1,8 @@
 using System;
 using Windows.Foundation;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Controls.Selection;
 

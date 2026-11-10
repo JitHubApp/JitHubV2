@@ -1,6 +1,6 @@
 using System;
 using Windows.Foundation;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport);
 using CachedSvgBitmap = (MarkdownRenderer.Images.IMarkdownSvgRenderer Renderer, long RendererIdentity, long ProviderCacheGeneration, Windows.Foundation.Size Intrinsic, (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport) Plan, string Identity);

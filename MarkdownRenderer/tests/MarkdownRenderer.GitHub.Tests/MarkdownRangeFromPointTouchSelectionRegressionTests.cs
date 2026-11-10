@@ -9,7 +9,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

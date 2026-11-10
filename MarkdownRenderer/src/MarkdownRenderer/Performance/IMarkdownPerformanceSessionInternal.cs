@@ -7,7 +7,7 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;
@@ -86,7 +86,7 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
         string source,
         int registryRevision,
         Markdig.Syntax.MarkdownDocument document,
-        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        MarkdownRenderer.Parsing.Internal.SafeHtml.SafeHtmlRenderPolicy? safeHtmlPolicy,
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context);
     void ReleaseDocumentScope(object documentOwner);

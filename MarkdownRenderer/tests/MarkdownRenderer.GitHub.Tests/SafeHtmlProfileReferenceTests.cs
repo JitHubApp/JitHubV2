@@ -2,7 +2,7 @@
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
@@ -105,10 +105,10 @@ public sealed class SafeHtmlProfileReferenceTests
         string label,
         bool expected)
     {
-        bool simpleFragment = MarkdownRenderer.Html.Renderers.HtmlNestedMarkdownSource
+        bool simpleFragment = MarkdownRenderer.Html.Internal.Renderers.HtmlNestedMarkdownSource
             .HasSimpleAsciiReferenceLabels(fragment);
         Assert.Equal(expected,
-            MarkdownRenderer.Html.Renderers.HtmlNestedMarkdownSource.MayUseReferenceLabel(
+            MarkdownRenderer.Html.Internal.Renderers.HtmlNestedMarkdownSource.MayUseReferenceLabel(
                 fragment, label, simpleFragment));
     }
 

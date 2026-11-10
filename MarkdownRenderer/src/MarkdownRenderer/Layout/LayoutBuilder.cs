@@ -6,6 +6,7 @@ using System.Threading;
 using Microsoft.UI.Xaml;
 using Markdig.Syntax;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 

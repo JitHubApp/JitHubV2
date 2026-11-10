@@ -48,10 +48,10 @@ public sealed class ForbiddenContractTypeTests
         "MarkdownRenderer.Layout.LayoutBuilder",
         "MarkdownRenderer.Layout.LayoutSnapshot",
         "MarkdownRenderer.Layout.MarkdownLayoutContext",
-        "MarkdownRenderer.Parsing.IMarkdownNodeRenderer",
-        "MarkdownRenderer.Parsing.IMarkdownNodeRendererErased",
-        "MarkdownRenderer.Parsing.MarkdownExtensionRegistry",
-        "MarkdownRenderer.Parsing.MarkdownNodeRenderer",
+        "MarkdownRenderer.Parsing.Internal.IMarkdownNodeRenderer",
+        "MarkdownRenderer.Parsing.Internal.IMarkdownNodeRendererErased",
+        "MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry",
+        "MarkdownRenderer.Parsing.Internal.MarkdownNodeRenderer",
         "MarkdownRenderer.Theming.ThemeSnapshot",
     };
 

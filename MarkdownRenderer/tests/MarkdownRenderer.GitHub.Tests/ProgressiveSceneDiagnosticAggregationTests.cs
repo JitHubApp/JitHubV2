@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Math;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using Xunit;
 

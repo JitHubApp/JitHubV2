@@ -4,6 +4,7 @@ using Windows.Foundation;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Extensions.Internal;
 
 namespace MarkdownRenderer.Controls.Focus;
 

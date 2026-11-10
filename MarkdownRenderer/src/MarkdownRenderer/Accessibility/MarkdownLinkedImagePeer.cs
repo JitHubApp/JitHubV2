@@ -2,6 +2,7 @@ using System;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;

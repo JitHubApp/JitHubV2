@@ -1,7 +1,7 @@
 using Markdig;
 using System.Text;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

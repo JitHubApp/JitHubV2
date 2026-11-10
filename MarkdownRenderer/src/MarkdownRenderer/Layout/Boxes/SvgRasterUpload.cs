@@ -3,7 +3,7 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Layout.Boxes;

@@ -17,7 +17,6 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Windows.UI;
 using Windows.Foundation;

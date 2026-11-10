@@ -7,10 +7,12 @@ using Markdig.Parsers;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
-using MarkdownRenderer.GitHub.Renderers;
+using MarkdownRenderer.GitHub.Internal;
+using MarkdownRenderer.GitHub.Internal.Renderers;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 
 namespace MarkdownRenderer.GitHub;
 

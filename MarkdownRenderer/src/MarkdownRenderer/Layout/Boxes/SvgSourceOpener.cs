@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Foundation;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 using SvgFailure = (MarkdownRenderer.Images.MarkdownSvgFailureReason Reason, string Description);

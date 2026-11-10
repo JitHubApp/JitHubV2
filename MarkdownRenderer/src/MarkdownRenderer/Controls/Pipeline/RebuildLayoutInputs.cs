@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;

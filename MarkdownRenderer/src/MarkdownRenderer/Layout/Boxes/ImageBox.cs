@@ -11,7 +11,7 @@ using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Internal.Concurrency;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Layout.Boxes;

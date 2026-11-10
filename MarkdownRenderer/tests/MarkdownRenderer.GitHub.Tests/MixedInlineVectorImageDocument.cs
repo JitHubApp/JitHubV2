@@ -2,7 +2,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Math;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using Microsoft.UI.Xaml;
 using Xunit;

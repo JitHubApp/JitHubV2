@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
 using Xunit;
