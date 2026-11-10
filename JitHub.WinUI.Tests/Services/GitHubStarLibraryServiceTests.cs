@@ -17,6 +17,11 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class GitHubStarLibraryServiceTests : IDisposable
 {
+    // Upper bound for work the test expects to finish (a sync starting or
+    // settling). It only turns a hang into a failure, so it is generous: CI
+    // runs these suites in parallel on a shared runner.
+    private static readonly TimeSpan ExpectedCompletionBound = TimeSpan.FromSeconds(15);
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubStarServiceTests", Guid.NewGuid().ToString("N"));
 
     public void Dispose()
@@ -280,7 +285,7 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
                 tags.Contains("profile-stars") && tags.Contains("dashboard-starred-repos")),
             Arg.Any<CancellationToken>());
 
-        await queryService.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queryService.Started.Task.WaitAsync(ExpectedCompletionBound);
         queryService.Release([]);
         await WaitUntilAsync(async () => !(await store.GetSyncStateAsync("u1")).IsSyncing);
 
@@ -369,12 +374,12 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
             queryService);
 
         Task<StarSyncState> first = service.SynchronizeAsync("token", "u1", forceFull: true);
-        await queryService.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queryService.Started.Task.WaitAsync(ExpectedCompletionBound);
         Task<StarSyncState> second = service.SynchronizeAsync("token", "u1");
         Task<StarSyncState> third = service.SynchronizeAsync("token", "u1");
 
         queryService.Release([]);
-        await Task.WhenAll(first, second, third).WaitAsync(TimeSpan.FromSeconds(3));
+        await Task.WhenAll(first, second, third).WaitAsync(ExpectedCompletionBound);
 
         Assert.Equal(2, queryService.CallCount);
     }
@@ -398,7 +403,7 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
             "u1",
             forceFull: true,
             cancellation.Token);
-        await queryService.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queryService.Started.Task.WaitAsync(ExpectedCompletionBound);
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sync);
@@ -421,14 +426,14 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
         GitHubStarLibraryService service = CreateService(store, client, queryService);
 
         Task<StarSyncState> activeSync = service.SynchronizeAsync("token", "u1");
-        await queryService.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queryService.Started.Task.WaitAsync(ExpectedCompletionBound);
 
         GitHubRepository repository = Star(42, "owner", "repo").Repository;
         await service.NotifyRepositoryStarStateChangedAsync("token", "u1", repository, isStarred: true);
         Assert.Single((await store.QueryAsync(Query("u1"))).Items);
 
         queryService.Release([]);
-        await activeSync.WaitAsync(TimeSpan.FromSeconds(3));
+        await activeSync.WaitAsync(ExpectedCompletionBound);
         await WaitUntilAsync(() => Task.FromResult(queryService.CallCount >= 2));
         await WaitUntilAsync(async () => !(await store.GetSyncStateAsync("u1")).IsSyncing);
 
@@ -457,7 +462,7 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
             isStarred: false);
 
         Assert.Empty((await store.QueryAsync(Query("u1"))).Items);
-        await queryService.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queryService.Started.Task.WaitAsync(ExpectedCompletionBound);
         queryService.Release([starred]);
         await WaitUntilAsync(async () => !(await store.GetSyncStateAsync("u1")).IsSyncing);
 
@@ -575,7 +580,7 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
             tasks);
 
         Task<StarSyncState> synchronization = service.SynchronizeAsync("sensitive-token", "u1");
-        await queryService.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queryService.Started.Task.WaitAsync(ExpectedCompletionBound);
 
         Task drain = accountWork.QuiesceAsync("u1");
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => synchronization);
@@ -845,7 +850,7 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
 
     private static async Task WaitUntilAsync(Func<Task<bool>> predicate)
     {
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(3));
+        using CancellationTokenSource timeout = new(ExpectedCompletionBound);
         while (!await predicate())
         {
             await Task.Delay(20, timeout.Token);
