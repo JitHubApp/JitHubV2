@@ -1,5 +1,4 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;

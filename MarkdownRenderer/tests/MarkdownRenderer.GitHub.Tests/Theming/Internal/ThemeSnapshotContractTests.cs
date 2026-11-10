@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal.ResourceDictionaries;
 using Xunit;

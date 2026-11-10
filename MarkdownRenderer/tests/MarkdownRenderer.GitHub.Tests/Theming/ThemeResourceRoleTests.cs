@@ -1,5 +1,4 @@
 using MarkdownRenderer.GitHub.Tests.TestSupport;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using Xunit;

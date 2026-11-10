@@ -1,7 +1,5 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;

@@ -2,8 +2,6 @@ using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls.Internal.Focus;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Focus;

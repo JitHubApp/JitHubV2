@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;

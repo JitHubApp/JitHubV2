@@ -1,6 +1,5 @@
 using System.Numerics;
 using NumericMath = global::System.Math;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Inlines;

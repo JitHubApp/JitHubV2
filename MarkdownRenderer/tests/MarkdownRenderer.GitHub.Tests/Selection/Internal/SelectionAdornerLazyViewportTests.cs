@@ -1,6 +1,5 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;

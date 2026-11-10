@@ -1,5 +1,3 @@
-using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;

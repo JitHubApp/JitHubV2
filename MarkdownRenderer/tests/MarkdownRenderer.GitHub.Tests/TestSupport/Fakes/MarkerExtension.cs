@@ -1,5 +1,4 @@
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Theming;
 using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ProgressiveSceneDeferralFixture;
 

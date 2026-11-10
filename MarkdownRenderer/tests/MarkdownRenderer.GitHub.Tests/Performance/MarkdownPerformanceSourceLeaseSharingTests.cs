@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Internal.Concurrency;

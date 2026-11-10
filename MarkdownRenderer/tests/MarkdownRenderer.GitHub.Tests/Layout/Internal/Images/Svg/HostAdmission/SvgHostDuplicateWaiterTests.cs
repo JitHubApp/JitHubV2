@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using MarkdownRenderer.Layout.Internal.RenderResources;

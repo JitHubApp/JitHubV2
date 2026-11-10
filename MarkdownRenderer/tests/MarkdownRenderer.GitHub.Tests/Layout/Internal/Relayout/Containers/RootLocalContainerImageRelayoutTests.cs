@@ -6,7 +6,6 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Inlines.Placement;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;

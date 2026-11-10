@@ -7,7 +7,6 @@ using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Performance.Internal;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster.DisplaySizedRasterDecodeTests;
-using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 
 namespace MarkdownRenderer.GitHub.Tests.Performance;
 

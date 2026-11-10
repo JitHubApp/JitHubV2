@@ -1,6 +1,5 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;

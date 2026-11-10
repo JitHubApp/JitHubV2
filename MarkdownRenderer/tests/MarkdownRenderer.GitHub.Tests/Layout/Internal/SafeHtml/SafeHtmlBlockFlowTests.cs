@@ -1,5 +1,4 @@
-﻿using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
-using MarkdownRenderer.Images;
+﻿using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;

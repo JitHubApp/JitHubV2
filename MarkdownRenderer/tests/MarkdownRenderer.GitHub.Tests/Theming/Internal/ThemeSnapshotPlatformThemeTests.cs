@@ -2,7 +2,6 @@ using Microsoft.UI.Xaml;
 using Windows.UI;
 using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using MarkdownRenderer.Theming.Internal.Environment;

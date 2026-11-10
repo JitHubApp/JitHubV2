@@ -1,6 +1,5 @@
 using MarkdownRenderer.GitHub.Tests.Performance;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
-using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.RenderResources;
