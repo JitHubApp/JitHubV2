@@ -1,4 +1,4 @@
-using MarkdownRenderer.Controls.Threading;
+using MarkdownRenderer.Controls.Internal.Threading;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

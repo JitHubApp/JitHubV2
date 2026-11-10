@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout.Internal.Context;

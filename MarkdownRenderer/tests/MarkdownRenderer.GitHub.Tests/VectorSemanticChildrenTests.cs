@@ -1,5 +1,5 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;

@@ -1,5 +1,5 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout.Internal.Boxes;
@@ -15,7 +15,7 @@ using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
-using LinkTarget = MarkdownRenderer.Controls.Input.LinkTarget;
+using LinkTarget = MarkdownRenderer.Controls.Internal.Input.Links.LinkTarget;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

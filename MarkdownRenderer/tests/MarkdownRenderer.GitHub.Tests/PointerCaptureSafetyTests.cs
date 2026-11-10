@@ -1,5 +1,5 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Internal.Input;
 using Microsoft.UI.Xaml.Input;
 using Xunit;
 

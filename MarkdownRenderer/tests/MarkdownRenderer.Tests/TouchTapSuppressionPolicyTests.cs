@@ -1,4 +1,7 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Input.Deferred;
+using MarkdownRenderer.Controls.Internal.Input.Gestures;
+using MarkdownRenderer.Controls.Internal.Selection.TouchSelection;
 using Windows.Foundation;
 using Xunit;
 

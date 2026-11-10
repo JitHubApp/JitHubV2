@@ -1,7 +1,8 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.LazyLayout;
-using MarkdownRenderer.Controls.Threading;
+using MarkdownRenderer.Controls.Internal.LazyLayout;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;

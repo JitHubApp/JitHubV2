@@ -4,6 +4,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Selection.TouchSelection;
 using MarkdownRenderer.Document;
 
 namespace MarkdownRenderer.Layout.Internal.Inlines;

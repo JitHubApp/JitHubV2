@@ -1,6 +1,6 @@
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Controls.Focus;
+using MarkdownRenderer.Controls.Internal.Focus;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Internal.Concurrency;

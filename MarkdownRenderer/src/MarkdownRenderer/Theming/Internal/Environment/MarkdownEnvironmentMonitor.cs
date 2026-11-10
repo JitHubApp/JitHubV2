@@ -7,13 +7,14 @@ using Microsoft.UI.System;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Windows.UI.ViewManagement;
+using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Theming.Internal.Environment;
 
 /// <summary>
 /// One native environment observer per <see cref="XamlRoot"/>, owned by that
-/// root's <see cref="Controls.MarkdownXamlRootServices"/>. Controls hold a
+/// root's <see cref="MarkdownXamlRootServices"/>. Controls hold a
 /// lightweight lease; the monitor holds only weak references back to controls.
 /// </summary>
 internal sealed class MarkdownEnvironmentMonitor

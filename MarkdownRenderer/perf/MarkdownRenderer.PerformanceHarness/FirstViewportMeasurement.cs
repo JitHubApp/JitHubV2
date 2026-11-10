@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal;
+using MarkdownRenderer.Controls.Internal.Pipeline;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

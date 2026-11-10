@@ -1,4 +1,4 @@
-using MarkdownRenderer.Controls.Embeds;
+using MarkdownRenderer.Controls.Internal.Embeds;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout.Internal.Boxes;

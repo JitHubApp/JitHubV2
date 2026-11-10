@@ -1,11 +1,11 @@
 using Markdig;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Controls.Threading;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using Xunit;
-using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
+using RebuildReason = MarkdownRenderer.Controls.Internal.Pipeline.Rebuild.MarkdownRebuildCoordinatorReason;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

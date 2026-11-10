@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using MarkdownRenderer.Controls.Internal.View;
 
 namespace MarkdownRenderer.Selection.Internal;
 
 /// <summary>
 /// Keeps at most one rendered-text selection among the peers that share one
 /// XamlRoot: when a peer selects, the others clear theirs. The root's
-/// <see cref="Controls.MarkdownXamlRootServices"/> owns one coordinator, so
+/// <see cref="MarkdownXamlRootServices"/> owns one coordinator, so
 /// selections in different windows or islands never clear each other.
 /// </summary>
 /// <remarks>

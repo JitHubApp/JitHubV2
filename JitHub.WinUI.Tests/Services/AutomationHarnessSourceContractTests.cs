@@ -132,20 +132,20 @@ public sealed class AutomationHarnessSourceContractTests
         // InlineContainerPlansTests; ignoring completions of unsubscribed images by
         // ImageLoadCompletionTests. What stays here is the control's wiring of those
         // owners, which needs a live control.
-        string embedSource = ReadRendererSource("Controls", "Embeds", "EmbedRealization.cs");
+        string embedSource = ReadRendererSource("Controls", "Internal", "Embeds", "EmbedRealization.cs");
         Assert.Contains("InlineContainerPlans.Collect(this, snapshot, topLevelRoot, icb);", embedSource, StringComparison.Ordinal);
         Assert.Contains("void IInlinePlanCollector.AddImagePlan(ImageBox image) => _host.AddImagePlan(image);", embedSource, StringComparison.Ordinal);
         Assert.Contains(
             "void IEmbedRealizationHost.AddImagePlan(ImageBox image) => Owners.ImageSubscriptions.AddPlan(image);",
-            ReadRendererSource("Controls", "Composition", "EmbedHosts.cs"),
+            ReadRendererSource("Controls", "Internal", "Composition", "EmbedHosts.cs"),
             StringComparison.Ordinal);
         Assert.Contains(
             "imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;",
-            ReadRendererSource("Controls", "Composition", "MarkdownRendererComposition.cs"),
+            ReadRendererSource("Controls", "Internal", "Composition", "MarkdownRendererComposition.cs"),
             StringComparison.Ordinal);
         Assert.Contains(
             "_imageSubscriptions.UnsubscribeAll();",
-            ReadRendererSource("Controls", "ViewAttachment.cs"),
+            ReadRendererSource("Controls", "Internal", "View", "ViewAttachment.cs"),
             StringComparison.Ordinal);
     }
 
@@ -160,21 +160,21 @@ public sealed class AutomationHarnessSourceContractTests
         // What stays here needs a live control (host wiring), a performance session and
         // raster placement (private candidates), or a rebuild pipeline.
         string controlSource = ReadRendererSource("Controls", "MarkdownRendererControl.cs");
-        string relayoutSource = ReadRendererSource("Controls", "Images", "ImageRelayout.cs");
-        string workSource = ReadRendererSource("Controls", "Images", "ImageRelayoutWork.cs");
-        string imageHostsSource = ReadRendererSource("Controls", "Composition", "ImageHosts.cs");
+        string relayoutSource = ReadRendererSource("Controls", "Internal", "Images", "ImageRelayout.cs");
+        string workSource = ReadRendererSource("Controls", "Internal", "Images", "ImageRelayoutWork.cs");
+        string imageHostsSource = ReadRendererSource("Controls", "Internal", "Composition", "ImageHosts.cs");
         Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);", imageHostsSource, StringComparison.Ordinal);
         Assert.Contains("double? IImageRelayoutHost.VerticalScrollOffset => Owners.Surface.Scroll?.VerticalOffset;", imageHostsSource, StringComparison.Ordinal);
 
         // The tick's retry order, its geometry-recovery drain, failure fallback and idle stop
         // are covered by RecoveryClockWorkTests. What the host forwards each retry to needs a live control.
-        string layoutHostsSource = ReadRendererSource("Controls", "Composition", "LayoutHosts.cs");
-        string recoveryWorkSource = ReadRendererSource("Controls", "RecoveryClockWork.cs");
+        string layoutHostsSource = ReadRendererSource("Controls", "Internal", "Composition", "LayoutHosts.cs");
+        string recoveryWorkSource = ReadRendererSource("Controls", "Internal", "Recovery", "RecoveryClockWork.cs");
         Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryWorkSource, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryWorkSource, StringComparison.Ordinal);
         Assert.Contains("void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();", layoutHostsSource, StringComparison.Ordinal);
         Assert.Contains("void IRecoveryClockWorkHost.PublishPendingLayout() => Owners.LayoutPublisher.PublishPending();", layoutHostsSource, StringComparison.Ordinal);
-        string lazyLayoutSource = ReadRendererSource("Controls", "LazyLayout", "LazyLayoutRealization.cs");
+        string lazyLayoutSource = ReadRendererSource("Controls", "Internal", "LazyLayout", "LazyLayoutRealization.cs");
         Assert.Contains("void IRecoveryClockWorkHost.ProcessQueuedLazyLayout() => Owners.LazyLayout.ProcessQueued();", layoutHostsSource, StringComparison.Ordinal);
         Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", lazyLayoutSource, StringComparison.Ordinal);
         Assert.Contains("void IRecoveryClockWorkHost.TryPublishLazyLayoutCompletion() => Owners.LazyLayout.TryPublishCompletion();", layoutHostsSource, StringComparison.Ordinal);
@@ -187,7 +187,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(processStart >= 0 && completionStart > processStart);
         string process = relayoutSource[processStart..completionStart];
         Assert.Contains("bool IImageRelayoutHost.DefersToRebuild() => Owners.Rebuild.DefersToRebuild();", imageHostsSource, StringComparison.Ordinal);
-        string schedulerSource = ReadRendererSource("Controls", "Pipeline", "RebuildScheduler.cs");
+        string schedulerSource = ReadRendererSource("Controls", "Internal", "Pipeline", "Rebuild", "RebuildScheduler.cs");
         int defersStart = schedulerSource.IndexOf("internal bool DefersToRebuild()", StringComparison.Ordinal);
         int defersEnd = schedulerSource.IndexOf("internal void QueuePendingIfIdle()", defersStart, StringComparison.Ordinal);
         Assert.True(defersStart >= 0 && defersEnd > defersStart);
@@ -196,7 +196,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("return _coordinator.HasPendingOrBuilding;", defers, StringComparison.Ordinal);
         Assert.Contains("private readonly SortedSet<int> _pending = [];", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
-        string rasterPublication = ReadRendererSource("Controls", "Images", "RasterPlacementPublisher.cs");
+        string rasterPublication = ReadRendererSource("Controls", "Internal", "Images", "RasterPlacementPublisher.cs");
         Assert.Contains("TryPrepareCodeBlockActionPublication(plan", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("_host.TryCreateRasterPlacementInputs(snapshot, optedIn: session is not null);", process, StringComparison.Ordinal);
@@ -250,7 +250,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "Initial load / intrinsic-size change",
-            ReadRendererSource("Controls", "Composition", "MarkdownRendererComposition.cs"),
+            ReadRendererSource("Controls", "Internal", "Composition", "MarkdownRendererComposition.cs"),
             StringComparison.Ordinal);
     }
 
@@ -262,9 +262,9 @@ public sealed class AutomationHarnessSourceContractTests
         // hit-tested are covered by ContextMenuSnapshotFenceTests. What stays here needs
         // live XAML: right-tap recognition, the MenuFlyout and its target disposal, and
         // ending the snapshot lease before the menu opens.
-        string pointerSource = ReadRendererSource("Controls", "Input", "PointerInputRouter.cs");
-        string menuSource = ReadRendererSource("Controls", "Selection", "SelectionContextMenuPresenter.cs");
-        string gestureSource = ReadRendererSource("Controls", "Input", "TouchGestureInteraction.cs");
+        string pointerSource = ReadRendererSource("Controls", "Internal", "Input", "PointerInputRouter.cs");
+        string menuSource = ReadRendererSource("Controls", "Internal", "Selection", "ContextMenu", "SelectionContextMenuPresenter.cs");
+        string gestureSource = ReadRendererSource("Controls", "Internal", "Input", "Gestures", "TouchGestureInteraction.cs");
 
         int rightTappedStart = gestureSource.IndexOf("internal void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
         int rightTappedEnd = gestureSource.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
@@ -290,7 +290,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("catch (Exception ex)\n        {\n            ContextMenuTargets.DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
 
         Assert.Contains("_contextMenuCompletion = new GestureContextMenuCompletion(lifetime, published, contextMenu);", pointerSource, StringComparison.Ordinal);
-        string gestureRoutingSource = ReadRendererSource("Controls", "Input", "RecognizedGestureRouting.cs");
+        string gestureRoutingSource = ReadRendererSource("Controls", "Internal", "Input", "Gestures", "RecognizedGestureRouting.cs");
         int recognizedGestureStart = gestureRoutingSource.IndexOf("private bool DispatchUnderLease(", StringComparison.Ordinal);
         int geometryDeferralStart = gestureRoutingSource.IndexOf("private bool DeferForGeometry(", recognizedGestureStart, StringComparison.Ordinal);
         Assert.True(recognizedGestureStart >= 0 && geometryDeferralStart > recognizedGestureStart);

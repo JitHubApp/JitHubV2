@@ -1,5 +1,7 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Internal.Input.Deferred;
+using MarkdownRenderer.Controls.Internal.Input.Gestures;
+using MarkdownRenderer.Controls.Internal.Selection.Adorner;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.LazyLayout;

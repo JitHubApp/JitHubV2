@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Pipeline.Rebuild;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal;

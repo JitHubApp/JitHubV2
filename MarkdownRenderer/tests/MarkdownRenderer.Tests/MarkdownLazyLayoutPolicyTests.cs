@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.LazyLayout;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

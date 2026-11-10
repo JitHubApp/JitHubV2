@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Pipeline.Rebuild;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

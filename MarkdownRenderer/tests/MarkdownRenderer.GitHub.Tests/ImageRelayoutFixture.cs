@@ -1,6 +1,9 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Internal.Images;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Pipeline.Commit;
+using MarkdownRenderer.Controls.Internal.Recovery;
+using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Internal.Concurrency;

@@ -1,4 +1,4 @@
-using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using Xunit;

@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Images;
+using MarkdownRenderer.Controls.Internal.Pipeline;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

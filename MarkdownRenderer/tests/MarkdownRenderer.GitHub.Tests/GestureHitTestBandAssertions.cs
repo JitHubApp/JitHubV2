@@ -1,5 +1,5 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Internal.Input.Gestures;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using Windows.Foundation;
 using Xunit;

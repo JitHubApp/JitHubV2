@@ -1,5 +1,7 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Internal.Images;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

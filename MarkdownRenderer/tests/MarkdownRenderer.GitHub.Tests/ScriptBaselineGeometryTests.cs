@@ -133,7 +133,7 @@ public sealed class ScriptBaselineGeometryTests
             subscript.TextLength);
         Assert.True(box.TryGetCaretPoint(scriptEnd, rangeStart: false, out Point caret));
         int subscriptEndCharacter = subscriptStart + subscript.TextLength - 1;
-        MarkdownRenderer.Controls.TouchSelectionCaretQuery query = MarkdownRenderer.Controls.TouchSelectionCaretPolicy.Resolve(
+        MarkdownRenderer.Controls.Internal.Selection.TouchSelection.TouchSelectionCaretQuery query = MarkdownRenderer.Controls.Internal.Selection.TouchSelection.TouchSelectionCaretPolicy.Resolve(
             GetBufferLength(box),
             subscriptEndCharacter + 1,
             rangeStart: false);

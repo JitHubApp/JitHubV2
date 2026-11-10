@@ -1,5 +1,5 @@
-using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Controls.Threading;
+using MarkdownRenderer.Controls.Internal.Images;
+using MarkdownRenderer.Controls.Internal.Threading;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;

@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Selection.TouchSelection;
 using MarkdownRenderer.Layout.Internal.Text;
 using Xunit;
 

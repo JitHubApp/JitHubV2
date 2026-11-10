@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Controls.Internal.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
