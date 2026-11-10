@@ -5,6 +5,11 @@ namespace MarkdownRenderer.Tests.Internal.Concurrency;
 
 public sealed class CancellationTokenSourceRetirementTests
 {
+    // CancelAsync runs registered callbacks on the thread pool. These waits only
+    // turn a lost callback or a hang into a failure; the ordering assertions
+    // decide the result. A busy CI host can delay a callback by seconds.
+    private static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task CancellationIsImmediateButCallbacksAndLifetimeRetireBeforeSourceDisposal()
     {
@@ -22,7 +27,7 @@ public sealed class CancellationTokenSourceRetirementTests
             callbackEntered.TrySetResult();
             try
             {
-                if (!releaseCallback.Wait(TimeSpan.FromSeconds(5)))
+                if (!releaseCallback.Wait(HangGuard))
                     throw new TimeoutException("Cancellation callback was not released.");
             }
             finally
@@ -36,7 +41,7 @@ public sealed class CancellationTokenSourceRetirementTests
         try
         {
             Assert.True(token.IsCancellationRequested);
-            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await callbackEntered.Task.WaitAsync(HangGuard);
             Assert.False(callbacks.IsCompleted);
 
             retirement = CancellationTokenSourceRetirement.DisposeAfter(
@@ -52,9 +57,9 @@ public sealed class CancellationTokenSourceRetirementTests
             releaseCallback.Set();
         }
 
-        await callbacks.WaitAsync(TimeSpan.FromSeconds(2));
-        await retirement.WaitAsync(TimeSpan.FromSeconds(2));
-        await callbackExited.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await callbacks.WaitAsync(HangGuard);
+        await retirement.WaitAsync(HangGuard);
+        await callbackExited.Task.WaitAsync(HangGuard);
         Assert.Throws<ObjectDisposedException>(() =>
         {
             _ = source.Token;
@@ -73,10 +78,7 @@ public sealed class CancellationTokenSourceRetirementTests
             source,
             callbacks);
 
-        // CancelAsync schedules registered callbacks on the thread pool. This
-        // is a lifetime-ordering assertion, not a latency gate: a busy CI host
-        // may delay that callback beyond two seconds without losing it.
-        await retirement.WaitAsync(TimeSpan.FromSeconds(10));
+        await retirement.WaitAsync(HangGuard);
         Assert.True(callbacks.IsFaulted);
         Assert.NotNull(callbacks.Exception);
         Assert.Throws<ObjectDisposedException>(() =>
