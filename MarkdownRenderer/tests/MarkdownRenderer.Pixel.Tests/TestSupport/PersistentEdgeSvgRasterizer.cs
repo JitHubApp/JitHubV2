@@ -6,7 +6,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.TestSupport;
 
 /// <summary>
 /// Reuses one isolated headless Edge process for the SVG pixel corpus. Each

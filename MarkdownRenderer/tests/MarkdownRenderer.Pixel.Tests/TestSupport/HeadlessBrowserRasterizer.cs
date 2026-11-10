@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.TestSupport;
 
 /// <summary>
 /// Wraps a headless Chromium-family browser (Edge or Chrome) as the

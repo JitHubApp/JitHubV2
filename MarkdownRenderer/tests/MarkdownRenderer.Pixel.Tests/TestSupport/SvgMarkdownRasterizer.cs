@@ -14,7 +14,7 @@ using Windows.Foundation;
 using Windows.UI;
 using Xunit;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.TestSupport;
 
 /// <summary>
 /// Exercises the document pipeline rather than treating provider pixels as

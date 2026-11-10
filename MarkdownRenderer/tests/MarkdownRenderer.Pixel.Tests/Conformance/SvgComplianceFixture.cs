@@ -1,7 +1,8 @@
+using MarkdownRenderer.Pixel.Tests.TestSupport;
 using MarkdownRenderer.Svg.Resvg;
 using Xunit;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.Conformance;
 
 /// <summary>
 /// Shares one resvg provider and one persistent headless Edge session across

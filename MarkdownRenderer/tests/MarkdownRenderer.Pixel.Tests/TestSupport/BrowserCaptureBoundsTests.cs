@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.TestSupport;
 
 public sealed class BrowserCaptureBoundsTests
 {

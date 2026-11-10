@@ -4,7 +4,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.TestSupport;
 
 /// <summary>
 /// Pixel-by-pixel comparison helpers for two RGBA / BGRA buffers, with

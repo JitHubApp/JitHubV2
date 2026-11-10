@@ -3,10 +3,11 @@ using System.IO;
 using System.Linq;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Svg;
+using MarkdownRenderer.Pixel.Tests.TestSupport;
 using MarkdownRenderer.Svg.Resvg;
 using Xunit;
 
-namespace MarkdownRenderer.Pixel.Tests;
+namespace MarkdownRenderer.Pixel.Tests.Conformance;
 
 /// <summary>
 /// Auto-discovered SVG fixture suite. Each <c>Fixtures\svg\**\*.svg</c>
