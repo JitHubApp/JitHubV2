@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
 using MarkdownRenderer.Svg.Resvg.Internal.Preflight;

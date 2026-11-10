@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Sources;
 using Xunit;
 

@@ -5,7 +5,7 @@ using JitHub.Markdown.Localization;
 using MarkdownRenderer;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;

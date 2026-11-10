@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Security.Cryptography;
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests.Internal.Preparation;

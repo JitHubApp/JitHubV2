@@ -1,5 +1,5 @@
 using System.Buffers.Binary;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using MarkdownRenderer.Svg.Resvg.TestSupport;
 using Xunit;

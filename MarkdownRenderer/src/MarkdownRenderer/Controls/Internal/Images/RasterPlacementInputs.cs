@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Internal.Images;

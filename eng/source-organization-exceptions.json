@@ -1,15 +1,4 @@
 {
   "$comment": "Source organization violations that eng/Test-SourceOrganization.ps1 allows (SRC0001-SRC0007). Each entry names the code, the path the violation reports (the project file for SRC0001, the folder for SRC0004 and SRC0005, the C# file otherwise) and why the code cannot follow the rule yet. An entry that no longer matches a violation fails the check (SRC0008), so remove it with the fix. Do not add entries to avoid moving files; move them.",
-  "exceptions": [
-    {
-      "code": "SRC0004",
-      "path": "MarkdownRenderer/src/MarkdownRenderer/Extensions",
-      "reason": "All 37 files are public extension API in the MarkdownRenderer.Extensions namespace, which stays fixed for the 1.0 cleanup. Splitting the folder would change the namespaces consumers import, so it waits for a deliberate public namespace change."
-    },
-    {
-      "code": "SRC0004",
-      "path": "MarkdownRenderer/src/MarkdownRenderer/Images",
-      "reason": "All 44 files are public image and SVG API in the MarkdownRenderer.Images namespace, which stays fixed for the 1.0 cleanup. Splitting the folder would change the namespaces consumers import, so it waits for a deliberate public namespace change."
-    }
-  ]
+  "exceptions": []
 }

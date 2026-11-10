@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Performance.Internal.ProgressiveScenes;

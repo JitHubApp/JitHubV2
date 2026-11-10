@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;

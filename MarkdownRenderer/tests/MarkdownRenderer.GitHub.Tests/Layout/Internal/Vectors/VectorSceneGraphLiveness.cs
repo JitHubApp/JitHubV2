@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests.Layout.Internal.Vectors;

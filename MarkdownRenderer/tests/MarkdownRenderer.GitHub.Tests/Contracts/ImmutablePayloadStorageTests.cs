@@ -20,6 +20,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Engine.Internal;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Gfm.Internal.Compatibility;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;

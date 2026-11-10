@@ -6,7 +6,7 @@ using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Focus;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.LazyLayout;

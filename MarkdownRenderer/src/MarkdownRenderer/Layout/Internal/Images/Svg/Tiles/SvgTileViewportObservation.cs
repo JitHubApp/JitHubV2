@@ -1,6 +1,6 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 

@@ -1,7 +1,7 @@
 using System;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
-using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport);
+using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.Svg.MarkdownSvgPhysicalViewport PhysicalViewport);
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
 

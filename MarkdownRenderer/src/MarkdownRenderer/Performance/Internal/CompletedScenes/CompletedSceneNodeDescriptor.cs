@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Performance.Internal.CompletedScenes;

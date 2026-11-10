@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Sources;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Preflight;

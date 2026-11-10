@@ -1,6 +1,6 @@
 using System.Buffers;
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.GitHub.Tests.Layout.Internal.Relayout.Tables;
 

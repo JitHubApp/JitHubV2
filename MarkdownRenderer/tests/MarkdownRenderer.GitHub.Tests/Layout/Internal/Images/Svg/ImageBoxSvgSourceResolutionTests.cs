@@ -2,6 +2,7 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.GitHub.Tests.Performance;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.Svg;

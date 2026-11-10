@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace JitHub.Core.Services.CodeViewer;
 

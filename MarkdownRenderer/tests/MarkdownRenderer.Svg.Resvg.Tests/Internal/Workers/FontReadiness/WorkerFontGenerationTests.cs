@@ -1,4 +1,4 @@
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Svg.Resvg.Internal.Fonts;

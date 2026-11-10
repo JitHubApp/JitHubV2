@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Caching;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg;

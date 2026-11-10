@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

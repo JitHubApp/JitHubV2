@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using SvgTileKey = (int X, int Y, int Width, int Height);
-using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport);
+using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.Svg.MarkdownSvgPhysicalViewport PhysicalViewport);
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 

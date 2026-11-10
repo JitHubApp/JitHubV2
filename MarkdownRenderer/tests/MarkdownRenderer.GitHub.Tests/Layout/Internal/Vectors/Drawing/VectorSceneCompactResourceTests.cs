@@ -4,7 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;

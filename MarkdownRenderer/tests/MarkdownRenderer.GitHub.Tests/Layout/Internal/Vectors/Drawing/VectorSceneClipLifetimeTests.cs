@@ -1,5 +1,5 @@
 using System.Numerics;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;

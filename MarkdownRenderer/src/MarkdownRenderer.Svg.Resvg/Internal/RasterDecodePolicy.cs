@@ -1,4 +1,5 @@
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 

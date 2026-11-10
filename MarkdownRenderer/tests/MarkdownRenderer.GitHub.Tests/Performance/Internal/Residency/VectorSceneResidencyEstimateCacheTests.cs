@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;

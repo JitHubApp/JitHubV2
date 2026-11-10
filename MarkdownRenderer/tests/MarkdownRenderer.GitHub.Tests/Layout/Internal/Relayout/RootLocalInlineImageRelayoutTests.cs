@@ -5,6 +5,7 @@ using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Inlines.Placement;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Context;

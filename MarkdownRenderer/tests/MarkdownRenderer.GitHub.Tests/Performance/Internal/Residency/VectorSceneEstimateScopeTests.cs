@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal.Residency;
 using Xunit;

@@ -1,5 +1,5 @@
 using Windows.UI;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 
 namespace MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 

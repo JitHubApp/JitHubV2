@@ -1,5 +1,5 @@
-using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Tests.TestSupport;
 using Xunit;
 

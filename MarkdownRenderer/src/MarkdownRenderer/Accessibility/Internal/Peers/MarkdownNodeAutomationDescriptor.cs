@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml.Automation.Peers;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;

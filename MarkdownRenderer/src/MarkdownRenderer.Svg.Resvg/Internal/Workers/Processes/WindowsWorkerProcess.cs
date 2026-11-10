@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
 using MarkdownRenderer.Svg.Resvg.Internal.Fonts;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
@@ -213,7 +213,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         {
             Interlocked.Decrement(ref _queued);
             throw new MarkdownSvgException(
-                MarkdownRenderer.Images.MarkdownSvgFailureReason.ResourceLimitExceeded,
+                MarkdownRenderer.Images.Svg.MarkdownSvgFailureReason.ResourceLimitExceeded,
                 "The SVG worker queue is full.");
         }
     }

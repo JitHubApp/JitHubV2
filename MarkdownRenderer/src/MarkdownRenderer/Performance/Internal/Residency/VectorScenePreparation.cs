@@ -1,6 +1,6 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Vectors;

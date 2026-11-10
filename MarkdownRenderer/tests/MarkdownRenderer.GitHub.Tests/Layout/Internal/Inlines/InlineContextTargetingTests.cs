@@ -1,5 +1,5 @@
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;

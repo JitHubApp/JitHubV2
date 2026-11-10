@@ -2,7 +2,7 @@ using System.Collections;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

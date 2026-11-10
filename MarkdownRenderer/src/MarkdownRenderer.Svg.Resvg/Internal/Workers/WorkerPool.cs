@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
 using MarkdownRenderer.Svg.Resvg.Internal.Preflight;
 using MarkdownRenderer.Svg.Resvg.Internal.Sources;

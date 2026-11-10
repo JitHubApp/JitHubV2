@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Extensions;

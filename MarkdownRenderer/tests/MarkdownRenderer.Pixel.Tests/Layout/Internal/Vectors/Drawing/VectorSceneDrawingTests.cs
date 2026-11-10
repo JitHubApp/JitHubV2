@@ -1,4 +1,4 @@
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using Xunit;
 

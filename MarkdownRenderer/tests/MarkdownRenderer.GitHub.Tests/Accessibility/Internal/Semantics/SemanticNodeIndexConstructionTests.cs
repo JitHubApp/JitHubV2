@@ -4,6 +4,7 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;

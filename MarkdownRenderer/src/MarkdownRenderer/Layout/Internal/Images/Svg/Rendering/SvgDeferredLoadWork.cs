@@ -1,4 +1,4 @@
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;

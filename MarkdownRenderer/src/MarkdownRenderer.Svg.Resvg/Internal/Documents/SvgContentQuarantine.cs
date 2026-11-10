@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Documents;

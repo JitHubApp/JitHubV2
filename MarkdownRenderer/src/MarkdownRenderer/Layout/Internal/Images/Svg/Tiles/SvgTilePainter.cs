@@ -1,7 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using Microsoft.Graphics.Canvas;

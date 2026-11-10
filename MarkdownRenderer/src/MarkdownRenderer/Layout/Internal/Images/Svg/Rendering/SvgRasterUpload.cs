@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;

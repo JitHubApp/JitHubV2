@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg;

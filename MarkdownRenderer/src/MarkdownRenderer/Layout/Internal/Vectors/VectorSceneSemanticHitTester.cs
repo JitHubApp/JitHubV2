@@ -1,8 +1,8 @@
 using System;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 
 namespace MarkdownRenderer.Layout.Internal.Vectors;

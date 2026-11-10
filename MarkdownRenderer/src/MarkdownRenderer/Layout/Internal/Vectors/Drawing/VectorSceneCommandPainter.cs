@@ -6,7 +6,7 @@ using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Windows.UI;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.Layout.Internal.Vectors.Drawing;

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using Windows.Foundation;

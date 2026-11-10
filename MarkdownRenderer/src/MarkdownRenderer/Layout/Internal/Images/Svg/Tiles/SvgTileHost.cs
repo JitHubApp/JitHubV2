@@ -6,10 +6,11 @@ using Windows.Foundation;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
-using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport);
+using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.Svg.MarkdownSvgPhysicalViewport PhysicalViewport);
 using SvgTileKey = (int X, int Y, int Width, int Height);
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;

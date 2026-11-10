@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Math.Accessibility;
 using MarkdownRenderer.Math.Internal.Processing;
 using MarkdownRenderer.Math.Internal.Scenes;

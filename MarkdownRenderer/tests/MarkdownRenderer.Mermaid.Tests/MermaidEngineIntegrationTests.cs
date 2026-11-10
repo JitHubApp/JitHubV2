@@ -1,6 +1,7 @@
 using System.Globalization;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Mermaid.Localization;
 using MarkdownRenderer.Theming;
 

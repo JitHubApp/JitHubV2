@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Document.Internal;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Building;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using static MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNodeFactory;

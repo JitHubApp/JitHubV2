@@ -1,5 +1,5 @@
-using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Images.Raster;
 using MarkdownRenderer.Performance;
 using Windows.Foundation;
 

@@ -1,6 +1,6 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;

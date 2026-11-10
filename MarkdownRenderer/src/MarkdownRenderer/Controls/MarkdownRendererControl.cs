@@ -19,6 +19,8 @@ using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;

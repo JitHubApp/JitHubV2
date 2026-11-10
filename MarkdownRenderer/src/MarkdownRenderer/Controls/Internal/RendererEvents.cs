@@ -2,6 +2,7 @@ using System;
 using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Microsoft.UI.Dispatching;
 
 namespace MarkdownRenderer.Controls.Internal;

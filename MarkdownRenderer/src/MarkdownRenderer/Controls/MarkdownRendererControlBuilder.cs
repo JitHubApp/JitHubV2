@@ -3,6 +3,8 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;

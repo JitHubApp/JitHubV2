@@ -1,5 +1,5 @@
 using System.Xml;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
 using MarkdownRenderer.Svg.Resvg.Internal.Sources;
 

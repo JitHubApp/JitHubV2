@@ -1,5 +1,5 @@
 using System;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Placement;

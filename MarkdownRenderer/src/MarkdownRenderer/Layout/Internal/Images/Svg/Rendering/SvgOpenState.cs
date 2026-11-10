@@ -1,6 +1,6 @@
 using System.Threading;
 using Windows.Foundation;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;

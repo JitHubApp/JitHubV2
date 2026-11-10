@@ -1,5 +1,5 @@
 using System.Buffers;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
 
 namespace MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 

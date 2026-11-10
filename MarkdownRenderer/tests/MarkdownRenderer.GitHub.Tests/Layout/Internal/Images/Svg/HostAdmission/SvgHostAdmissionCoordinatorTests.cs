@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;

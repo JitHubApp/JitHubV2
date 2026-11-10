@@ -4,7 +4,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.RenderResources;

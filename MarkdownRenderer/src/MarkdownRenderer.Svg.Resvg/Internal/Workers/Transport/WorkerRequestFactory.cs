@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;

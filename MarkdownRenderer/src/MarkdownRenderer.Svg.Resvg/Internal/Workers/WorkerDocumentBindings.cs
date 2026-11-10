@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Preflight;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Scheduling;

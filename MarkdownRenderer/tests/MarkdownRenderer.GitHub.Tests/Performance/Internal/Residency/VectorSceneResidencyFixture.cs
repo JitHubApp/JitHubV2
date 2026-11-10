@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Linq;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;

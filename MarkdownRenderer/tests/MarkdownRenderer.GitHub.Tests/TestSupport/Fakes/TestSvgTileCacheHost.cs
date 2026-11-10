@@ -1,6 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;

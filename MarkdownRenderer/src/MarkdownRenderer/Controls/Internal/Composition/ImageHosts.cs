@@ -13,6 +13,7 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Internal.Concurrency;

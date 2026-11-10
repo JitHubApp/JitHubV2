@@ -1,5 +1,6 @@
 using System.Text;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 

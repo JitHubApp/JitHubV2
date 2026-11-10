@@ -171,6 +171,10 @@ in selection and semantic text.
 
 ### Vector paint roles
 
+Vector scene types (`MarkdownVectorScene`, `MarkdownVectorCommand` and their
+styles and geometry) are in the `MarkdownRenderer.Extensions.Vectors`
+namespace.
+
 Vector scenes can keep an explicit authored palette or resolve colors from the
 host theme at draw time. The original `MarkdownVectorPaintStyle` constructor is
 backward compatible: non-null colors are `Authored`, while null colors retain

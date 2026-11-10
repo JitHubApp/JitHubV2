@@ -1,5 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;

@@ -1,7 +1,7 @@
 using System;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;

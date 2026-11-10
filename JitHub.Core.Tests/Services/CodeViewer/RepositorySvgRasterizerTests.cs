@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Text;
 using JitHub.Core.Services.CodeViewer;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.CodeViewer;

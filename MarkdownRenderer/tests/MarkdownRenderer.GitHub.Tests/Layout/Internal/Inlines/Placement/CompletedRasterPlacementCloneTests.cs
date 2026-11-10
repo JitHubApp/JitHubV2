@@ -1,6 +1,7 @@
 using System.Collections;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming.Internal;

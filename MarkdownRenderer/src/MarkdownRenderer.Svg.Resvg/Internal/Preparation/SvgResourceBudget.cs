@@ -2,7 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Xml;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Preparation;
 

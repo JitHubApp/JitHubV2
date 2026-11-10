@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Inlines;

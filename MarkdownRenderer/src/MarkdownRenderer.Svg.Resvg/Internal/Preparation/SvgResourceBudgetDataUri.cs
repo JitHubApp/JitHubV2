@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Preparation;
 

@@ -1,4 +1,4 @@
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Scheduling;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Workers.FontReadiness;

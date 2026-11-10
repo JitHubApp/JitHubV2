@@ -1,5 +1,5 @@
 using System.Threading;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Placement;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Loading;

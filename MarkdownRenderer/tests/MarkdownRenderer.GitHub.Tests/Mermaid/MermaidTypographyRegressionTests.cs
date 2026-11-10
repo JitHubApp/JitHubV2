@@ -1,6 +1,7 @@
 using System.Numerics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Mermaid;

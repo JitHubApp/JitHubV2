@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Windows.Foundation;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
