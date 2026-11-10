@@ -249,3 +249,6 @@ if ($failures.Count -gt 0) {
     throw "$($failures.Count) project folder self-test case(s) failed: $($failures -join '; ')"
 }
 Write-Host 'Project folder check self-test passed.'
+# The negative cases run the check in child processes that exit 1. End with an
+# explicit success code so that last child's exit code is not the script's.
+exit 0

@@ -202,3 +202,4 @@ if ($violations.Count -gt 0) {
     exit 1
 }
 Write-Output "Project folder check passed: $($msbuildFiles.Count) MSBuild files and $($usedExceptions.Count) listed exceptions in $Root."
+exit 0
