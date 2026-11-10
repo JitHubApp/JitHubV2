@@ -2,6 +2,8 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Vectors;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
