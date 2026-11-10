@@ -288,7 +288,7 @@ public sealed class AdaptivePrefetchPolicyTests
 
         using IDisposable scheduled = cache.SchedulePrefetch(
             "token", "42", "owner", "repo", 7, IssuePrefetchReason.Dwell, TimeSpan.Zero);
-        await policy.ExecutionObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await policy.ExecutionObserved.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal([AdaptivePrefetchStage.Schedule, AdaptivePrefetchStage.Execute], policy.Stages);
         await query.DidNotReceiveWithAnyArgs().GetIssuePrefetchAsync(default!, default!, default!, default!, default);
@@ -323,7 +323,7 @@ public sealed class AdaptivePrefetchPolicyTests
                 terminal.TrySetResult(result);
             });
 
-        Assert.Equal(IssuePrefetchResult.Cancelled, await terminal.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(IssuePrefetchResult.Cancelled, await terminal.Task.WaitAsync(AsyncTestWait.HangGuard));
         await Task.Delay(50);
         Assert.Equal(1, Volatile.Read(ref callbackCount));
         await query.DidNotReceiveWithAnyArgs().GetIssuePrefetchAsync(default!, default!, default!, default!, default);
@@ -358,7 +358,7 @@ public sealed class AdaptivePrefetchPolicyTests
                 terminal.TrySetResult(result);
             });
 
-        Assert.Equal(PullRequestPrefetchResult.Cancelled, await terminal.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(PullRequestPrefetchResult.Cancelled, await terminal.Task.WaitAsync(AsyncTestWait.HangGuard));
         await Task.Delay(50);
         Assert.Equal(1, Volatile.Read(ref callbackCount));
         await query.DidNotReceiveWithAnyArgs().GetPullRequestPrefetchAsync(default!, default!, default!, default!, default);
@@ -388,7 +388,7 @@ public sealed class AdaptivePrefetchPolicyTests
             });
         scheduled.Dispose();
 
-        Assert.Equal(IssuePrefetchResult.Cancelled, await terminal.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(IssuePrefetchResult.Cancelled, await terminal.Task.WaitAsync(AsyncTestWait.HangGuard));
         await Task.Delay(50);
         Assert.Equal(1, Volatile.Read(ref callbackCount));
     }
@@ -406,7 +406,7 @@ public sealed class AdaptivePrefetchPolicyTests
 
         using IDisposable scheduled = cache.SchedulePrefetch(
             "token", "42", "owner", "repo", 7, PullRequestPrefetchReason.Neighbor, TimeSpan.Zero);
-        await policy.ExecutionObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await policy.ExecutionObserved.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal([AdaptivePrefetchStage.Schedule, AdaptivePrefetchStage.Execute], policy.Stages);
         await query.DidNotReceiveWithAnyArgs().GetPullRequestPrefetchAsync(default!, default!, default!, default!, default);
@@ -516,7 +516,7 @@ public sealed class AdaptivePrefetchPolicyTests
 
         using IDisposable scheduled = cache.SchedulePrefetch(
             "token", "42", "owner", "repo", "sha", CommitPrefetchReason.Neighbor, TimeSpan.Zero);
-        await policy.ExecutionObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await policy.ExecutionObserved.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal([AdaptivePrefetchStage.Schedule, AdaptivePrefetchStage.Execute], policy.Stages);
         await query.DidNotReceiveWithAnyArgs().GetCommitPrefetchAsync(default!, default!, default!, default!, default!);
@@ -665,7 +665,7 @@ public sealed class AdaptivePrefetchPolicyTests
             GitHubRequestPriority.UserInitiated,
             _ => Task.FromResult(3));
 
-        Assert.Equal(3, await foreground.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(3, await foreground.WaitAsync(AsyncTestWait.HangGuard));
         Assert.False(queuedPrefetch.IsCompleted);
         releasePrefetch.TrySetResult();
         int[] prefetchResults = await Task.WhenAll(activePrefetch, queuedPrefetch);

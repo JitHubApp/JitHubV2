@@ -10,6 +10,7 @@ using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.Images;
 using JitHub.Core.Services.Images.Caching;
 using JitHub.Core.Services.Images.Flights;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Markdown.Images.Caching;
 using MarkdownRenderer.Images;
 using Xunit;
@@ -364,7 +365,7 @@ public sealed class GitHubImageServiceTests : IDisposable
         Task<GitHubCachedImage?> second = service.GetAsync(
             "https://avatars.githubusercontent.com/u/cancel.png",
             secondCancellation.Token);
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         firstCancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
@@ -372,7 +373,7 @@ public sealed class GitHubImageServiceTests : IDisposable
 
         secondCancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second);
-        await handler.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.CancellationObserved.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Empty(Directory.GetFiles(_root, "*.tmp", SearchOption.TopDirectoryOnly));
     }
 
@@ -391,7 +392,7 @@ public sealed class GitHubImageServiceTests : IDisposable
             accountWork: accountWork);
         const string source = "https://avatars.githubusercontent.com/u/account-removal.png";
         Task<GitHubCachedImage?> fetch = service.GetAsync(source);
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
         AccountDataRemovalCoordinator coordinator = new(
             [new AccountDataRemovalStep(AccountDataComponentIds.ImageCache, store.ClearPartitionAsync)],
             accountWork);
@@ -400,7 +401,7 @@ public sealed class GitHubImageServiceTests : IDisposable
 
         Assert.True(result.IsComplete);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
-        await handler.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.CancellationObserved.Task.WaitAsync(AsyncTestWait.HangGuard);
         string cacheKey = $"101:{GitHubImageAccountScope.NormalizeCacheIdentity(source)}";
         Assert.Null(await store.TryGetAsync(cacheKey));
         Assert.Empty(Directory.GetFiles(_root, "*.tmp", SearchOption.TopDirectoryOnly));

@@ -277,13 +277,13 @@ public sealed class NotificationsPageViewModelTests
         NotificationViewItem item = viewModel.Notifications.Single(entry => entry.StableKey == "1");
         Task markingRead = viewModel.MarkReadCommand.ExecuteAsync(item);
         Task changingFilter = viewModel.ChangeFilterAsync(NotificationListFilter.Participating);
-        await firstParticipatingRequest.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await firstParticipatingRequest.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.False(changingFilter.IsCompleted);
         Assert.DoesNotContain(viewModel.Notifications, static entry => entry.StableKey == "stale-participating");
 
         mutation.SetResult();
-        await Task.WhenAll(markingRead, changingFilter).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(markingRead, changingFilter).WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal(2, participatingRequests);
         Assert.Equal(NotificationListFilter.Participating, viewModel.SelectedFilter);
@@ -324,11 +324,11 @@ public sealed class NotificationsPageViewModelTests
 
         Task muting = viewModel.ToggleMuteCommand.ExecuteAsync(item);
         Task changingFilter = viewModel.ChangeFilterAsync(NotificationListFilter.Participating);
-        await firstParticipatingRequest.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await firstParticipatingRequest.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.False(changingFilter.IsCompleted);
         mutation.SetException(new InvalidOperationException("offline"));
-        await Task.WhenAll(muting, changingFilter).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(muting, changingFilter).WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal(2, participatingRequests);
         Assert.Equal(NotificationListFilter.Participating, viewModel.SelectedFilter);
@@ -545,8 +545,8 @@ public sealed class NotificationsPageViewModelTests
         await viewModel.InitializeAsync();
 
         viewModel.OpenNotificationCommand.Execute(viewModel.Notifications[0]);
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await coordinator.CancelAccountAsync("42").WaitAsync(TimeSpan.FromSeconds(2));
+        await started.Task.WaitAsync(AsyncTestWait.HangGuard);
+        await coordinator.CancelAccountAsync("42").WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(cancellationObserved);
         Assert.Equal(1, service.MarkReadCalls);
@@ -655,7 +655,7 @@ public sealed class NotificationsPageViewModelTests
         NotificationViewItem item = NotificationViewItem.Create(Thread("join-started"));
 
         Task hover = viewModel.PrefetchDestinationAsync(item);
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await started.Task.WaitAsync(AsyncTestWait.HangGuard);
         Task promoted = viewModel.PromoteDestinationPrefetchAsync(item);
         release.SetResult();
         await Task.WhenAll(hover, promoted);

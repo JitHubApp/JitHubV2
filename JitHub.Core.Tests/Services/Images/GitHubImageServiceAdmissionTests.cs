@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.Images;
 using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Markdown.Images.Caching;
 using MarkdownRenderer.Images;
 using Xunit;
@@ -198,7 +199,7 @@ public sealed class GitHubImageServiceAdmissionTests : IDisposable
         // A cache writer must be able to finish while another reader waits
         // for weighted source-byte admission on the same stripe.
         await store.PutAsync(cacheKey, [.. PngBytes, 42], ".img")
-            .WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(AsyncTestWait.HangGuard);
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         blocker.Dispose();
