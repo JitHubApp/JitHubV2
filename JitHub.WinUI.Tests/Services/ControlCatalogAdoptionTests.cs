@@ -357,7 +357,7 @@ public sealed partial class ControlCatalogAdoptionTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "App",
             "EmptyStateView.xaml"));
         Assert.True(DocumentConsumesStyle(emptyStateControl, "AppInlineEmptyStatePanelStyle"));
         Assert.Contains(

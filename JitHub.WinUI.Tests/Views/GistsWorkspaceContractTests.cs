@@ -297,7 +297,7 @@ public sealed class GistsWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         Assert.Contains(

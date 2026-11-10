@@ -114,7 +114,7 @@ public sealed class RepositoryLibraryWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         Assert.Contains("IGitHubRepositoryIndexService", source, StringComparison.Ordinal);
@@ -158,7 +158,7 @@ public sealed class RepositoryLibraryWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Repositories",
             "RepoManagePageViewModel.cs"));
         Assert.Contains("public async Task ActivateAsync()", viewModel, StringComparison.Ordinal);
         Assert.Contains("public void Deactivate()", viewModel, StringComparison.Ordinal);
@@ -177,13 +177,13 @@ public sealed class RepositoryLibraryWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Repositories",
             "RepoManagePageViewModel.cs"));
         string shell = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
         string resources = File.ReadAllText(Path.Combine(
             root,
@@ -206,7 +206,7 @@ public sealed class RepositoryLibraryWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Repositories",
             "RepoManagePageViewModel.cs"));
 
         int filterHandler = viewModel.IndexOf(

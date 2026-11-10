@@ -134,7 +134,7 @@ public sealed class MarkdownHostContractTests
         // ImageUnavailable into MarkdownViewerFeedback) can only be observed with a
         // live XAML runtime; the feedback results are covered by MarkdownViewerFeedbackTests.
         string root = FindRepositoryRoot();
-        string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common");
+        string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Markdown");
         string resources = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Styles", "MarkdownRenderer.xaml"));
         XDocument xaml = XDocument.Load(Path.Combine(viewerRoot, "MarkdownViewer.xaml"));
         XElement errorInfoBar = xaml.Descendants().Single(element =>
@@ -160,7 +160,7 @@ public sealed class MarkdownHostContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Markdown",
             "MarkdownForm.xaml"));
         XElement preview = document.Descendants().Single(element =>
             element.Name.LocalName == "MarkdownViewer" &&
@@ -181,7 +181,7 @@ public sealed class MarkdownHostContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Markdown",
             "MarkdownForm.xaml"));
 
         XElement preview = document.Descendants().Single(element =>

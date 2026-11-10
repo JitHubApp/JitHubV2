@@ -772,15 +772,15 @@ validation or loosen the checked-in budgets.
 
 | Concern | Principal locations |
 | --- | --- |
-| OAuth client/account partition | `JitHub.WinUI/Services/AuthService.cs`, `AuthCredentialStore.cs`, `AuthProtocolPolicy.cs`, auth tests |
+| OAuth client/account partition | `JitHub.Core/Services/Authentication/AuthService.cs`, `AuthCredentialStore.cs`, `AuthProtocolPolicy.cs`, auth tests |
 | OAuth web handoff/redirect | `JitHub.Web/Services/OAuthHandoffStore.cs`, `OAuthRedirectUriPolicy.cs`, `RedisOAuthHandoffBackend.cs`, `ForwardedHeaderTrustPolicy.cs`, `JitHub.Web.Tests` |
-| Profile mutation lifecycle | `JitHub.WinUI/Services/Profile`, `ProfilePageViewModel.cs`, profile tests |
-| File cache confinement | `JitHub.WinUI/Services/CodeViewer/RepoFileCacheService.cs`, `RepoFileCacheKey.cs`, cache tests |
+| Profile mutation lifecycle | `JitHub.Core/Services/Profile`, `ProfilePageViewModel.cs`, profile tests |
+| File cache confinement | `JitHub.Core/Services/CodeViewer/RepoFileCacheService.cs`, `RepoFileCacheKey.cs`, cache tests |
 | Shell route prefetch | `RepositoryRoutePrefetchCoordinator.cs`, `RepoCodeNavigationPreparationCache.cs`, `ShellPageViewModel.cs` |
-| Safe UI errors | `JitHub.WinUI/Helpers/UserFacingError.cs`, localized resources, presentation contract tests |
-| Progressive Issues | `JitHub.WinUI/Services/Issues`, `RepoIssuePageViewModel.cs`, Issues page/panes, progressive tests |
+| Safe UI errors | `JitHub.Core/Helpers/UserFacingError.cs`, localized resources, presentation contract tests |
+| Progressive Issues | `JitHub.Core/Services/Issues`, `RepoIssuePageViewModel.cs`, Issues page/panes, progressive tests |
 | Dependency gate | `Directory.Build.props`, all `packages.lock.json`, `eng/Verify-DependencySecurity.ps1`, Release target in `JitHub.WinUI.csproj` |
-| Responsive breakpoint | `JitHub.WinUI/Services/Layout/ShellResponsiveLayout.cs`, `AdaptiveWorkspaceLayoutTests.cs` |
+| Responsive breakpoint | `JitHub.Core/Services/Layout/ShellResponsiveLayout.cs`, `AdaptiveWorkspaceLayoutTests.cs` |
 | Performance bridge | `ProductPerformanceRouteProbe.cs`, `ShellPage.xaml`, `ShellPage.xaml.cs` |
 
 ## Commit Hygiene

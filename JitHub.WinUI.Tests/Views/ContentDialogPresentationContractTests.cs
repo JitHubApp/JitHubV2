@@ -117,7 +117,7 @@ public sealed class ContentDialogPresentationContractTests
         string profileViewModel = File.ReadAllText(Path.Combine(
             productRoot,
             "ViewModels",
-            "Pages",
+            "Profile",
             "ProfilePageViewModel.cs"));
         string[] productSources = ProductSourceTree.EnumerateFiles("*.cs")
             .Select(static file => File.ReadAllText(file.FullPath))
@@ -141,11 +141,11 @@ public sealed class ContentDialogPresentationContractTests
     {
         string productRoot = FindRepositoryDirectory("JitHub.WinUI");
         string profilePage = File.ReadAllText(Path.Combine(productRoot, "Views", "Pages", "ProfilePage.xaml.cs"));
-        string profileViewModel = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "Pages", "ProfilePageViewModel.cs"));
+        string profileViewModel = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "Profile", "ProfilePageViewModel.cs"));
         string mergeViewModel = File.ReadAllText(Path.Combine(
             productRoot,
             "ViewModels",
-            "PullRequestViewModels",
+            "PullRequests",
             "MergeFormViewModel.cs"));
         string mergeForm = File.ReadAllText(Path.Combine(
             productRoot,
@@ -156,7 +156,7 @@ public sealed class ContentDialogPresentationContractTests
         string repositoryFormViewModel = File.ReadAllText(Path.Combine(
             productRoot,
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoFormViewModel.cs"));
 
         Assert.Contains("ShowForPrimaryActionAsync(", profilePage, StringComparison.Ordinal);
@@ -208,9 +208,9 @@ public sealed class ContentDialogPresentationContractTests
     public void ShellAndNativeDialogs_ShareOnePresentationCoordinator()
     {
         string productRoot = FindRepositoryDirectory("JitHub.WinUI");
-        string modalService = File.ReadAllText(Path.Combine(productRoot, "Services", "ModalService.cs"));
+        string modalService = File.ReadAllText(Path.Combine(productRoot, "Services", "Dialogs", "ModalService.cs"));
         string presenter = File.ReadAllText(Path.Combine(productRoot, "Views", "Dialogs", "AppContentDialogPresenter.cs"));
-        string shellViewModel = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "Pages", "ShellPageViewModel.cs"));
+        string shellViewModel = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "Shell", "ShellPageViewModel.cs"));
 
         Assert.Contains("DialogPresentationCoordinator", modalService, StringComparison.Ordinal);
         Assert.Contains("DialogPresentationKind.ShellOverlay", modalService, StringComparison.Ordinal);

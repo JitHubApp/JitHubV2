@@ -21,7 +21,7 @@ public sealed class ShellLocalizationContractTests
     public void CodeGeneratedNavigationLabelsUseTheRuntimeResourcePath()
     {
         string source = File.ReadAllText(FindRepositoryFile(
-            "JitHub.WinUI", "ViewModels", "Pages", "ShellPageViewModel.cs"));
+            "JitHub.WinUI", "ViewModels", "Shell", "ShellPageViewModel.cs"));
 
         Assert.Contains("ShellNavigationText(\"Home\"", source, StringComparison.Ordinal);
         Assert.Contains("ShellNavigationText(\"Issues\"", source, StringComparison.Ordinal);

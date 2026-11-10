@@ -21,7 +21,7 @@ public sealed class MarkdownHostResourceContractTests
         // notice in an Auto row, shrinking the README viewport by ~50 DIP
         // mid-read and shifting the document. Notices overlay the region.
         string root = FindRepositoryRoot();
-        string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common");
+        string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Markdown");
         XDocument xaml = XDocument.Load(Path.Combine(viewerRoot, "MarkdownViewer.xaml"));
         XElement rootGrid = xaml.Root!.Elements().Single(element => element.Name.LocalName == "Grid");
 
@@ -182,7 +182,7 @@ public sealed class MarkdownHostResourceContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Markdown",
             "MarkdownViewer.xaml"));
         string app = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "App.xaml"));
 

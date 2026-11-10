@@ -1,7 +1,7 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common">
+    xmlns:issue="using:JitHub.WinUI.Views.Controls.Issue">
     <DataTemplate x:Key="SelectableLabelDataTemplate">
         <Grid>
             <StackPanel Orientation="Horizontal">
@@ -13,9 +13,9 @@
                     CommandParameter="{Binding Item, Mode=OneWay}"
                     IsChecked="{Binding Selected, Mode=TwoWay}"
                     Visibility="{Binding Selectable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                    <common:RepoLabel Grid.Column="1" Label="{Binding Label, Mode=OneWay}" />
+                    <issue:RepoLabel Grid.Column="1" Label="{Binding Label, Mode=OneWay}" />
                 </CheckBox>
-                <common:RepoLabel
+                <issue:RepoLabel
                     Grid.Column="1"
                     Label="{Binding Label, Mode=OneWay}"
                     Visibility="{Binding Selectable, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}" />

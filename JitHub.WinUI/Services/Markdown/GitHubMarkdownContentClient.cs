@@ -4,7 +4,7 @@ using JitHub.Core.Models.GitHub.Repositories;
 using JitHub.Core.Services.GitHub;
 using JitHub.Markdown.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.WinUI.Services.Markdown;
 
 /// <summary>
 /// Adapts the app's GitHub client to the REST reads Markdown image resolution

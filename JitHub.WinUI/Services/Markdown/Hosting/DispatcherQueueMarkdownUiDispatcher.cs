@@ -2,7 +2,7 @@ using System;
 using JitHub.Markdown.Runtime;
 using Microsoft.UI.Dispatching;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>
 /// Adapts a WinUI <see cref="DispatcherQueue"/> to <see cref="IMarkdownUiDispatcher"/>.

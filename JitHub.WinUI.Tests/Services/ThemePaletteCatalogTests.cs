@@ -149,6 +149,7 @@ public sealed class ThemePaletteCatalogTests
             root,
             "JitHub.WinUI",
             "Services",
+            "Theming",
             "ThemePaletteRuntime.cs"));
         string solidMappingSource = ReadInitializer(runtimeSource, "SemanticBrushTokenMappings");
         string acrylicMappingSource = ReadInitializer(runtimeSource, "AcrylicBrushTokenMappings");

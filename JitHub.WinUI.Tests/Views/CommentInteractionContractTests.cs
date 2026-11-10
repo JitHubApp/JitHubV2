@@ -17,7 +17,7 @@ public sealed class CommentInteractionContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Comments",
             "CommentInteractionBar.xaml"));
 
         Assert.Equal(
@@ -52,7 +52,7 @@ public sealed class CommentInteractionContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Comments",
             "CommentInteractionBar.xaml.cs"));
 
         foreach (string action in new[]
@@ -161,7 +161,7 @@ public sealed class CommentInteractionContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Comments",
             "CommentInteractionBar.xaml.cs"));
 
         XElement[] bars = issue.Descendants()
@@ -196,9 +196,9 @@ public sealed class CommentInteractionContractTests
     public void CommentActionsAreContainedAndCoveredByTelemetry()
     {
         string issuePage = File.ReadAllText(ReadPath("JitHub.WinUI", "Views", "Pages", "RepoIssuePage.xaml.cs"));
-        string issueViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Pages", "RepoIssuePageViewModel.cs"));
+        string issueViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Issues", "RepoIssuePageViewModel.cs"));
         string pullRequestPage = File.ReadAllText(ReadPath("JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml.cs"));
-        string pullRequestViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Pages", "RepoPullRequestPageViewModel.cs"));
+        string pullRequestViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "PullRequests", "RepoPullRequestPageViewModel.cs"));
         string clipboard = File.ReadAllText(ReadPath("JitHub.Core", "Helpers", "PlatformHelper.cs"));
 
         Assert.Contains("TrackCommentQuoteReply", issuePage, StringComparison.Ordinal);
@@ -226,17 +226,19 @@ public sealed class CommentInteractionContractTests
         string legacyComment = File.ReadAllText(ReadPath(
             "JitHub.WinUI",
             "ViewModels",
-            "UserViewModel",
+            "Comments",
             "UserCommentBlockViewModel.cs"));
         string legacyCommentControl = File.ReadAllText(ReadPath(
             "JitHub.WinUI",
             "Views",
             "Controls",
+            "Comments",
             "UserCommentBlock.xaml.cs"));
         string legacyCommentXaml = File.ReadAllText(ReadPath(
             "JitHub.WinUI",
             "Views",
             "Controls",
+            "Comments",
             "UserCommentBlock.xaml"));
         Assert.Contains("PullRequestTelemetry.TrackAction", legacyComment, StringComparison.Ordinal);
         Assert.Contains("IssueTelemetry.TrackAction", legacyComment, StringComparison.Ordinal);
@@ -271,7 +273,7 @@ public sealed class CommentInteractionContractTests
         Assert.Contains("_commentMinimizationOverrides", File.ReadAllText(ReadPath(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "PullRequests",
             "RepoPullRequestPageViewModel.cs")), StringComparison.Ordinal);
     }
 

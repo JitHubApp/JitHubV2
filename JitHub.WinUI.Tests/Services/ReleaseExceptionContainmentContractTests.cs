@@ -9,7 +9,7 @@ public sealed class ReleaseExceptionContainmentContractTests
     public void LegacyIssueTimeline_UnknownEventsUseTheFallbackPresentation()
     {
         string root = FindRepositoryRoot();
-        string service = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Services", "GitHubService.cs"));
+        string service = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Services", "GitHub", "GitHubService.cs"));
         string models = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
@@ -55,7 +55,7 @@ public sealed class ReleaseExceptionContainmentContractTests
     [Fact]
     public void LegacyGitHubService_PreservesTypedFailuresAndDoesNotPushRawServiceErrors()
     {
-        string serviceRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "Services");
+        string serviceRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "Services", "GitHub");
         string[] sourceFiles =
         [
             Path.Combine(serviceRoot, "GitHubService.cs"),
@@ -94,8 +94,8 @@ public sealed class ReleaseExceptionContainmentContractTests
 
         Assert.DoesNotContain("StringToSvgSourceConverter", appResources, StringComparison.Ordinal);
         Assert.DoesNotContain("UseGradientToForegroundConverter", appResources, StringComparison.Ordinal);
-        Assert.False(File.Exists(Path.Combine(root, "JitHub.WinUI", "Converters", "Common", "StringToSvgSourceConverter.cs")));
-        Assert.False(File.Exists(Path.Combine(root, "JitHub.WinUI", "Converters", "Common", "UseGradientToForegroundConverter.cs")));
+        Assert.False(File.Exists(Path.Combine(root, "JitHub.WinUI", "Converters", "StringToSvgSourceConverter.cs")));
+        Assert.False(File.Exists(Path.Combine(root, "JitHub.WinUI", "Converters", "UseGradientToForegroundConverter.cs")));
     }
 
     [Fact]

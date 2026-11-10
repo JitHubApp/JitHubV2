@@ -13,7 +13,7 @@ public sealed class ProfileTelemetryContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Profile",
             "ProfilePageViewModel.cs"));
 
         foreach (string eventName in new[]

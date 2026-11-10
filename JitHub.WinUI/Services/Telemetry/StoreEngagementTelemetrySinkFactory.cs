@@ -4,7 +4,7 @@ using Microsoft.Services.Store.Engagement;
 using JitHub.Core.Services.Telemetry;
 #endif
 
-namespace JitHub.Services;
+namespace JitHub.WinUI.Services.Telemetry;
 
 /// <summary>
 /// Connects <see cref="StoreTelemetrySink"/> to the Microsoft Store engagement

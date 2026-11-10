@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JitHub.Models
+namespace JitHub.WinUI.Models
 {
     public enum UISize
     {

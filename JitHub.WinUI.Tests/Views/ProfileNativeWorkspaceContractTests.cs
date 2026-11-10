@@ -271,7 +271,7 @@ public sealed class ProfileNativeWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellMarkdownRouteNavigator.cs"));
         string policy = File.ReadAllText(Path.Combine(
             root,
@@ -291,7 +291,7 @@ public sealed class ProfileNativeWorkspaceContractTests
 
     private static string XamlPath() => Path.Combine(Root(), "JitHub.WinUI", "Views", "Pages", "ProfilePage.xaml");
     private static string CodeBehindPath() => Path.Combine(Root(), "JitHub.WinUI", "Views", "Pages", "ProfilePage.xaml.cs");
-    private static string ViewModelPath() => Path.Combine(Root(), "JitHub.WinUI", "ViewModels", "Pages", "ProfilePageViewModel.cs");
+    private static string ViewModelPath() => Path.Combine(Root(), "JitHub.WinUI", "ViewModels", "Profile", "ProfilePageViewModel.cs");
     private static string ServicePath() => Path.Combine(Root(), "JitHub.Core", "Services", "Profile", "GitHubProfileQueryService.cs");
 
     private static int CountOccurrences(string source, string value)

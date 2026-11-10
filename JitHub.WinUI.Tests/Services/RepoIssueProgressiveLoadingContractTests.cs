@@ -55,7 +55,7 @@ public sealed class RepoIssueProgressiveLoadingContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Issues",
             "RepoIssuePageViewModel.cs"));
     }
 

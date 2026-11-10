@@ -119,7 +119,7 @@ public sealed class RepositoryActionSurfaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         int generationGate = viewModel.IndexOf(
             "_repositoryLoadCoordinator.IsCurrent(navigationGeneration)",
@@ -139,7 +139,7 @@ public sealed class RepositoryActionSurfaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
 
         Assert.Contains("PromoteRepositoryAsync", viewModel, StringComparison.Ordinal);
@@ -161,7 +161,7 @@ public sealed class RepositoryActionSurfaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         Assert.Contains(
             "if (!GitHubAuthenticationConstants.IsPublicAccessToken(queryContext.AccessToken))",
@@ -204,7 +204,7 @@ public sealed class RepositoryActionSurfaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         int capture = viewModel.IndexOf("RepositoryQueryContext queryContext = await GetRepositoryQueryContextAsync();", StringComparison.Ordinal);
         int remote = viewModel.IndexOf("_gitHubClientService.StarRepositoryAsync(", capture, StringComparison.Ordinal);
@@ -232,7 +232,7 @@ public sealed class RepositoryActionSurfaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         int starStart = viewModel.IndexOf("private async Task<bool> ToggleStar()", StringComparison.Ordinal);
         int watchStart = viewModel.IndexOf("private async Task<bool> ToggleWatch()", starStart, StringComparison.Ordinal);
@@ -252,7 +252,7 @@ public sealed class RepositoryActionSurfaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         int automationFork = viewModel.IndexOf(
             "created = await GitHubService.ForkRepo(",

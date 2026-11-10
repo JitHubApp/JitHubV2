@@ -115,7 +115,7 @@ public sealed class RouteOwnershipContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         int designMethod = source.IndexOf("public void GoToDesignLabPage()", StringComparison.Ordinal);

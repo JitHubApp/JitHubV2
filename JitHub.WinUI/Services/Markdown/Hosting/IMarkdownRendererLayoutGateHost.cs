@@ -1,6 +1,6 @@
 using MarkdownRenderer.Controls;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>What <see cref="MarkdownRendererInitialLayoutGate"/> needs from its Markdown host.</summary>
 internal interface IMarkdownRendererLayoutGateHost

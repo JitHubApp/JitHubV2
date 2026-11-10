@@ -1,5 +1,5 @@
 using System;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.ViewModels.Issues;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

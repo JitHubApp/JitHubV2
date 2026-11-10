@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
-using JitHub.Models.Activities;
-using JitHub.Models.LegacyGitHub;
-using JitHub.Models.PRConversation;
+using JitHub.WinUI.Models.Activities;
+using JitHub.WinUI.Models.LegacyGitHub;
+using JitHub.WinUI.Models.PullRequests.Conversation;
 using JitHub.WinUI.ViewModels.Activities;
-using JitHub.WinUI.ViewModels.EmojiViewModels;
+using JitHub.WinUI.ViewModels.Emoji;
 
 namespace JitHub.WinUI.Views.Pages.Design;
 

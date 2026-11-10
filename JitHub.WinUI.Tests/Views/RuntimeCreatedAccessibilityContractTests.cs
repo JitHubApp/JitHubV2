@@ -78,7 +78,7 @@ public sealed class RuntimeCreatedAccessibilityContractTests
     [Fact]
     public void IssueSidePanelRuntimeCheckboxIsCoveredByProductWideDiscovery()
     {
-        string source = ReadProductSource("Views/Controls/Common/IssueSidePanelSelectableItem.xaml.cs");
+        string source = ReadProductSource("Views/Controls/Issue/IssueSidePanelSelectableItem.xaml.cs");
         (int count, List<string> failures) = AnalyzeRuntimeCreationContracts(source);
 
         Assert.True(count > 0);

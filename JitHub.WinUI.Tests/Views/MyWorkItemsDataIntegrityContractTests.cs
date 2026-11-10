@@ -207,11 +207,11 @@ public sealed class MyWorkItemsDataIntegrityContractTests
         "JitHub.WinUI", "Views", "Pages", fileName);
 
     private static string GetViewModelPath(string fileName) =>
-        ProductSourceTree.GetFullPath($"ViewModels/Pages/{fileName}");
+        ProductSourceTree.GetFullPath($"ViewModels/Me/{fileName}");
 
     private static string GetControlPath(string fileName) => Path.Combine(
         FindRepositoryRoot(),
-        "JitHub.WinUI", "Views", "Controls", "Common", fileName);
+        "JitHub.WinUI", "Views", "Controls", "Scrolling", fileName);
 
     private static string GetServicePath(params string[] segments) =>
         ProductSourceTree.GetFullPath(string.Join('/', ["Services", .. segments]));

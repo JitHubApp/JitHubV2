@@ -46,7 +46,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             "Services",
             "Settings",
             "SettingsSourceNavigationService.cs");
-        string shell = Read(root, "JitHub.WinUI", "ViewModels", "Pages", "ShellPageViewModel.cs");
+        string shell = Read(root, "JitHub.WinUI", "ViewModels", "Shell", "ShellPageViewModel.cs");
         string stars = Read(root, "JitHub.Core", "Services", "Stars", "GitHubStarLibraryService.cs");
 
         Assert.Contains("ViewModel.OpenSourceRepositoryAsync", settings, StringComparison.Ordinal);
@@ -95,7 +95,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     {
         string root = FindRepositoryRoot();
         string service = Read(root, "JitHub.Core", "Services", "Profile", "GitHubProfileQueryService.cs");
-        string viewModel = Read(root, "JitHub.WinUI", "ViewModels", "Pages", "ProfilePageViewModel.cs");
+        string viewModel = Read(root, "JitHub.WinUI", "ViewModels", "Profile", "ProfilePageViewModel.cs");
 
         Assert.Contains("_requestQueue.EnqueueForAccountAsync", service, StringComparison.Ordinal);
         Assert.Contains("GitHubRequestPriority.Mutation", service, StringComparison.Ordinal);

@@ -142,7 +142,7 @@ public sealed class ShellWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         XElement toggle = Assert.Single(shell.Descendants(), element =>
@@ -339,7 +339,7 @@ public sealed class ShellWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         foreach (string eventName in new[]
@@ -391,7 +391,7 @@ public sealed class ShellWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         Assert.DoesNotContain("new(\"explore\"", source, StringComparison.Ordinal);
@@ -407,7 +407,7 @@ public sealed class ShellWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
         string codeBehind = File.ReadAllText(Path.Combine(
             root,
@@ -485,7 +485,7 @@ public sealed class ShellWorkspaceContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         Assert.DoesNotContain("Pro User", xaml, StringComparison.OrdinalIgnoreCase);

@@ -11,7 +11,7 @@ using JitHub.Core.Models.GitHub.Issues;
 using JitHub.Core.Models.GitHub.PullRequests;
 using JitHub.Core.Models.GitHub.Repositories;
 using JitHub.Core.Models.GitHub.Users;
-using JitHub.Models.Activities;
+using JitHub.WinUI.Models.Activities;
 
 namespace JitHub.WinUI.ViewModels.Activities;
 

@@ -56,13 +56,13 @@ public sealed class MarkdownLinkRoutingIntegrationTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellMarkdownRouteNavigator.cs"));
         string shell = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         Assert.Contains("return shell.IsCurrentRoute(expectedRoute);", navigator, StringComparison.Ordinal);

@@ -138,7 +138,7 @@ public sealed class DashboardWorkspaceContractTests
             string.Equals((string?)element.Attribute(xaml + "Key"), "DashboardCompactMetricTemplate", StringComparison.Ordinal));
         XElement horizontalPanel = Assert.Single(compact.Descendants(), element => element.Name.LocalName == "ItemsStackPanel");
         string source = File.ReadAllText(Path("JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml.cs"));
-        string models = File.ReadAllText(Path("JitHub.WinUI", "ViewModels", "Pages", "DashboardModels.cs"));
+        string models = File.ReadAllText(Path("JitHub.WinUI", "ViewModels", "Dashboard", "DashboardModels.cs"));
         string contracts = File.ReadAllText(Path("JitHub.Core", "Services", "Dashboard", "DashboardHomeContracts.cs"));
         string queryService = File.ReadAllText(Path("JitHub.Core", "Services", "Dashboard", "GitHubDashboardQueryService.cs"));
         string brushes = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Brushes.xaml"));
@@ -208,12 +208,12 @@ public sealed class DashboardWorkspaceContractTests
         string models = File.ReadAllText(Path(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Dashboard",
             "DashboardModels.cs"));
         string viewModel = File.ReadAllText(Path(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Dashboard",
             "DashboardPageViewModel.cs"));
 
         Assert.Contains("public bool HasViewAll => IsNotifications;", models, StringComparison.Ordinal);
@@ -229,7 +229,7 @@ public sealed class DashboardWorkspaceContractTests
         string source = File.ReadAllText(Path(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Dashboard",
             "DashboardPageViewModel.cs"));
 
         foreach (string collection in new[]
@@ -263,7 +263,7 @@ public sealed class DashboardWorkspaceContractTests
         string viewModel = File.ReadAllText(Path(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Dashboard",
             "DashboardPageViewModel.cs"));
 
         Assert.Equal("{ThemeResource AppDimension94}", quickActionButton.Attribute("Height")?.Value);
@@ -395,7 +395,7 @@ public sealed class DashboardWorkspaceContractTests
         string source = File.ReadAllText(Path(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Dashboard",
             "DashboardPageViewModel.cs"));
         string workflow = File.ReadAllText(Path(
             "JitHub.Core",

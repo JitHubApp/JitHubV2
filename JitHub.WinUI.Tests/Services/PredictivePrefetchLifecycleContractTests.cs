@@ -18,7 +18,7 @@ public sealed class PredictivePrefetchLifecycleContractTests
         string prefetchMethod,
         string scheduleGateway)
     {
-        string source = ReadProductFile("ViewModels", "Pages", viewModelFile);
+        string source = ReadProductFile("ViewModels", DetailWorkspaceViewModelArea(viewModelFile), viewModelFile);
 
         Assert.Contains("LatestWinsPrefetchScheduler _hoverPrefetch", source, StringComparison.Ordinal);
         Assert.Contains($"public void {prefetchMethod}", source, StringComparison.Ordinal);
@@ -59,7 +59,7 @@ public sealed class PredictivePrefetchLifecycleContractTests
         Assert.Contains(cancellationCall, codeBehind, StringComparison.Ordinal);
         if (string.Equals(pageName, "RepoIssuePage", StringComparison.Ordinal))
         {
-            string viewModel = ReadProductFile("ViewModels", "Pages", "RepoIssuePageViewModel.cs");
+            string viewModel = ReadProductFile("ViewModels", "Issues", "RepoIssuePageViewModel.cs");
             Assert.Contains("public void CancelNavigationWork()", viewModel, StringComparison.Ordinal);
             Assert.Contains("CancelActiveListLoad();", viewModel, StringComparison.Ordinal);
             Assert.Contains("CancelActiveDetailLoad();", viewModel, StringComparison.Ordinal);
@@ -71,7 +71,7 @@ public sealed class PredictivePrefetchLifecycleContractTests
         }
         else if (string.Equals(pageName, "RepoPullRequestPage", StringComparison.Ordinal))
         {
-            string viewModel = ReadProductFile("ViewModels", "Pages", "RepoPullRequestPageViewModel.cs");
+            string viewModel = ReadProductFile("ViewModels", "PullRequests", "RepoPullRequestPageViewModel.cs");
             Assert.Contains("public void CancelNavigationWork()", viewModel, StringComparison.Ordinal);
             Assert.Contains("CancelActiveListLoad(restoreUiState: true);", viewModel, StringComparison.Ordinal);
             Assert.Contains("CancelPendingSelectionLoad();", viewModel, StringComparison.Ordinal);
@@ -79,7 +79,7 @@ public sealed class PredictivePrefetchLifecycleContractTests
         }
         else if (string.Equals(pageName, "RepoCommitsPage", StringComparison.Ordinal))
         {
-            string viewModel = ReadProductFile("ViewModels", "Pages", "RepoCommitsPageViewModel.cs");
+            string viewModel = ReadProductFile("ViewModels", "Commits", "RepoCommitsPageViewModel.cs");
             Assert.Contains("Interlocked.Increment(ref _navigationGeneration);", viewModel, StringComparison.Ordinal);
             Assert.Contains(
                 "navigationGeneration == Volatile.Read(ref _navigationGeneration)",
@@ -143,7 +143,7 @@ public sealed class PredictivePrefetchLifecycleContractTests
     [Fact]
     public void RepoPullRequests_LeavesImmediateSelectionAheadOfHoverPrediction()
     {
-        string viewModel = ReadProductFile("ViewModels", "Pages", "RepoPullRequestPageViewModel.cs");
+        string viewModel = ReadProductFile("ViewModels", "PullRequests", "RepoPullRequestPageViewModel.cs");
 
         Assert.Contains(
             "HoverPrefetchDebounce = TimeSpan.FromMilliseconds(500)",
@@ -158,4 +158,13 @@ public sealed class PredictivePrefetchLifecycleContractTests
 
     private static string ReadProductFile(params string[] relativeSegments) =>
         File.ReadAllText(ProductSourceTree.GetFullPath(string.Join('/', relativeSegments)));
+
+    // Each detail workspace's view model lives in its feature area.
+    private static string DetailWorkspaceViewModelArea(string viewModelFile) => viewModelFile switch
+    {
+        "RepoIssuePageViewModel.cs" => "Issues",
+        "RepoPullRequestPageViewModel.cs" => "PullRequests",
+        "RepoCommitsPageViewModel.cs" => "Commits",
+        _ => throw new ArgumentOutOfRangeException(nameof(viewModelFile), viewModelFile, null),
+    };
 }

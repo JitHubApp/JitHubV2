@@ -169,7 +169,7 @@ public sealed class PullRequestReviewReliabilityTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "PullRequests",
             "RepoPullRequestPageViewModel.cs"));
 
         Assert.Contains("_capabilityDenials.RecordFailureForCurrent(", source, StringComparison.Ordinal);

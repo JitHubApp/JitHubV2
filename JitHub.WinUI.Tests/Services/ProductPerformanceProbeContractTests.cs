@@ -132,7 +132,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         int codeNavigation = source.IndexOf(
             "GoToCodePage(ResolveInitialCodeViewerArg",
@@ -158,7 +158,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Stars",
             "StarLibraryPageViewModel.cs"));
         Assert.Contains(
             "StarLibraryPage page = await _libraryService.LoadCachedPageAsync(",
@@ -177,7 +177,7 @@ public sealed class ProductPerformanceProbeContractTests
             FindRepositoryRoot(),
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs"));
         int handlerStart = source.IndexOf("private async Task HandleNavigatedTo(", StringComparison.Ordinal);
         int handlerEnd = source.IndexOf("private long BeginRepositoryTransition(", handlerStart, StringComparison.Ordinal);
@@ -259,7 +259,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "Models",
-            "NavArgs",
+            "Navigation",
             "IssueNavArg.cs"));
         Assert.Contains("GitHubIssue? NavigationPreview", issueNavigationArgs, StringComparison.Ordinal);
 
@@ -267,7 +267,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
         Assert.Contains("NavigationPreview = new GitHubIssue", shellViewModel, StringComparison.Ordinal);
 
@@ -275,7 +275,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Issues",
             "RepoIssuePageViewModel.cs"));
         int previewBranch = issueViewModel.IndexOf(
             "navArg.NavigationPreview is GitHubIssue notificationPreview",
@@ -551,7 +551,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Me",
             "MePageModels.cs"));
         int coherenceStart = selectionModels.IndexOf(
             "public bool IsSelectedHeaderCoherent",
@@ -580,7 +580,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Commits",
             "RepoCommitsPageViewModel.cs"));
         int selectionHandlerStart = commitsViewModel.IndexOf(
             "partial void OnSelectedCommitChanged",
@@ -616,7 +616,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Me",
             "MePageModels.cs"));
         Assert.Contains("LoadSelectedItemAfterInputAsync(value)", mePageModels, StringComparison.Ordinal);
         int meSelectionLoadStart = mePageModels.IndexOf(
@@ -917,7 +917,7 @@ public sealed class ProductPerformanceProbeContractTests
         string repository = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "RepoDetailPage.xaml"));
         Assert.Contains("x:Load=\"{x:Bind ShouldLoadRepositoryStatButtons, Mode=OneWay}\"", repository, StringComparison.Ordinal);
 
-        string cachedImage = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common", "CachedImage.xaml.cs"));
+        string cachedImage = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Images", "CachedImage.xaml.cs"));
         Assert.Contains("CancelIfStillUnloadedAsync()", cachedImage, StringComparison.Ordinal);
         Assert.Contains("Task.Delay(TimeSpan.FromMilliseconds(500))", cachedImage, StringComparison.Ordinal);
         Assert.Contains("if (ImageElement.Source is null)", cachedImage, StringComparison.Ordinal);

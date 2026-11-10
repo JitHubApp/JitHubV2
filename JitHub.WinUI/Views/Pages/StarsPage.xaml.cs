@@ -11,7 +11,7 @@ using JitHub.Core.ViewModels.Stars;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.ViewModels.Stars;
 using JitHub.WinUI.Views.Dialogs;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

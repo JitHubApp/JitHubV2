@@ -1,7 +1,7 @@
 using System;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>The host-controlled settings a Markdown host applies to its renderer.</summary>
 /// <param name="IsSelectionEnabled">Whether readers can select text.</param>

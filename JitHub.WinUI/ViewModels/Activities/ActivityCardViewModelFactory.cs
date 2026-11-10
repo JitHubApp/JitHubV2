@@ -6,7 +6,7 @@ using JitHub.Core.Models.GitHub.Activities;
 using JitHub.Core.Models.GitHub.Issues;
 using JitHub.Core.Models.GitHub.Repositories;
 using JitHub.Core.Services.Profile;
-using JitHub.Models.Activities;
+using JitHub.WinUI.Models.Activities;
 
 namespace JitHub.WinUI.ViewModels.Activities;
 

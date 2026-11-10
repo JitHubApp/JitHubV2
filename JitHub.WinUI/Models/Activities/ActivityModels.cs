@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Windows.Input;
 using JitHub.Core.Models.GitHub.Repositories;
 
-namespace JitHub.Models.Activities;
+namespace JitHub.WinUI.Models.Activities;
 
 public enum ActivityNavigationTargetKind
 {

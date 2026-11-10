@@ -34,7 +34,7 @@ public sealed class RepositoryProgressiveNavigationContractTests
     {
         string source = ReadProductFile(
             "ViewModels",
-            "Pages",
+            "PullRequests",
             "RepoPullRequestPageViewModel.cs");
         string filter = Slice(
             source,
@@ -82,7 +82,7 @@ public sealed class RepositoryProgressiveNavigationContractTests
 
         string viewModel = ReadProductFile(
             "ViewModels",
-            "Pages",
+            "PullRequests",
             "RepoPullRequestPageViewModel.cs");
         Assert.Contains("_selectionIntentNumber = pullRequest.Number;", viewModel, StringComparison.Ordinal);
         Assert.Contains("Interlocked.Increment(ref _selectionGeneration);", viewModel, StringComparison.Ordinal);

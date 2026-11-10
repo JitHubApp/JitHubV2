@@ -51,9 +51,9 @@ public sealed class DialogFamilyPresentationContractTests
         string productRoot = FindRepositoryDirectory("JitHub.WinUI");
         string shellXaml = File.ReadAllText(Path.Combine(productRoot, "Views", "Pages", "ShellPage.xaml"));
         string shellCode = File.ReadAllText(Path.Combine(productRoot, "Views", "Pages", "ShellPage.xaml.cs"));
-        string modalService = File.ReadAllText(Path.Combine(productRoot, "Services", "ModalService.cs"));
-        string repositoryForm = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "RepositoryViewModels", "RepoFormViewModel.cs"));
-        string mergeForm = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "PullRequestViewModels", "MergeFormViewModel.cs"));
+        string modalService = File.ReadAllText(Path.Combine(productRoot, "Services", "Dialogs", "ModalService.cs"));
+        string repositoryForm = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "Repositories", "RepoFormViewModel.cs"));
+        string mergeForm = File.ReadAllText(Path.Combine(productRoot, "ViewModels", "PullRequests", "MergeFormViewModel.cs"));
 
         Assert.Contains("TabFocusNavigation=\"Cycle\"", shellXaml, StringComparison.Ordinal);
         Assert.Contains("SmokeFillColorDefaultBrush", shellXaml, StringComparison.Ordinal);

@@ -422,14 +422,14 @@ public sealed class NativeAotSourceContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Comments",
             "CommentInteractionBar.xaml"));
         string codeBehind = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Comments",
             "CommentInteractionBar.xaml.cs"));
 
         Assert.DoesNotContain("ItemsSource=\"{x:Bind ReactionOptions", xaml, StringComparison.Ordinal);

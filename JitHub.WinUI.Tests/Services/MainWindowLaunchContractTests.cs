@@ -102,7 +102,7 @@ public sealed class MainWindowLaunchContractTests
     public void FailedRendererTeardownCannotReattachOnSubsequentLoaded()
     {
         string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"))
+            FindRepositoryRoot(), "JitHub.WinUI", "Views", "Controls", "Markdown", "MarkdownViewer.xaml.cs"))
             .Replace("\r\n", "\n", StringComparison.Ordinal);
         // The slot latches the fault before it reports teardown failure; that
         // ordering is covered by MarkdownRendererSlotTests. Refusing to reattach

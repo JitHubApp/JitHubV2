@@ -153,13 +153,13 @@ public sealed class VNextLocalizationContractTests
     {
         string root = FindRepositoryRoot();
         string shell = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "ShellPageViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Shell", "ShellPageViewModel.cs"));
         string timeline = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "PullRequestViewModels",
-            "ConversationViewModels",
+            "PullRequests",
+            "Conversation",
             "PullRequestTimelineItemViewModel.cs"));
         string contributionGraph = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Profile", "ProfileContributionGraph.xaml.cs"));
@@ -182,13 +182,13 @@ public sealed class VNextLocalizationContractTests
     {
         string root = FindRepositoryRoot();
         string dashboard = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "DashboardPageViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Dashboard", "DashboardPageViewModel.cs"));
         string profile = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "ProfilePageViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Profile", "ProfilePageViewModel.cs"));
         string repository = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "RepositoryViewModels", "RepoDetailViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Repositories", "RepoDetailViewModel.cs"));
         string comments = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "UserViewModel", "UserCommentBlockViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Comments", "UserCommentBlockViewModel.cs"));
         string englishResources = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Strings", "en-US", "Resources.resw"));
         string pseudoResources = File.ReadAllText(Path.Combine(

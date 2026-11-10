@@ -12,7 +12,7 @@ using JitHub.Core.ViewModels.Gists;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.Views.Controls.Common;
+using JitHub.WinUI.Views.Controls.Scrolling;
 using JitHub.WinUI.Views.Dialogs;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;

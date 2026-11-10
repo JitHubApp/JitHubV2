@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Core.Services.CodeViewer;
 using JitHub.Markdown.Runtime;
-using JitHub.Services.CodeViewer;
+using JitHub.WinUI.Services.CodeViewer;
 using MarkdownRenderer;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
@@ -14,7 +14,7 @@ using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.WinUI.Services.Markdown;
 
 /// <summary>
 /// Owns the immutable Markdown services shared by every JitHub document surface.

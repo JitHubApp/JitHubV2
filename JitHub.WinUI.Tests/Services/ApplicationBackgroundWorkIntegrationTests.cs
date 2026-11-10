@@ -37,7 +37,7 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
     [Fact]
     public void DelayedCommitPrefetch_IsSelectionCancelableAccountWork()
     {
-        string source = Read("JitHub.WinUI", "ViewModels", "Pages", "RepoCommitsPageViewModel.cs");
+        string source = Read("JitHub.WinUI", "ViewModels", "Commits", "RepoCommitsPageViewModel.cs");
         string schedule = ExtractMethod(
             source,
             "private IDisposable ScheduleTrackedPrefetch",
@@ -54,7 +54,7 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
     [Fact]
     public void StarsProjectionRefreshes_AreAccountCoordinatedAndHaveNoDetachedTaskRun()
     {
-        string source = Read("JitHub.WinUI", "ViewModels", "Pages", "StarLibraryPageViewModel.cs");
+        string source = Read("JitHub.WinUI", "ViewModels", "Stars", "StarLibraryPageViewModel.cs");
 
         Assert.Contains("ScheduleProjectionRefresh(StarProjectionRefresh.SyncStatus)", source, StringComparison.Ordinal);
         Assert.Contains("ScheduleAccountTask(", source, StringComparison.Ordinal);
@@ -70,7 +70,7 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
     public void StarsCachedPage_LivesAcrossNavigationAndSnapshotProjectionIsSilent()
     {
         string pageSource = Read("JitHub.WinUI", "Views", "Pages", "StarsPage.xaml.cs");
-        string viewModelSource = Read("JitHub.WinUI", "ViewModels", "Pages", "StarLibraryPageViewModel.cs");
+        string viewModelSource = Read("JitHub.WinUI", "ViewModels", "Stars", "StarLibraryPageViewModel.cs");
         string projection = ExtractMethod(
             viewModelSource,
             "private void ApplyNavigationSnapshot",
@@ -113,7 +113,7 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
         string repository = Read(
             "JitHub.WinUI",
             "ViewModels",
-            "RepositoryViewModels",
+            "Repositories",
             "RepoDetailViewModel.cs");
 
         Assert.Contains("public static void MarkFaultObserved(Task task)", observer, StringComparison.Ordinal);

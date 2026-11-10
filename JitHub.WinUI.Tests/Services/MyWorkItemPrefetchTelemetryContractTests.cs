@@ -15,7 +15,7 @@ public sealed class MyWorkItemPrefetchTelemetryContractTests
         string source = File.ReadAllText(FindRepositoryFile(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Me",
             "MePageModels.cs"));
         string method = ExtractMethod(source, methodName);
 
@@ -33,7 +33,7 @@ public sealed class MyWorkItemPrefetchTelemetryContractTests
         string source = File.ReadAllText(FindRepositoryFile(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Me",
             "MePageModels.cs"));
         string method = ExtractMethod(source, methodName);
 

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using JitHub.Core.Services.CodeViewer;
 using JitHub.Core.Services.Telemetry;
 using JitHub.Core.ViewModels.CodeViewer;
-using JitHub.Services.Markdown;
+using JitHub.WinUI.Services.Markdown;
 using JitHub.WinUI.Views.Controls.App;
 using MarkdownRenderer.Images;
 using Microsoft.UI.Dispatching;

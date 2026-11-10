@@ -2,7 +2,7 @@
 using JitHub.Core.Services.Localization;
 using JitHub.Markdown.Localization;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.WinUI.Services.Markdown;
 
 /// <summary>
 /// Resolves Markdown host text through the app's MRT resources. It holds no

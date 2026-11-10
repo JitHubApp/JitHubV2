@@ -455,7 +455,7 @@ public sealed class ThemeResourceCoverageTests
             Path.Combine("JitHub.WinUI", "Views", "Controls", "Commit", "CommitDiffViewer.xaml.cs"),
             Path.Combine("JitHub.WinUI", "Views", "Controls", "Commit", "CommitDiffSearchHighlight.cs"),
             Path.Combine("JitHub.WinUI", "Views", "Controls", "PullRequest", "DiffTextBlock.xaml.cs"),
-            Path.Combine("JitHub.WinUI", "Views", "Controls", "Common", "RepoLabel.xaml.cs"),
+            Path.Combine("JitHub.WinUI", "Views", "Controls", "Issue", "RepoLabel.xaml.cs"),
             Path.Combine("JitHub.WinUI", "Views", "Controls", "Profile", "ProfileContributionGraph.xaml.cs")
         ];
 
@@ -482,7 +482,7 @@ public sealed class ThemeResourceCoverageTests
         string commitViewer = ReadProductSource(root, "Commit", "CommitDiffViewer.xaml.cs");
         string commitSearch = ReadProductSource(root, "Commit", "CommitDiffSearchHighlight.cs");
         string pullRequestDiff = ReadProductSource(root, "PullRequest", "DiffTextBlock.xaml.cs");
-        string repoLabel = ReadProductSource(root, "Common", "RepoLabel.xaml.cs");
+        string repoLabel = ReadProductSource(root, "Issue", "RepoLabel.xaml.cs");
         string contributionGraph = ReadProductSource(root, "Profile", "ProfileContributionGraph.xaml.cs");
         string themeSettingsHelper = File.ReadAllText(Path.Combine(
             root,

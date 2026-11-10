@@ -28,11 +28,11 @@ public sealed class CanonicalRouteTelemetryCoverageTests
     public static TheoryData<string, string[]> ExistingRouteCoverage => new()
     {
         {
-            "JitHub.WinUI/ViewModels/Pages/ShellPageViewModel.cs",
+            "JitHub.WinUI/ViewModels/Shell/ShellPageViewModel.cs",
             ["shell.command.opened", "shell.command.executed", "shell.route.opened", "shell.repo.selected"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/DashboardPageViewModel.cs",
+            "JitHub.WinUI/ViewModels/Dashboard/DashboardPageViewModel.cs",
             [
                 "dashboard.opened",
                 "dashboard.refresh.started",
@@ -54,7 +54,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/MePageModels.cs",
+            "JitHub.WinUI/ViewModels/Me/MePageModels.cs",
             [
                 "issues.opened",
                 "issues.list.loaded",
@@ -77,7 +77,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["gists.opened", "gists.list.loaded", "gists.filter.changed", "gists.action.executed"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/RepoManagePageViewModel.cs",
+            "JitHub.WinUI/ViewModels/Repositories/RepoManagePageViewModel.cs",
             ["repositories.opened", "repositories.action.executed"]
         },
         {
@@ -94,7 +94,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["repositories.sync.completed"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/StarLibraryPageViewModel.cs",
+            "JitHub.WinUI/ViewModels/Stars/StarLibraryPageViewModel.cs",
             ["stars.filter.changed", "stars.sort.changed", "stars.action.executed"]
         },
         {
@@ -108,7 +108,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/RepoPullRequestPageViewModel.cs",
+            "JitHub.WinUI/ViewModels/PullRequests/RepoPullRequestPageViewModel.cs",
             [
                 "pull_requests.selected",
                 "pull_requests.section.opened"
@@ -122,7 +122,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/RepoCommitsPageViewModel.cs",
+            "JitHub.WinUI/ViewModels/Commits/RepoCommitsPageViewModel.cs",
             [
                 "commits.opened",
                 "commits.list.loaded",
@@ -145,7 +145,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/ProfilePageViewModel.cs",
+            "JitHub.WinUI/ViewModels/Profile/ProfilePageViewModel.cs",
             ["profile.opened", "profile.loaded", "profile.section.opened", "profile.action.executed", "profile.error"]
         },
         {

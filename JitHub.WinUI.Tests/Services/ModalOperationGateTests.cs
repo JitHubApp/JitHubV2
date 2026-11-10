@@ -144,7 +144,7 @@ public sealed class ModalOperationGateTests
         string shellViewModel = File.ReadAllText(FindRepositoryFile(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "Shell",
             "ShellPageViewModel.cs"));
 
         Assert.Contains("ViewModel.RequestCloseModal();", shellPage, StringComparison.Ordinal);

@@ -114,9 +114,9 @@ public sealed class GeneratedCollectionAccessibilityContractTests
     [Fact]
     public void CriticalDynamicCollectionsUseItemKeysInsteadOfContainerIndexes()
     {
-        string meItems = ReadProductSource("ViewModels/Pages/MePageModels.cs");
+        string meItems = ReadProductSource("ViewModels/Me/MePageModels.cs");
         string issueComments = ReadProductSource("ViewModels/Me/MeIssueCommentViewItem.cs");
-        string pullRequestSections = ReadProductSource("ViewModels/Pages/MePullRequestSectionViewItems.cs");
+        string pullRequestSections = ReadProductSource("ViewModels/Me/MePullRequestSectionViewItems.cs");
         string myIssues = ReadProductSource("Views/Pages/MyIssuesPage.xaml.cs");
         string myPullRequests = ReadProductSource("Views/Pages/MyPullRequestsPage.xaml.cs");
         string repoDetail = ReadProductSource("Views/Pages/RepoDetailPage.xaml.cs");

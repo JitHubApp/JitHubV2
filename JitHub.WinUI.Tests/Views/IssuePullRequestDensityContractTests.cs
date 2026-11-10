@@ -92,7 +92,7 @@ public sealed class IssuePullRequestDensityContractTests
         string viewModel = File.ReadAllText(SourcePath(
             "JitHub.WinUI",
             "ViewModels",
-            "Pages",
+            "PullRequests",
             "RepoPullRequestPageViewModel.cs"));
         Assert.Contains("public partial bool IsPullRequestListLoading", viewModel, StringComparison.Ordinal);
         Assert.Contains("requestId == _listRequestId", viewModel, StringComparison.Ordinal);
@@ -214,7 +214,7 @@ public sealed class IssuePullRequestDensityContractTests
             "JitHub.WinUI",
             "Views",
             "Controls",
-            "Common",
+            "Markdown",
             "MarkdownViewer.xaml.cs"));
         string rendererResources = File.ReadAllText(SourcePath(
             "JitHub.WinUI",
