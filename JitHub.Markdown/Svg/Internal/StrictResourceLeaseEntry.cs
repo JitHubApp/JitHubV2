@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Markdown.Svg;
+namespace JitHub.Markdown.Svg.Internal;
 
 /// <summary>One cached resource and its accounting in a <see cref="StrictResourceLeaseCache{TKey, TResource}"/>.</summary>
 internal sealed class StrictResourceLeaseEntry<TKey, TResource>(TKey key, TResource resource, long byteCount)
