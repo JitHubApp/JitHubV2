@@ -6,7 +6,6 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
 using JitHub.Models.GitHub;
 
 namespace JitHub.Services;

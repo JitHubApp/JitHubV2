@@ -2,6 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images.Caching;
+using JitHub.Markdown.Images.Internal;
+using JitHub.Markdown.Images.Internal.Camo;
+using JitHub.Markdown.Images.RemoteContent;
+using JitHub.Markdown.Images.Repository;
+using JitHub.Markdown.Images.Repository.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 

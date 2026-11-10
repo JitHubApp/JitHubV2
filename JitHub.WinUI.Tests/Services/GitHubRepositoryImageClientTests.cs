@@ -11,6 +11,8 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.Caching;
+using JitHub.Markdown.Images.Repository;
 using JitHub.Services;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;

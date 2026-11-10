@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using JitHub.Markdown;
 using JitHub.Markdown.Hosting;
 using JitHub.Markdown.Images;
 using JitHub.Markdown.Lifetime;

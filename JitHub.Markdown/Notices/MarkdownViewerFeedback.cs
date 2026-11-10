@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using JitHub.Markdown.Hosting;
+using JitHub.Markdown.Images.RemoteContent;
 using JitHub.Markdown.Localization;
 using JitHub.Markdown.Telemetry;
 using JitHub.Markdown.Telemetry.Internal;
