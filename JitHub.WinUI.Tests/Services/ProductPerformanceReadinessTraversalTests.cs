@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

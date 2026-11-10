@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Dialogs;

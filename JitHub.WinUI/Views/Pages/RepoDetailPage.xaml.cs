@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using JitHub.Models.LegacyGitHub;
 using JitHub.Models.NavArgs;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;

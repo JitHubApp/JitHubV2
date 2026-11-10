@@ -8,7 +8,7 @@
        reference it without taking on the app's Windows App SDK graph. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>JitHub</RootNamespace>
+    <RootNamespace>JitHub.Performance</RootNamespace>
     <Nullable>enable</Nullable>
     <!-- Part of the app's Native AOT graph. Implies IsTrimmable and the trim,
          single-file and Native AOT analyzers. -->
