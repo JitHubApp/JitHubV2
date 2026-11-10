@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Models;
+namespace JitHub.Shared.Theming;
 
 public static class ThemePaletteIds
 {

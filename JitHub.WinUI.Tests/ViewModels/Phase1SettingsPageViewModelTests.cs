@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.Shared.Theming;
 using JitHub.WinUI.Tests.Services;
 using JitHub.WinUI.Tests.TestDoubles;
 using JitHub.WinUI.ViewModels.Pages;

@@ -16,6 +16,7 @@ using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.Services.Markdown;
+using JitHub.Shared.Theming;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;

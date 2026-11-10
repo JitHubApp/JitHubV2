@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using JitHub.Models;
+using JitHub.Shared.Theming;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel;
 

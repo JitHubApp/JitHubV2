@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models;
 using JitHub.Models.Activities;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;

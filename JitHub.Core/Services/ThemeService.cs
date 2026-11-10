@@ -1,4 +1,5 @@
 using JitHub.Models;
+using JitHub.Shared.Theming;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Windows.UI.ViewManagement;

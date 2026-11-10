@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using JitHub.Models;
 using JitHub.Services;
+using JitHub.Shared.Theming;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

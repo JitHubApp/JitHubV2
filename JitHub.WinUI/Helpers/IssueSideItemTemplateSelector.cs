@@ -1,4 +1,3 @@
-using JitHub.Models;
 using JitHub.Models.Base;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

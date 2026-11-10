@@ -1,4 +1,4 @@
-using JitHub.Security;
+using JitHub.Shared.Security;
 using JitHub.Web.Services;
 using Xunit;
 

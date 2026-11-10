@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.Shared.Theming;
 using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.Pages;

@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using JitHub.Models;
+using JitHub.Shared.Theming;
 using JitHub.Web.Content;
 using Xunit;
 

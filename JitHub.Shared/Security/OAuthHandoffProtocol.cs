@@ -1,7 +1,7 @@
 using System;
 using System.Security.Cryptography;
 
-namespace JitHub.Security;
+namespace JitHub.Shared.Security;
 
 public static class OAuthHandoffProtocol
 {

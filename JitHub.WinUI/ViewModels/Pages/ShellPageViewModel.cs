@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
