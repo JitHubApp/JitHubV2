@@ -1,9 +1,10 @@
 using MarkdownRenderer.Math.Internal.Processing;
 using MarkdownRenderer.Math.Internal.Scanning;
 using MarkdownRenderer.Math.Localization;
+using MarkdownRenderer.Math.Tests.TestSupport;
 using Xunit;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.Internal.Scanning;
 
 /// <summary>Delimiter scanning: exact UTF-16 formula ranges, literal text and delimiter diagnostics.</summary>
 public sealed class MathDelimiterScannerTests

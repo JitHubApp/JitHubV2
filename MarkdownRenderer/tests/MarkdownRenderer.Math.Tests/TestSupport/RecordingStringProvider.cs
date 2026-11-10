@@ -1,6 +1,6 @@
 using MarkdownRenderer.Math.Localization;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.TestSupport;
 
 /// <summary>A string provider that records each key and language it is asked for.</summary>
 internal sealed class RecordingStringProvider : IMathStringProvider

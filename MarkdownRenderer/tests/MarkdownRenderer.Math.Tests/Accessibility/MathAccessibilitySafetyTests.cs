@@ -3,7 +3,7 @@ using MarkdownRenderer.Math.Accessibility;
 using MarkdownRenderer.Math.Localization;
 using Xunit;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.Accessibility;
 
 public sealed class MathAccessibilitySafetyTests
 {

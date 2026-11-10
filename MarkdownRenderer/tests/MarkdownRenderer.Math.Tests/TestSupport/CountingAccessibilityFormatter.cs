@@ -1,6 +1,6 @@
 using MarkdownRenderer.Math.Accessibility;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.TestSupport;
 
 /// <summary>An accessibility formatter that counts its calls and echoes the TeX source.</summary>
 internal sealed class CountingAccessibilityFormatter : IMathAccessibilityFormatter

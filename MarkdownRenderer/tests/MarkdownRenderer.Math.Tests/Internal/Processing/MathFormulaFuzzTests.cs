@@ -3,7 +3,7 @@ using MarkdownRenderer.Math.Internal.Processing;
 using MarkdownRenderer.Math.Internal.Scenes;
 using Xunit;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.Internal.Processing;
 
 public sealed class MathFormulaFuzzTests
 {

@@ -1,7 +1,7 @@
 using MarkdownRenderer.Math.Internal.Processing;
 using Xunit;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.Internal.Compilation;
 
 public sealed class NativeParserRecursionSafetyTests
 {

@@ -3,9 +3,10 @@ using MarkdownRenderer.Math.Accessibility;
 using MarkdownRenderer.Math.Internal.Processing;
 using MarkdownRenderer.Math.Internal.Scanning;
 using MarkdownRenderer.Math.Localization;
+using MarkdownRenderer.Math.Tests.TestSupport;
 using Xunit;
 
-namespace MarkdownRenderer.Math.Tests;
+namespace MarkdownRenderer.Math.Tests.Internal.Processing;
 
 /// <summary>Processing deadlines, cancellation and blocked host callbacks.</summary>
 // These classes assert wall-clock processing deadlines; one collection keeps
