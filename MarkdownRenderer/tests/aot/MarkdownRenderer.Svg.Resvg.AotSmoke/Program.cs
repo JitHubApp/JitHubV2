@@ -5,6 +5,7 @@ using System.Text;
 using MarkdownRenderer.Images.Raster;
 using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg;
+using MarkdownRenderer.Svg.Resvg.AotSmoke;
 using MarkdownRenderer.Svg.Resvg.TestSupport;
 
 const int repeatedCycles = 100;
