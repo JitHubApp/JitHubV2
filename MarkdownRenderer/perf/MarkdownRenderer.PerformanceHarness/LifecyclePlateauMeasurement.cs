@@ -1,3 +1,8 @@
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Events;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Scenarios;
+using MarkdownRenderer.PerformanceHarness.Core.Statistics;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.Controls;

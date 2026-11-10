@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Statistics;
 
 namespace MarkdownRenderer.Tests;
 

@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.PerformanceHarness.Core.StageProfiles;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

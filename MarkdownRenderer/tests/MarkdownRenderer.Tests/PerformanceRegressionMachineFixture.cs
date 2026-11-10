@@ -1,4 +1,6 @@
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+
 
 namespace MarkdownRenderer.Tests;
 

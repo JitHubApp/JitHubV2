@@ -2,7 +2,10 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
+using MarkdownRenderer.PerformanceHarness.Core.Evidence;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 
 namespace MarkdownRenderer.Tests;
 

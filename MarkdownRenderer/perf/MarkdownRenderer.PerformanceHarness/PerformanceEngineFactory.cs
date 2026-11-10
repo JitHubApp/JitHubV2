@@ -1,3 +1,5 @@
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+
 namespace MarkdownRenderer.PerformanceHarness;
 
 /// <summary>

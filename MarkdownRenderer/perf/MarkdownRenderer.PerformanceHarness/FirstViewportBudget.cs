@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

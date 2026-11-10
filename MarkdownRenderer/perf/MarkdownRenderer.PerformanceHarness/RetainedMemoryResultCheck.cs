@@ -1,3 +1,6 @@
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Scenarios;
+
 namespace MarkdownRenderer.PerformanceHarness;
 
 /// <summary>

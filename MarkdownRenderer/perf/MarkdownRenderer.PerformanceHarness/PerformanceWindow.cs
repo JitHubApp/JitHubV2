@@ -1,3 +1,4 @@
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Graphics;

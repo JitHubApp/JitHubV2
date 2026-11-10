@@ -2,6 +2,11 @@ using System.Diagnostics;
 using System.Text.Json;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Scenarios;
+using MarkdownRenderer.PerformanceHarness.Core.StageProfiles;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

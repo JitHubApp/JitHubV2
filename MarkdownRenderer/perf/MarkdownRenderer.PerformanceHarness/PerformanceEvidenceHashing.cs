@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

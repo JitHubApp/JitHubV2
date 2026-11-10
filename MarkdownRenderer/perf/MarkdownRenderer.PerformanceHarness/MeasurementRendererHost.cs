@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MarkdownRenderer.PerformanceHarness.Core.Events;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

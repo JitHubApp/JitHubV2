@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
 
 namespace MarkdownRenderer.Tests;
 

@@ -1,6 +1,10 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
+using MarkdownRenderer.PerformanceHarness.Core.Evidence;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Statistics;
 using Xunit;
 using static MarkdownRenderer.Tests.PerformanceRegressionReportFixture;
 

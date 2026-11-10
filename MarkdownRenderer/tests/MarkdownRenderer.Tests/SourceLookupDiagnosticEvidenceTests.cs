@@ -1,5 +1,5 @@
 using System.Text.Json;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

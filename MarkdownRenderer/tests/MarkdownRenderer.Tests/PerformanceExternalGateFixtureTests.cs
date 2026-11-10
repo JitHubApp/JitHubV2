@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using MarkdownRenderer.PerformanceHarness;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

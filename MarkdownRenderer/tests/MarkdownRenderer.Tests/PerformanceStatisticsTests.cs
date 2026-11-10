@@ -1,4 +1,4 @@
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Statistics;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

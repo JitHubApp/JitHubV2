@@ -3,6 +3,8 @@ using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Win32;
 

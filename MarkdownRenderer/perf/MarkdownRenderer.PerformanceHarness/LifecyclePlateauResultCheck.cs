@@ -1,3 +1,6 @@
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Statistics;
+
 using static MarkdownRenderer.PerformanceHarness.EvidenceNumbers;
 
 namespace MarkdownRenderer.PerformanceHarness;

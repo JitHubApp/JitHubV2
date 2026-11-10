@@ -1,4 +1,12 @@
 using System.Diagnostics;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
+using MarkdownRenderer.PerformanceHarness.Core.Events;
+using MarkdownRenderer.PerformanceHarness.Core.Evidence;
+using MarkdownRenderer.PerformanceHarness.Core.Measurement;
+using MarkdownRenderer.PerformanceHarness.Core.MeasurementVisibility;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Scenarios;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

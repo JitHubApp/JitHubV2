@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

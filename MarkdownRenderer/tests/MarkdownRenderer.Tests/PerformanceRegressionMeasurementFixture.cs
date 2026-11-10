@@ -1,5 +1,7 @@
 using System.Diagnostics;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Scenarios;
 
 namespace MarkdownRenderer.Tests;
 

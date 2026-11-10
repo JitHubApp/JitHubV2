@@ -1,4 +1,4 @@
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.StageProfiles;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

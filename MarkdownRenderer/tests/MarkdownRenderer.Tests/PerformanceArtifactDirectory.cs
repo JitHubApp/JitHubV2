@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 
 namespace MarkdownRenderer.Tests;
 

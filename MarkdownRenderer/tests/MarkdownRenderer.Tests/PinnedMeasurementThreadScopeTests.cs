@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Measurement;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

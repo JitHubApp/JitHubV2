@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Deployment;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

@@ -1,5 +1,10 @@
 using System.Diagnostics;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Events;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
+using MarkdownRenderer.PerformanceHarness.Core.Scenarios;
+using MarkdownRenderer.PerformanceHarness.Core.Statistics;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

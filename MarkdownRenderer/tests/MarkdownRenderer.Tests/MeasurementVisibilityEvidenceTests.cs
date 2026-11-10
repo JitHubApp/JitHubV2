@@ -1,4 +1,7 @@
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Evidence;
+using MarkdownRenderer.PerformanceHarness.Core.MeasurementVisibility;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;
