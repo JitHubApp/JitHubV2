@@ -14,6 +14,7 @@ using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Tables;
+using MarkdownRenderer.GitHub.Tests.Html.Internal.Renderers;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.UI;

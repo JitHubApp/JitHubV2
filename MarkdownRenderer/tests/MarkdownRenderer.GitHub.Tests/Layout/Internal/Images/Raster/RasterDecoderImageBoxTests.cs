@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.GitHub.Tests.Performance;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout.Internal.Context;

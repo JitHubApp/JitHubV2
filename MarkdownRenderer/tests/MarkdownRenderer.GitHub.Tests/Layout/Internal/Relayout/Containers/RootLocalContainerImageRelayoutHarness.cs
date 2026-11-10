@@ -83,7 +83,7 @@ internal static class RootLocalContainerImageRelayoutHarness
         var registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry(
             enableSafeHtml ? SafeHtmlOptions.Default : null);
         Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(source, registry.BuildPipeline());
-        Document.MarkdownDocument semanticDocument = Document.MarkdownDocument.FromParsed(source, parsed);
+        MarkdownRenderer.Document.MarkdownDocument semanticDocument = MarkdownRenderer.Document.MarkdownDocument.FromParsed(source, parsed);
         var sourceMap = new MarkdownSourceMap(source);
         var context = new MarkdownLayoutContext(
             seed.Device,

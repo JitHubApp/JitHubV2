@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Performance;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
