@@ -14,6 +14,7 @@ using JitHub.Core.Services.GitHub;
 using JitHub.Core.Services.GitHub.Transport;
 using JitHub.Core.Services.Images;
 using JitHub.Core.Services.Images.Fetching;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Markdown.Images;
 using JitHub.Markdown.Images.Caching;
 using JitHub.Markdown.Images.Repository;
@@ -332,7 +333,7 @@ public sealed class GitHubRepositoryImageClientTests
             admission: admission,
             cancellationToken: cancellation.Token);
 
-        await stream.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await stream.ReadStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(4, admission.ReservedBytes);
         cancellation.Cancel();
 

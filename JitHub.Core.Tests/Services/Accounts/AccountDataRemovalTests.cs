@@ -246,7 +246,7 @@ public sealed class AccountDataRemovalTests : IDisposable
             })
         ]);
         Task<AccountDataRemovalResult> first = coordinator.RemoveAsync("101");
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await entered.Task.WaitAsync(AsyncTestWait.HangGuard);
         Task<AccountDataRemovalResult> second = coordinator.RemoveAsync("101");
 
         release.TrySetResult();
@@ -296,7 +296,7 @@ public sealed class AccountDataRemovalTests : IDisposable
             Substitute.For<ITelemetryService>(),
             accountWork);
         Task<StarSyncState> synchronization = service.SynchronizeAsync("token", "101");
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await started.Task.WaitAsync(AsyncTestWait.HangGuard);
         AccountDataRemovalCoordinator coordinator = new(
             [new AccountDataRemovalStep(AccountDataComponentIds.StarsLibrary, store.ClearUserAsync)],
             accountWork);

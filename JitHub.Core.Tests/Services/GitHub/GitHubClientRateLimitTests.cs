@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Core.Services.GitHub;
 using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.GitHub;
@@ -90,7 +91,7 @@ public sealed class GitHubClientRateLimitTests
         using CancellationTokenSource cancellation = new();
 
         Task request = action(client, cancellation.Token);
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);

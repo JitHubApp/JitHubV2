@@ -12,6 +12,7 @@ using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.GitHub.Transport;
 using JitHub.Core.Services.Repositories;
 using JitHub.Core.Services.Telemetry;
+using JitHub.Core.Tests.TestSupport;
 using NSubstitute;
 using Xunit;
 
@@ -98,7 +99,7 @@ public sealed class GitHubRepositoryIndexServiceTests
         };
 
         Task<AccountRepositoryIndexSnapshot> synchronization = service.SynchronizeAsync("token", "42");
-        AccountRepositoryIndexSnapshot intermediate = await firstPagePublished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        AccountRepositoryIndexSnapshot intermediate = await firstPagePublished.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(intermediate.IsSynchronizing);
         Assert.Equal(100, intermediate.IndexedCount);
@@ -176,7 +177,7 @@ public sealed class GitHubRepositoryIndexServiceTests
         };
 
         Task<AccountRepositoryIndexSnapshot> first = service.SynchronizeAsync("token", "42");
-        await firstPagePublished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await firstPagePublished.Task.WaitAsync(AsyncTestWait.HangGuard);
         Task<AccountRepositoryIndexSnapshot> joined = service.SynchronizeAsync("token", "42");
 
         Assert.False(joined.IsCompleted);
@@ -251,14 +252,14 @@ public sealed class GitHubRepositoryIndexServiceTests
             accountWork);
 
         Task<AccountRepositoryIndexSnapshot> synchronization = service.SynchronizeAsync("token", "42");
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await entered.Task.WaitAsync(AsyncTestWait.HangGuard);
         Task quiesce = accountWork.QuiesceAsync("42");
         await Task.Delay(30);
         Assert.False(quiesce.IsCompleted);
 
         release.SetResult(CreateResult(CreateRepositories(1, 2)));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => synchronization);
-        await quiesce.WaitAsync(TimeSpan.FromSeconds(2));
+        await quiesce.WaitAsync(AsyncTestWait.HangGuard);
         await service.ClearPartitionAsync("42");
 
         Assert.Empty(service.GetSnapshot("42").Repositories);

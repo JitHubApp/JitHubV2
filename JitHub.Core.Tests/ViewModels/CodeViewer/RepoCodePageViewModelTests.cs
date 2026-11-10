@@ -174,7 +174,7 @@ public sealed class RepoCodePageViewModelTests
         Assert.False(quiesce.IsCompleted);
 
         blob.SetResult(Fresh(Blob("private-sha", "private content")));
-        await Task.WhenAll(selection, quiesce).WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(selection, quiesce).WaitAsync(AsyncTestWait.HangGuard);
         accountWork.Activate("42");
 
         Assert.False(cache.TryGet(new RepoFileCacheKey("owner", "repo", "private-sha", "42"), out _));

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using JitHub.Core.Models.CodeViewer;
 using JitHub.Core.Services.CodeViewer;
 using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Core.ViewModels.CodeViewer;
 using Xunit;
 
@@ -150,7 +151,7 @@ public sealed class RepoFileTreeViewModelTests
             viewModel.BeginSourceRequest(),
             sourceIsAuthoritative: true,
             route.Token);
-        await service.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await service.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         route.Cancel();
         await viewModel.RootReconciliationTask;
@@ -255,7 +256,7 @@ public sealed class RepoFileTreeViewModelTests
             Directory("src", File("src/partial.cs", "partial")),
             File("recursive-root.txt", "recursive-root")), "owner", "repo", "main");
 
-        await service.NetworkRequested.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await service.NetworkRequested.Task.WaitAsync(AsyncTestWait.HangGuard);
         RepoTreeNodeViewModel src = viewModel.RootNodes.Single(node => node.Path == "src");
         Assert.Equal("src-sha", src.Sha);
         Assert.Contains(src.Children, node => node.Path == "src/partial.cs");
@@ -331,7 +332,7 @@ public sealed class RepoFileTreeViewModelTests
             .ToArray());
 
         Task<RepoFileTreeViewModel.PreparedTree> pending = viewModel.PrepareLoadAsync(tree, default);
-        await resolver.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await resolver.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.False(pending.IsCompleted);
         resolver.Release.Set();

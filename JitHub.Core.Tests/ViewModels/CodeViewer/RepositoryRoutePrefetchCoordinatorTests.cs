@@ -9,6 +9,7 @@ using JitHub.Core.Services.CodeViewer;
 using JitHub.Core.Services.Commits;
 using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Core.ViewModels.CodeViewer;
 using NSubstitute;
 using Xunit;
@@ -51,13 +52,13 @@ public sealed class RepositoryRoutePrefetchCoordinatorTests
         Task first = prefetch.StartCodeAsync("token", "42", "octo", "first", "main");
         Task second = prefetch.StartCodeAsync("token", "42", "octo", "second", "main");
 
-        await first.WaitAsync(TimeSpan.FromSeconds(2));
+        await first.WaitAsync(AsyncTestWait.HangGuard);
         Assert.True(tokens["first"].IsCancellationRequested);
         Assert.False(tokens["second"].IsCancellationRequested);
         Assert.Equal(1, tasks.ActiveTaskCount);
 
         releaseLatest.SetResult();
-        await second.WaitAsync(TimeSpan.FromSeconds(2));
+        await second.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(0, tasks.ActiveTaskCount);
     }
 
@@ -89,10 +90,10 @@ public sealed class RepositoryRoutePrefetchCoordinatorTests
         RepositoryRoutePrefetchCoordinator prefetch = new(code, commits, tasks);
 
         Task route = prefetch.StartCommitsAsync("token", "42", "octo", "app", "main");
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
-        await tasks.CancelAccountAsync("42").WaitAsync(TimeSpan.FromSeconds(2));
-        await route.WaitAsync(TimeSpan.FromSeconds(2));
+        await tasks.CancelAccountAsync("42").WaitAsync(AsyncTestWait.HangGuard);
+        await route.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(workToken.IsCancellationRequested);
         Assert.Equal(0, tasks.ActiveTaskCount);
@@ -121,11 +122,11 @@ public sealed class RepositoryRoutePrefetchCoordinatorTests
         RepositoryRoutePrefetchCoordinator prefetch = CreateCoordinator(trees, tasks);
 
         Task route = prefetch.StartCodeAsync("token", "42", "octo", "app", "main");
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await started.Task.WaitAsync(AsyncTestWait.HangGuard);
         ApplicationTaskShutdownResult result = await tasks
             .ShutdownAsync(TimeSpan.FromSeconds(2))
-            .WaitAsync(TimeSpan.FromSeconds(3));
-        await route.WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(AsyncTestWait.HangGuard);
+        await route.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(result.Completed);
         Assert.Equal(0, result.PendingTaskCount);

@@ -18,6 +18,7 @@ using JitHub.Core.Services.Gists;
 using JitHub.Core.Services.GitHub;
 using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.Gists;
@@ -344,7 +345,7 @@ public sealed class GitHubGistQueryServiceTests : IDisposable
             "42",
             "https://gist.githubusercontent.com/octo/id/raw/revision/second.txt");
 
-        string[] results = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(3));
+        string[] results = await Task.WhenAll(first, second).WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal(new[] { "first", "second" }, results);
         Assert.Equal(2, handler.RequestCount);
@@ -521,9 +522,9 @@ public sealed class GitHubGistQueryServiceTests : IDisposable
             "https://gist.githubusercontent.com/octo/id/raw/revision/stale.txt",
             QueryFetchPolicy.StaleFirst,
             cancellationToken: cancellation.Token);
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
         cancellation.Cancel();
-        await service.DrainBackgroundWorkAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await service.DrainBackgroundWorkAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal("cached while offline", result.Value);
         Assert.True(result.IsRefreshInProgress);
