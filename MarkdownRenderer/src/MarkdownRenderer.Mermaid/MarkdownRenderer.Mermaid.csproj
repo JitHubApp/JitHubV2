@@ -43,6 +43,12 @@
     <None Update="native\include\markdown_renderer_mermaid.h" Pack="true" PackagePath="build\native\include\markdown_renderer_mermaid.h" />
     <None Update="native\Cargo.lock" Pack="true" PackagePath="provenance\native\Cargo.lock" />
     <None Update="native\patches\MERMAN_SOURCE_PATCHES.json" Pack="true" PackagePath="provenance\native\patches\MERMAN_SOURCE_PATCHES.json" />
+    <!-- The notices an app that ships this feature must carry. They flow through
+         ProjectReference into the app's output and publish folders. -->
+    <None Update="licenses\MERMAN-LICENSE-MIT.txt;licenses\MERMAN-THIRD-PARTY-NOTICES.md;licenses\MPL2-SOURCE.md;MERMAN_PROVENANCE.json;NATIVE_RUST_DEPENDENCIES.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="ThirdPartyNotices\MarkdownRenderer.Mermaid\%(Filename)%(Extension)" />
     <None Update="native\patches\0001-final-node-source-provenance.patch" Pack="true" PackagePath="provenance\native\patches\0001-final-node-source-provenance.patch" />
     <None Update="native\patches\0002-flowchart-svg-text-entities.patch" Pack="true" PackagePath="provenance\native\patches\0002-flowchart-svg-text-entities.patch" />
     <None Update="native\patches\0003-final-markdown-text-and-self-loop-labels.patch" Pack="true" PackagePath="provenance\native\patches\0003-final-markdown-text-and-self-loop-labels.patch" />

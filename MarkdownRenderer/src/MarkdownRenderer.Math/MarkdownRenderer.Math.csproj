@@ -66,4 +66,12 @@
     <None Include="ThirdParty\OFL-1.1.txt" Pack="true" PackagePath="licenses\" />
     <None Include="ThirdParty\PROVENANCE.json" Pack="true" PackagePath="licenses\" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The notices an app that ships this feature must carry. They flow through
+         ProjectReference into the app's output and publish folders. -->
+    <None Update="THIRD-PARTY-NOTICES.md;ThirdParty\CSHARPMATH-LICENSE.txt;ThirdParty\TYPOGRAPHY-LICENSE.md;ThirdParty\GUST-FONT-LICENSE.txt;ThirdParty\OFL-1.1.txt;ThirdParty\PROVENANCE.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="ThirdPartyNotices\MarkdownRenderer.Math\%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
