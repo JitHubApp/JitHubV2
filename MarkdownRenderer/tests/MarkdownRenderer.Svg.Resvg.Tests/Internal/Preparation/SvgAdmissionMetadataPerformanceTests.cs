@@ -4,7 +4,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Images.Internal.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Preparation;
 using MarkdownRenderer.Svg.Resvg.Internal.StaticSnapshots;
 using Xunit;

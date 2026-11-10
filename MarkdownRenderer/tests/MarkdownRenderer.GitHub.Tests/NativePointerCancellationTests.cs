@@ -1,5 +1,5 @@
-using MarkdownRenderer.Controls.Input;
 using Xunit;
+using MarkdownRenderer.Controls.Internal.Input;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

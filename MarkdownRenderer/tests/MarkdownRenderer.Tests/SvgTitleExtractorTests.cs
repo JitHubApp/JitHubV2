@@ -1,5 +1,5 @@
 using System.Text;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Images.Internal.Svg;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

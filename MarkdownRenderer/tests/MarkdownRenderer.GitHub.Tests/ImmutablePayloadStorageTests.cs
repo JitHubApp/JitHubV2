@@ -4,18 +4,50 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Accessibility.Internal.TextRanges;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Controls.Internal;
+using MarkdownRenderer.Controls.Internal.Input.Links;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Pipeline.Rebuild;
+using MarkdownRenderer.Controls.Internal.Selection;
+using MarkdownRenderer.Controls.Internal.Selection.ContextMenu;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Engine.Internal;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Images.Internal.Svg;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.SafeHtml;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
+using MarkdownRenderer.Layout.Internal.Text;
+using MarkdownRenderer.Layout.Internal.Vectors;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Utilities;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Graphics.DirectX;
@@ -59,7 +91,7 @@ public sealed class ImmutablePayloadStorageTests
             typeof(SharedCanvasBitmapCacheEntry), typeof(SharedCanvasTextFormatEntry), typeof(SharedLayoutMetrics),
             typeof(LayoutSnapshot), typeof(IntrinsicWidthMetrics), typeof(VectorSceneBox),
             typeof(MarkdownEnvironmentMonitor.Subscription), typeof(ParsedMarkdown), typeof(HostedElementFallbackKey),
-            typeof(MarkdownRenderer.Images.MarkdownImagePreparationAdmission), typeof(TextElementBoundaryIndex),
+            typeof(MarkdownRenderer.Images.Internal.MarkdownImagePreparationAdmission), typeof(TextElementBoundaryIndex),
             typeof(LayoutSnapshotCommittedMetadata), typeof(FocusablePlanEntry), typeof(LazyLayoutCommit),
             typeof(SnapshotScrollAnchor), typeof(CodeBlockBox), typeof(ListItemBox), typeof(InlineContainerBox),
             typeof(ImageBox), typeof(CompiledMarkdownStyleSheet), typeof(SvgIntrinsics.SvgRootGeometry),

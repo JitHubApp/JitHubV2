@@ -1,6 +1,6 @@
-using MarkdownRenderer.Layout.Boxes;
 using Microsoft.Graphics.Canvas;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Text;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Threading;
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Theming;
 

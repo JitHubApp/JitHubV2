@@ -1,7 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

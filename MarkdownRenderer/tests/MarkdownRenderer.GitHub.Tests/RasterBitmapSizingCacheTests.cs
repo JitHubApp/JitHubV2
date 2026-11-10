@@ -1,6 +1,7 @@
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
 using Windows.Foundation;

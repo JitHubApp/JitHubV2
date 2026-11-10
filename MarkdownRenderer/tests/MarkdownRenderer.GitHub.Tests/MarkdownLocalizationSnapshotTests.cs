@@ -1,5 +1,6 @@
 using System.Globalization;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal;
 using MarkdownRenderer.Hosting;
 using Xunit;
 

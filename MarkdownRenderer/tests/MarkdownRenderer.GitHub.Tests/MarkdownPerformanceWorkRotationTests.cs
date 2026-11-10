@@ -1,5 +1,7 @@
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Residency;
 using System.Threading.Channels;
 using Xunit;
 

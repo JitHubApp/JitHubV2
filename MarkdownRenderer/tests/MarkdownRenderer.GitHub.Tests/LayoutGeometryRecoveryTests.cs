@@ -3,8 +3,11 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Relayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Xunit;
@@ -232,7 +235,7 @@ public sealed class LayoutGeometryRecoveryTests
     {
         var deviceFailure = new COMException(
             "Nested DirectWrite/device failure.",
-            MarkdownRenderer.Diagnostics.GraphicsDeviceErrors.DxgiErrorDeviceRemoved);
+            MarkdownRenderer.Diagnostics.Internal.GraphicsDeviceErrors.DxgiErrorDeviceRemoved);
         var primary = new OperationCanceledException(
             "The live measure was canceled after native device loss.",
             new AggregateException(deviceFailure));
@@ -245,7 +248,7 @@ public sealed class LayoutGeometryRecoveryTests
     {
         var deviceFailure = new COMException(
             "Nested render-target failure.",
-            MarkdownRenderer.Diagnostics.GraphicsDeviceErrors.D2DErrorRecreateTarget);
+            MarkdownRenderer.Diagnostics.Internal.GraphicsDeviceErrors.D2DErrorRecreateTarget);
         var primary = new AggregateException(
             "Measure and native cleanup failed.",
             new InvalidOperationException("Primary measure failure."),
@@ -289,7 +292,7 @@ public sealed class LayoutGeometryRecoveryTests
         var primary = new InvalidOperationException("The later root measure failed.");
         var rollbackDeviceFailure = new COMException(
             "Reflow of the committed predecessor failed during rollback.",
-            MarkdownRenderer.Diagnostics.GraphicsDeviceErrors.DxgiErrorDeviceReset);
+            MarkdownRenderer.Diagnostics.Internal.GraphicsDeviceErrors.DxgiErrorDeviceReset);
         failingLeaf.FailNextMeasure = primary;
         stableRoot.FailNextArrange = rollbackDeviceFailure;
         var failingBand = new LazyLayoutBand(failingRoot.Bounds.Top, failingRoot.Bounds.Bottom);
@@ -444,7 +447,7 @@ public sealed class LayoutGeometryRecoveryTests
         };
         var secondary = new COMException(
             "The rollback lost the device.",
-            MarkdownRenderer.Diagnostics.GraphicsDeviceErrors.DxgiErrorDeviceRemoved);
+            MarkdownRenderer.Diagnostics.Internal.GraphicsDeviceErrors.DxgiErrorDeviceRemoved);
         latch.MarkGeometryRecoveryRequiredNoLock(primary, secondary);
         return (new WeakReference(primary), new WeakReference(secondary));
     }

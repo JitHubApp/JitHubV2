@@ -1,4 +1,6 @@
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Residency;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

@@ -1,10 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Boxes;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

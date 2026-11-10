@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Focus;
 
 namespace MarkdownRenderer.Tests;
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MarkdownRenderer.Extensions.Internal;
 
 namespace MarkdownRenderer.Extensions;
 

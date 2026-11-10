@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using Markdig;
 using Markdig.Syntax;
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
 
 namespace MarkdownRenderer.Tests;
 

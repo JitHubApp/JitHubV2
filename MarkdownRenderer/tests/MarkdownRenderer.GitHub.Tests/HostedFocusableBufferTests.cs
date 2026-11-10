@@ -1,5 +1,5 @@
-using MarkdownRenderer.Controls.Focus;
 using Xunit;
+using MarkdownRenderer.Controls.Internal.Focus.Hosted;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

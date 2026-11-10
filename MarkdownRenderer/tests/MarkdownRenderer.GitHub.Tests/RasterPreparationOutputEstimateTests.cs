@@ -1,6 +1,7 @@
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

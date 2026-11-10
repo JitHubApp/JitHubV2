@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.CompletedScenes;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using MarkdownRenderer.Theming;
 using Xunit;
 

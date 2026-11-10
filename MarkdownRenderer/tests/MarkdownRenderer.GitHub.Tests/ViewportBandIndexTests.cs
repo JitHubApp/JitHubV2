@@ -1,6 +1,6 @@
 using System;
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

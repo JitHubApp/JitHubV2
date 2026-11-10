@@ -1,6 +1,6 @@
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Windows.Foundation;
 using Xunit;
 

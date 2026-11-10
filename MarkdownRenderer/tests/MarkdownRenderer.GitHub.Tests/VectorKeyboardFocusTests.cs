@@ -1,8 +1,14 @@
-using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Controls.Focus;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Controls.Internal.Focus;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Theming;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.VectorAccessibilityAssertions;

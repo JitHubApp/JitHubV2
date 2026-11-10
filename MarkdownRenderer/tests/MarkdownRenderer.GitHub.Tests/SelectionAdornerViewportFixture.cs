@@ -1,7 +1,8 @@
 using Microsoft.Graphics.Canvas;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;

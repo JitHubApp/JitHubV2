@@ -1,5 +1,4 @@
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

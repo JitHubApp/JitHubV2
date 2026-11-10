@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Utilities;
+using MarkdownRenderer.Internal.Hashing;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
+using MarkdownRenderer.Layout.Internal.SafeHtml;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

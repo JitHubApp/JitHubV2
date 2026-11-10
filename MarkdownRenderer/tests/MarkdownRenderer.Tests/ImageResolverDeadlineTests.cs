@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Residency;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

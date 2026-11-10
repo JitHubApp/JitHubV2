@@ -1,7 +1,7 @@
-using MarkdownRenderer.Diagnostics;
 using System;
 using System.Runtime.InteropServices;
 using Xunit;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Tests;
 

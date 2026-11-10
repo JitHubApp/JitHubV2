@@ -1,6 +1,6 @@
 using System.Collections;
-using MarkdownRenderer.Accessibility;
 using Xunit;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

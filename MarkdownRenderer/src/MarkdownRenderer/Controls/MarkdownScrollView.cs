@@ -1,3 +1,5 @@
+using MarkdownRenderer.Controls.Internal;
+
 namespace MarkdownRenderer.Controls;
 
 /// <summary>

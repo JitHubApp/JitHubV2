@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SvgHostAdmissionFixture;
 

@@ -1,5 +1,7 @@
 using Windows.UI;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Theming.Internal.ResourceDictionaries;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

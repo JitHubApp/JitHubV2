@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Internal.Concurrency;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

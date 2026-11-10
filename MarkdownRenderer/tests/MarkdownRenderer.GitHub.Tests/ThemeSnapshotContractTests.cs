@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal.ResourceDictionaries;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ThemeSnapshotFixture;
 

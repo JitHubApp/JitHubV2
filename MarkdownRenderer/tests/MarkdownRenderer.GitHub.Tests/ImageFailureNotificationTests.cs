@@ -1,10 +1,11 @@
-using MarkdownRenderer.Layout;
 using System.Collections.Concurrent;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using Xunit;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

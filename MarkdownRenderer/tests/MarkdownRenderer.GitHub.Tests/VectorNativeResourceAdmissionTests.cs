@@ -5,7 +5,9 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
 using Xunit;
@@ -63,13 +65,13 @@ public sealed class VectorNativeResourceAdmissionTests
         using var second = new MarkdownRenderer.Performance.MarkdownPerformanceSession(
             MarkdownRenderer.Performance.MarkdownPerformanceOptions.Progressive);
         VectorNativeResourceAdmission firstAdmission =
-            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission;
+            ((MarkdownRenderer.Performance.Internal.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission;
         VectorNativeResourceAdmission secondAdmission =
-            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)second).VectorNativeAdmission;
+            ((MarkdownRenderer.Performance.Internal.IMarkdownPerformanceSessionInternal)second).VectorNativeAdmission;
 
         Assert.Same(
             firstAdmission,
-            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission);
+            ((MarkdownRenderer.Performance.Internal.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission);
         Assert.NotSame(firstAdmission, secondAdmission);
 
         Assert.Equal(VectorNativeAdmissionResult.Granted,

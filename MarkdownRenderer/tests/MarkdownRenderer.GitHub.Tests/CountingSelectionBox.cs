@@ -1,5 +1,5 @@
 ﻿using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 

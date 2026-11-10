@@ -1,4 +1,5 @@
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ThemeSnapshotFixture;
 

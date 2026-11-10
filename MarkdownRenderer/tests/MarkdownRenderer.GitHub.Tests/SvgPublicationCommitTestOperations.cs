@@ -1,6 +1,9 @@
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

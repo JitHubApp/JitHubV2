@@ -1,8 +1,10 @@
 ﻿using MarkdownRenderer.Document;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
 
@@ -21,10 +23,10 @@ public sealed class SafeHtmlDetailsSummaryTests
         const string source = "<details><summary><div class='markdown-heading'><h3>Browser &amp; Automation</h3><a href='#browser'>Permalink</a></div></summary><p>Body</p></details>";
 
         using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Heading);
 
         Assert.Equal(3, heading.HeadingLevel);
         Assert.Contains("Browser & Automation", snapshot.SemanticDocument.GetText(heading), StringComparison.Ordinal);
@@ -40,10 +42,10 @@ public sealed class SafeHtmlDetailsSummaryTests
             FlattenRuns(snapshot).OfType<LinkRun>(),
             static run => run.DisclosureId is not null);
         CodeBlockBox code = Assert.Single(FlattenBoxes(snapshot).OfType<CodeBlockBox>());
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode semantic = Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode semantic = Assert.Single(
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.CodeBlock);
         string rendered = snapshot.SemanticDocument.Text;
 
         Assert.Equal("What does this print?", disclosure.AccessibilityName);

@@ -1,7 +1,10 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Input;
-using MarkdownRenderer.Controls.Selection;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Controls.Internal.Input;
+using MarkdownRenderer.Controls.Internal.Input.Gestures;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Selection.ContextMenu;
+using MarkdownRenderer.Controls.Internal.View;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 using Xunit;
 

@@ -1,16 +1,21 @@
-using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
-using LinkTarget = MarkdownRenderer.Controls.Input.LinkTarget;
+using LinkTarget = MarkdownRenderer.Controls.Internal.Input.Links.LinkTarget;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

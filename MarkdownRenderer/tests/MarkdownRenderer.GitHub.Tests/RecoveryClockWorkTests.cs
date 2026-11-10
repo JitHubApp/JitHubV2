@@ -1,7 +1,8 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Focus;
-using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Controls.Internal.Focus;
+using MarkdownRenderer.Controls.Internal.Pipeline.Commit;
+using MarkdownRenderer.Controls.Internal.Recovery;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

@@ -1,4 +1,5 @@
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 using System.Threading;
 using Xunit;
 

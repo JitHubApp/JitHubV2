@@ -1,4 +1,5 @@
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Document.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

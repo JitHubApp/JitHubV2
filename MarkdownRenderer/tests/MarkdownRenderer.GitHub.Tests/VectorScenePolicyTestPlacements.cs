@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

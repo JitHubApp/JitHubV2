@@ -1,6 +1,6 @@
 using System.Text;
-using MarkdownRenderer.Parsing;
 using Xunit;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Html.Tests;
 

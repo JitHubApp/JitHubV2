@@ -1,8 +1,10 @@
 using System.Numerics;
 using NumericMath = global::System.Math;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Text;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Brushes;
@@ -131,7 +133,7 @@ public sealed class ScriptBaselineGeometryTests
             subscript.TextLength);
         Assert.True(box.TryGetCaretPoint(scriptEnd, rangeStart: false, out Point caret));
         int subscriptEndCharacter = subscriptStart + subscript.TextLength - 1;
-        MarkdownRenderer.Controls.TouchSelectionCaretQuery query = MarkdownRenderer.Controls.TouchSelectionCaretPolicy.Resolve(
+        MarkdownRenderer.Controls.Internal.Selection.TouchSelection.TouchSelectionCaretQuery query = MarkdownRenderer.Controls.Internal.Selection.TouchSelection.TouchSelectionCaretPolicy.Resolve(
             GetBufferLength(box),
             subscriptEndCharacter + 1,
             rangeStart: false);

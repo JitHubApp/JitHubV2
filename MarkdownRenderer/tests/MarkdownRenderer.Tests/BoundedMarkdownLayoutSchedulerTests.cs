@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 
 namespace MarkdownRenderer.Tests;
 

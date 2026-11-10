@@ -3,8 +3,8 @@ using Markdig;
 using Markdig.Extensions.Footnotes;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Focus;
 
 namespace MarkdownRenderer.Tests;
 

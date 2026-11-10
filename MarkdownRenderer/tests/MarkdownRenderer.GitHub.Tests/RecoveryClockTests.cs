@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Threading;
+using MarkdownRenderer.Controls.Internal.Recovery;
+using MarkdownRenderer.Controls.Internal.Threading;
+using MarkdownRenderer.Controls.Internal.View;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
