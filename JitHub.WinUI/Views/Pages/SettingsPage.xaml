@@ -5,7 +5,7 @@
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:pageViewModels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:pageViewModels="using:JitHub.Core.ViewModels.Settings"
     mc:Ignorable="d"
     Background="{ThemeResource AppTransparentBrush}"
     SizeChanged="SettingsPage_SizeChanged">

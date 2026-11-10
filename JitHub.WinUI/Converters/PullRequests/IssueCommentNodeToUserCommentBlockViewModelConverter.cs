@@ -1,15 +1,11 @@
-using JitHub.Models;
-using JitHub.Models.PRConversation;
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.IssueViewModels;
-using JitHub.WinUI.ViewModels.UserViewModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.LegacyGitHub;
 using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
+using JitHub.WinUI.Models.PullRequests.Conversation;
+using JitHub.WinUI.ViewModels.Comments;
 
 namespace JitHub.WinUI.Converters.PullRequests
 {

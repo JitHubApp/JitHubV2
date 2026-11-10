@@ -1,6 +1,6 @@
-using JitHub.Models.LegacyGitHub;
-using PullRequestModel = JitHub.Models.LegacyGitHub.PullRequest;
-using RepositoryModel = JitHub.Models.LegacyGitHub.Repository;
+using JitHub.WinUI.Models.LegacyGitHub;
+using PullRequestModel = JitHub.WinUI.Models.LegacyGitHub.PullRequest;
+using RepositoryModel = JitHub.WinUI.Models.LegacyGitHub.Repository;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 

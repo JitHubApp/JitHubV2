@@ -12,10 +12,19 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Performance;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Gists;
 
 public sealed class GitHubGistQueryService : IGitHubGistQueryService
 {
@@ -924,9 +933,9 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
                 cancellationToken);
             message = string.IsNullOrWhiteSpace(error?.Message)
                 ? $"GitHub returned HTTP {(int)response.StatusCode}."
-                : JitHub.WinUI.Helpers.UserFacingError.ForInternalMessage(
+                : JitHub.Core.Helpers.UserFacingError.ForInternalMessage(
                     error.Message,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Action,
                     "gist-api");
         }
         catch (OperationCanceledException)

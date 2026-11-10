@@ -1,6 +1,6 @@
 using System;
 using System.Globalization;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Localization;
 using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.Converters

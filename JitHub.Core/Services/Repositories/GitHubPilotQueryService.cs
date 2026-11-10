@@ -4,9 +4,13 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Repositories;
 
 public interface IGitHubPilotQueryService
 {

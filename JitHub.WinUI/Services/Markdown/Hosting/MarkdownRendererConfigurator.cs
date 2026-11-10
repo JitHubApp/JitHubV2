@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using JitHub.Core.Services.Accounts;
 using JitHub.Markdown.Localization;
 using MarkdownRenderer;
 using MarkdownRenderer.CodeBlocks;
@@ -9,7 +10,7 @@ using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>
 /// Applies JitHub's document style and host settings to a renderer through its

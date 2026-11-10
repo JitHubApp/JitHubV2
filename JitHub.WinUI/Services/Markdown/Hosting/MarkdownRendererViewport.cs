@@ -2,7 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>Moves the vertical scroller a renderer owns.</summary>
 internal static class MarkdownRendererViewport

@@ -1,6 +1,7 @@
 using System;
+using JitHub.Core.Services.PullRequests;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public static class MeWorkItemIdentityPolicy
 {

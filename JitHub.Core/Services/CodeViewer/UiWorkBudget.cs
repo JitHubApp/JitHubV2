@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public sealed class UiWorkBudget
 {

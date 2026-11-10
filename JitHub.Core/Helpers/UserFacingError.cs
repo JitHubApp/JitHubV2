@@ -1,6 +1,8 @@
 using System;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.WinUI.Helpers;
+namespace JitHub.Core.Helpers;
 
 public enum UserFacingErrorKind
 {

@@ -4,8 +4,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.Activities;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.WinUI.Models.Activities;
 
 namespace JitHub.WinUI.ViewModels.Activities;
 

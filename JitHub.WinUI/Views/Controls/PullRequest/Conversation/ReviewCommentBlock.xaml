@@ -5,11 +5,12 @@
     xmlns:local="using:JitHub.WinUI.Views.Controls.PullRequest.Conversation"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
+    xmlns:comments="using:JitHub.WinUI.Views.Controls.Comments"
     xmlns:pullrequest="using:JitHub.WinUI.Views.Controls.PullRequest"
-    xmlns:controls="using:JitHub.WinUI.Views.Controls"
+    xmlns:controls="using:JitHub.WinUI.Views.Controls.Comments"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-    xmlns:userviewmodels="using:JitHub.WinUI.ViewModels.UserViewModel"
+    xmlns:userviewmodels="using:JitHub.WinUI.ViewModels.Comments"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
@@ -18,15 +19,15 @@
         CornerRadius="{ThemeResource AppRadiusSmall}">
         <StackPanel
             Spacing="{ThemeResource AppGap8}">
-            <common:CommentBlock>
-                <common:CommentBlock.HeaderContent>
+            <comments:CommentBlock>
+                <comments:CommentBlock.HeaderContent>
                     <TextBlock Text="{x:Bind ViewModel.Name, Mode=OneWay}"/>
-                </common:CommentBlock.HeaderContent>
-                <common:CommentBlock.BodyContent>
+                </comments:CommentBlock.HeaderContent>
+                <comments:CommentBlock.BodyContent>
                     <pullrequest:DiffTextBlock
                                                 Patch="{x:Bind ViewModel.DiffHunk, Mode=OneWay}"/>
-                </common:CommentBlock.BodyContent>
-            </common:CommentBlock>
+                </comments:CommentBlock.BodyContent>
+            </comments:CommentBlock>
             <controls:UserCommentBlock
                 Size="MEDIUM"
                 ViewModel="{x:Bind ViewModel.BodyViewModel, Mode=OneWay}"/>
@@ -57,12 +58,12 @@
                 HorizontalContentAlignment="Stretch"
                 Header="Reply">
                 <muxc:Expander.Content>
-                    <common:MarkdownForm
+                    <markdown:MarkdownForm
                         x:Name="ReplyMarkdownForm"
                         AutomationInstanceId="{x:Bind ViewModel.ReplyFormAutomationId, Mode=OneWay}"
                         DocumentSource="{x:Bind ViewModel.ReplyMarkdownSource, Mode=OneWay}"
                         Text="{x:Bind ViewModel.ReplyText, Mode=TwoWay}">
-                        <common:MarkdownForm.ActionContent>
+                        <markdown:MarkdownForm.ActionContent>
                             <StackPanel
                                 Style="{StaticResource ActionPanel}">
                                 <Button
@@ -72,8 +73,8 @@
                                     Style="{StaticResource AppAccentButtonStyle}"
                                     Command="{x:Bind ViewModel.ReplyCommand, Mode=OneWay}"/>
                             </StackPanel>
-                        </common:MarkdownForm.ActionContent>
-                    </common:MarkdownForm>
+                        </markdown:MarkdownForm.ActionContent>
+                    </markdown:MarkdownForm>
                 </muxc:Expander.Content>
             </muxc:Expander>
             <InfoBar

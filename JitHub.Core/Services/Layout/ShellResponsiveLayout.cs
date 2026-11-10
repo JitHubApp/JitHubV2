@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services.Layout;
+namespace JitHub.Core.Services.Layout;
 
 public sealed record ShellResponsiveState(
     double WindowWidth,

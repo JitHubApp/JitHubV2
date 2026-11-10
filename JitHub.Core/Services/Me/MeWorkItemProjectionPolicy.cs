@@ -1,4 +1,4 @@
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public readonly record struct MeWorkItemProjectionDecision(
     bool Apply,

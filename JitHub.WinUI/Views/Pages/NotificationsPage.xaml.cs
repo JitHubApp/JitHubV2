@@ -1,9 +1,9 @@
 using System;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Notifications;
+using JitHub.Core.ViewModels.Notifications;
 using JitHub.Performance.Readiness;
-using JitHub.Services;
-using JitHub.Services.Layout;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

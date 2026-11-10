@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public sealed record GitHubPagedLoadProgress<TItem>(
     IReadOnlyList<TItem> Items,

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using JitHub.Models.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public static partial class CodeSymbolExtractor
 {

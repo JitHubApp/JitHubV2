@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Models.GitHub;
+namespace JitHub.Core.Models.GitHub;
 
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class GitHubIssueQueryOptions

@@ -2,7 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown.Images.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Images;
 
 /// <summary>
 /// The app's GitHub image service: the Markdown cache operations plus the

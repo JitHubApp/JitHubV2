@@ -1,9 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Notifications;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Notifications;
 
 public sealed class NotificationOpenWorkflow
 {

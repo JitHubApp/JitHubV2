@@ -1,8 +1,11 @@
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public enum GitHubMeIssueFilter
 {

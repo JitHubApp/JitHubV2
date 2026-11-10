@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public sealed partial class SvgPreviewRequestGate : IDisposable
 {

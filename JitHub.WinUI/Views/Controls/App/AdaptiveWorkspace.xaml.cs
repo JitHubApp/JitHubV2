@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.Services.Layout;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Layout;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;

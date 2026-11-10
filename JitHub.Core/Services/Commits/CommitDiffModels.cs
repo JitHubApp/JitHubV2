@@ -4,7 +4,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public enum CommitDiffViewMode
 {

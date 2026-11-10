@@ -1,7 +1,16 @@
 using System.Text.Json.Serialization;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Profile;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.GitHub;
 
 [JsonSerializable(typeof(GitHubRepository))]
 [JsonSerializable(typeof(GitHubRepository[]))]

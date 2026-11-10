@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Storage;
 
 public enum CacheOwnerHealth
 {

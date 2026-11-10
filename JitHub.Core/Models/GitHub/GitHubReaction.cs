@@ -1,9 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Localization;
 
-namespace JitHub.Models.GitHub;
+namespace JitHub.Core.Models.GitHub;
 
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class GitHubReaction

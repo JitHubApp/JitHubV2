@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Repositories;
 
 public sealed record AccountRepositoryIndexSnapshot(
     string UserId,

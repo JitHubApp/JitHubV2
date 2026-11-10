@@ -6,9 +6,15 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Performance;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Repositories;
 
 public sealed class GitHubRepositoryIndexService : IGitHubRepositoryIndexService
 {
@@ -191,9 +197,9 @@ public sealed class GitHubRepositoryIndexService : IGitHubRepositoryIndexService
         }
         catch (Exception ex)
         {
-            state.FailSynchronization(JitHub.WinUI.Helpers.UserFacingError.For(
+            state.FailSynchronization(JitHub.Core.Helpers.UserFacingError.For(
                 ex,
-                JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                 "repository-index"));
             RaiseChanged(state);
             TrackSynchronization("error", state.CreateSnapshot(), stopwatch.Elapsed);

@@ -6,7 +6,7 @@
        its files. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>JitHub</RootNamespace>
+    <RootNamespace>JitHub.Shared</RootNamespace>
     <Nullable>enable</Nullable>
     <!-- Part of the app's Native AOT graph, whose publish analyzes this
          assembly with warnings as errors. It does not set IsAotCompatible:

@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public interface IRepositorySvgRasterizer
 {

@@ -7,12 +7,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.CodeViewer;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Localization;
 
-namespace JitHub.WinUI.ViewModels.CodeViewer;
+namespace JitHub.Core.ViewModels.CodeViewer;
 
 public sealed partial class RepoFileTreeViewModel : ObservableObject
 {
@@ -510,7 +511,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                         parent.Path,
                         gitRef,
                         ct,
-                        global::JitHub.Services.QueryFetchPolicy.NetworkOnly);
+                        global::JitHub.Core.Services.GitHub.Caching.QueryFetchPolicy.NetworkOnly);
                 if (!IsCurrentDirectoryRequest(
                     parent,
                     generation,
@@ -576,7 +577,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                             string.Empty,
                             gitRef,
                             ct,
-                            global::JitHub.Services.QueryFetchPolicy.NetworkOnly);
+                            global::JitHub.Core.Services.GitHub.Caching.QueryFetchPolicy.NetworkOnly);
                     if (!IsCurrentContext(generation, owner, repository, gitRef)) return;
                     ApplyRootDirectoryResult(refreshed, refreshSourceGeneration, sourceIsAuthoritative: true);
                 }

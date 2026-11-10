@@ -5,10 +5,14 @@ using System.Net.Http;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Images.Fetching;
+using JitHub.Core.Services.Images.Flights;
 using JitHub.Markdown.Images.Caching;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Images;
 
 /// <summary>
 /// Resolves GitHub and user-approved HTTPS images through an account-partitioned

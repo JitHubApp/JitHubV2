@@ -4,9 +4,16 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public sealed class GitHubMeQueryService : IGitHubMeQueryService
 {

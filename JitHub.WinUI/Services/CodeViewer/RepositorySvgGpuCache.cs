@@ -5,7 +5,7 @@ using System.Threading;
 using JitHub.Markdown.Svg;
 using Microsoft.Graphics.Canvas;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.WinUI.Services.CodeViewer;
 
 /// <summary>
 /// Device-partitioned cache for standalone SVG preview tiles.

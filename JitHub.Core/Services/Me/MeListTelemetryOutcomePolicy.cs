@@ -1,6 +1,8 @@
 using System;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public static class MeListTelemetryOutcomePolicy
 {

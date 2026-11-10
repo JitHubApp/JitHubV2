@@ -5,8 +5,14 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public sealed record GitHubGraphQlQuery<T>(
     GitHubQuery<T> CacheQuery,

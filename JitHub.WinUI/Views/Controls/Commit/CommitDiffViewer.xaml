@@ -3,11 +3,11 @@
     x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:commonconverters="using:JitHub.WinUI.Converters.Common"
+    xmlns:commonconverters="using:JitHub.WinUI.Converters.Commits"
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:services="using:JitHub.Services"
+    xmlns:services="using:JitHub.Core.Services.Commits"
     d:DesignHeight="640"
     d:DesignWidth="960"
     mc:Ignorable="d">

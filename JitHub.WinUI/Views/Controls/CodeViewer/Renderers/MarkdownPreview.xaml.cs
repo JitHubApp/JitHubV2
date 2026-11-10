@@ -1,8 +1,8 @@
 using System.ComponentModel;
-using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using JitHub.WinUI.Views.Controls.CodeViewer;
+using JitHub.Core.ViewModels.CodeViewer;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 

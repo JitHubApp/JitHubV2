@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Dashboard;
 
 [JsonSerializable(typeof(DashboardWidgetLayoutDto))]
 internal sealed partial class DashboardWidgetLayoutJsonContext : JsonSerializerContext

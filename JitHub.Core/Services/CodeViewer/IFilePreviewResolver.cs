@@ -1,7 +1,7 @@
 using System;
-using JitHub.Models.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public interface IFilePreviewResolver
 {

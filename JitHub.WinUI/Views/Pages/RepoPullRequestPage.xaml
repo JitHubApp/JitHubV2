@@ -6,13 +6,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
+    xmlns:comments="using:JitHub.WinUI.Views.Controls.Comments"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:github="using:JitHub.Core.Models.GitHub.Issues"
+    xmlns:commits="using:JitHub.Core.Models.GitHub.Commits"
+    xmlns:pullrequests="using:JitHub.Core.Models.GitHub.PullRequests"
+    xmlns:users="using:JitHub.Core.Models.GitHub.Users"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.PullRequests"
     Background="{ThemeResource AppTransparentBrush}"
     mc:Ignorable="d">
     <Page.Resources>
@@ -27,7 +32,7 @@
             <ItemsStackPanel CacheLength="8" />
         </ItemsPanelTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestListItemTemplate" x:DataType="github:GitHubPullRequest">
+        <DataTemplate x:Key="RepoPullRequestListItemTemplate" x:DataType="pullrequests:GitHubPullRequest">
             <Grid
                 MinHeight="{ThemeResource AppDimension52}"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
@@ -62,7 +67,7 @@
                         Style="{StaticResource AppInlineMetadataTextBlockStyle}">
                         <Run Text="#" /><Run Text="{x:Bind Number, Mode=OneWay}" />
                     </TextBlock>
-                    <common:Avatar
+                    <images:Avatar
                         Grid.Column="1"
                         AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                         ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
@@ -116,7 +121,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <common:Avatar
+                        <images:Avatar
                             VerticalAlignment="Center"
                             AutomationInstanceId="{x:Bind AvatarAutomationId, Mode=OneWay}"
                             DisplayName="{x:Bind AuthorDisplayName, Mode=OneWay}"
@@ -139,14 +144,14 @@
                             Style="{StaticResource SectionSecondaryTextBlockStyle}"
                             Text="{x:Bind CreatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />
                     </Grid>
-                    <common:MarkdownViewer
+                    <markdown:MarkdownViewer
                         HostKind="Comment"
                         AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
                         Grid.Row="1"
                         BaseUrl="https://github.com/"
                         DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
                         Text="{x:Bind Body, Mode=OneWay}" />
-                    <common:CommentInteractionBar
+                    <comments:CommentInteractionBar
                         Grid.Row="2"
                         AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
                         ActionRequested="CommentInteractionBar_ActionRequested"
@@ -167,7 +172,7 @@
             </Border>
         </DataTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestCommitTemplate" x:DataType="github:GitHubCommit">
+        <DataTemplate x:Key="RepoPullRequestCommitTemplate" x:DataType="commits:GitHubCommit">
             <Border
                 Margin="{ThemeResource AppMargin0_0_0_10}"
                 Padding="{ThemeResource AppPadding12}"
@@ -181,7 +186,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <common:Avatar
+                    <images:Avatar
                         VerticalAlignment="Center"
                         AutomationInstanceId="{x:Bind ShortSha, Mode=OneWay}"
                         DisplayName="{x:Bind AuthorDisplayName, Mode=OneWay}"
@@ -221,7 +226,7 @@
                     <ColumnDefinition Width="{ThemeResource AppGridLength24}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                    <common:Avatar
+                    <images:Avatar
                         AutomationInstanceId="{x:Bind ActorAutomationId, Mode=OneWay}"
                         DisplayName="{x:Bind ActorDisplayName, Mode=OneWay}"
                         Login="{x:Bind ActorProfileLogin, Mode=OneWay}"
@@ -258,7 +263,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
-                            <common:Avatar
+                            <images:Avatar
                                 VerticalAlignment="Center"
                                 AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                                 DisplayName="{x:Bind ReviewerLogin, Mode=OneWay}"
@@ -284,7 +289,7 @@
                             Style="{StaticResource SectionSecondaryTextBlockStyle}"
                             Text="{x:Bind SubmittedAtText, Mode=OneWay}" />
                     </Grid>
-                    <common:MarkdownViewer
+                    <markdown:MarkdownViewer
                         HostKind="Comment"
                         AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                         BaseUrl="https://github.com/"
@@ -324,14 +329,14 @@
                                             MaxLines="4"
                                             Text="{x:Bind DiffHunkText, Mode=OneWay}"
                                             TextWrapping="NoWrap" />
-                                        <common:MarkdownViewer
+                                        <markdown:MarkdownViewer
                                             HostKind="Comment"
                                             AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                                             BaseUrl="https://github.com/"
                                             DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
                                             SurfaceColorToken="AppSurfaceSubtle"
                                             Text="{x:Bind CommentBody, Mode=OneWay}" />
-                                        <common:CommentInteractionBar
+                                        <comments:CommentInteractionBar
                                             AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                                             ActionRequested="CommentInteractionBar_ActionRequested"
                                             AuthorLogin="{x:Bind CommentAuthorLogin, Mode=OneWay}"
@@ -370,14 +375,14 @@
                                                                     Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                                                     Text="{Binding CreatedAtText}" />
                                                             </Grid>
-                                                            <common:MarkdownViewer
+                                                            <markdown:MarkdownViewer
                                                                 HostKind="Comment"
                                                                 AutomationInstanceId="{Binding AutomationId}"
                                                                 BaseUrl="https://github.com/"
                                                                 DocumentSource="{Binding MarkdownSource}"
                                                                 SurfaceColorToken="AppSurfaceSubtle"
                                                                 Text="{Binding Body}" />
-                                                            <common:CommentInteractionBar
+                                                            <comments:CommentInteractionBar
                                                                 AutomationInstanceId="{Binding AutomationId}"
                                                                 ActionRequested="CommentInteractionBar_ActionRequested"
                                                                 AuthorLogin="{Binding AuthorLogin}"
@@ -397,12 +402,12 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        <common:MarkdownForm
+                                        <markdown:MarkdownForm
                                             AutomationInstanceId="{x:Bind ReplyFormAutomationId, Mode=OneWay}"
                                             DocumentSource="{x:Bind ReplyMarkdownSource, Mode=OneWay}"
                                             EditorHeight="160"
                                             Text="{x:Bind ReplyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                            <common:MarkdownForm.ActionContent>
+                                            <markdown:MarkdownForm.ActionContent>
                                                 <Button
                                                     x:Uid="PagesRepoPullRequestPageBindingReplyAutomationId" MinHeight="{ThemeResource AppDimension32}"
                                                     MinWidth="{ThemeResource AppDimension72}"
@@ -413,8 +418,8 @@
                                                     Content="{x:Bind ReplyButtonText, Mode=OneWay}"
                                                     IsEnabled="{x:Bind IsReplyEnabled, Mode=OneWay}"
                                                     Style="{StaticResource AppOutlineButtonStyle}" />
-                                            </common:MarkdownForm.ActionContent>
-                                        </common:MarkdownForm>
+                                            </markdown:MarkdownForm.ActionContent>
+                                        </markdown:MarkdownForm>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
@@ -448,7 +453,7 @@
             </Border>
         </DataTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestReviewerActorTemplate" x:DataType="github:GitHubActor">
+        <DataTemplate x:Key="RepoPullRequestReviewerActorTemplate" x:DataType="users:GitHubActor">
             <Grid
                 MinHeight="{ThemeResource AppDimension34}"
                 Margin="{ThemeResource AppMargin0_0_0_6}"
@@ -457,7 +462,7 @@
                     <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <common:Avatar
+                <images:Avatar
                     VerticalAlignment="Center"
                     AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                     Login="{x:Bind Login, Mode=OneWay}"
@@ -474,7 +479,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestAssigneeActorTemplate" x:DataType="github:GitHubActor">
+        <DataTemplate x:Key="RepoPullRequestAssigneeActorTemplate" x:DataType="users:GitHubActor">
             <Grid
                 MinHeight="{ThemeResource AppDimension34}"
                 Margin="{ThemeResource AppMargin0_0_0_6}"
@@ -483,7 +488,7 @@
                     <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <common:Avatar
+                <images:Avatar
                     VerticalAlignment="Center"
                     AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                     Login="{x:Bind Login, Mode=OneWay}"
@@ -1003,7 +1008,7 @@
                                                             <ColumnDefinition Width="*" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <common:Avatar
+                                                        <images:Avatar
                                                             VerticalAlignment="Center"
                                                             AutomationInstanceId="{Binding SelectedPullRequestAuthorAutomationId}"
                                                             Login="{Binding SelectedPullRequestAuthorLogin}"
@@ -1026,14 +1031,14 @@
                                                             Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                                             Text="Author" />
                                                     </Grid>
-                                                    <common:MarkdownViewer
+                                                    <markdown:MarkdownViewer
                                                         HostKind="Conversation"
                                                         AutomationInstanceId="RepoPullRequestsBody"
                                                         Grid.Row="1"
                                                         BaseUrl="https://github.com/"
                                                         DocumentSource="{Binding PullRequestBodyMarkdownSource}"
                                                         Text="{Binding PullRequestBodyText}" />
-                                                    <common:CommentInteractionBar
+                                                    <comments:CommentInteractionBar
                                                         x:Uid="RepoPullRequestsBodyInteractionBar"
                                                         Grid.Row="2"
                                                         AutomationInstanceId="RepoPullRequestsBody"
@@ -1259,14 +1264,14 @@
                                                 </Style>
                                             </Flyout.FlyoutPresenterStyle>
                                             <Border Width="{ThemeResource AppDimension440}" Padding="{ThemeResource AppPadding16}">
-                                                <common:MarkdownForm
+                                                <markdown:MarkdownForm
                                                     x:Name="PullRequestCompactCommentForm"
                                                     AutomationProperties.AutomationId="RepoPullRequestsCompactCommentBox"
                                                     AutomationInstanceId="RepoPullRequestsCompactCommentBox"
                                                     DocumentSource="{Binding PullRequestCommentMarkdownSource}"
                                                     EditorHeight="140"
                                                     Text="{Binding PullRequestCommentDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                                    <common:MarkdownForm.ActionContent>
+                                                    <markdown:MarkdownForm.ActionContent>
                                                         <Button
                                                             x:Uid="PagesRepoPullRequestPageRepoPullRequestsCompactCommentBu" MinHeight="{ThemeResource AppDimension34}"
                                                             MinWidth="{ThemeResource AppDimension96}"
@@ -1277,8 +1282,8 @@
                                                             Content="Comment"
                                                             IsEnabled="{Binding IsPullRequestCommentEnabled}"
                                                             Style="{StaticResource AppAccentButtonStyle}" />
-                                                    </common:MarkdownForm.ActionContent>
-                                                </common:MarkdownForm>
+                                                    </markdown:MarkdownForm.ActionContent>
+                                                </markdown:MarkdownForm>
                                             </Border>
                                         </Flyout>
                                     </Button.Flyout>

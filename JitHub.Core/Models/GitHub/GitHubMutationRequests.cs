@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace JitHub.Models.GitHub;
+namespace JitHub.Core.Models.GitHub;
 
 public sealed class GitHubIssueCreateRequest
 {

@@ -1,11 +1,15 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Images.Fetching;
+using JitHub.Core.Services.Images.Flights;
 using JitHub.Markdown.Images.Caching;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Images;
 
 /// <summary>
 /// The leased read path of <see cref="GitHubImageService"/>. Every returned

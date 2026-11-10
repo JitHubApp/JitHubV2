@@ -1,6 +1,6 @@
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Localization;
 
-namespace JitHub.Models.CodeViewer;
+namespace JitHub.Core.Models.CodeViewer;
 
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial record CodeSymbol(

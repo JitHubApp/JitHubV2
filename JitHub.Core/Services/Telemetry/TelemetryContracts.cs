@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 /// <summary>
 /// The app's telemetry service. Its <see cref="IMarkdownTelemetrySink.TrackEvent"/>

@@ -1,12 +1,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Services.Issues;
 using JitHub.Performance.Readiness;
-using JitHub.Services;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.ViewModels.Pages;
-using JitHub.WinUI.Views.Controls.Common;
+using JitHub.WinUI.ViewModels;
+using JitHub.WinUI.ViewModels.Issues;
+using JitHub.WinUI.Views.Controls.Scrolling;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;

@@ -1,4 +1,4 @@
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public static class PullRequestSectionSelectionPolicy
 {

@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public static class PullRequestSectionProjectionPolicy
 {

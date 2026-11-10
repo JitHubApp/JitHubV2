@@ -5,7 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Xml;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 internal readonly record struct RepositorySvgValidationResult(bool Accepted, string? Reason)
 {

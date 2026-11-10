@@ -1,6 +1,7 @@
 using System;
+using JitHub.Core.Services.Authentication;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.GitHub;
 
 public static class GitHubAccountPartition
 {

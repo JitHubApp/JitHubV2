@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public static class CommitSectionProjectionPolicy
 {

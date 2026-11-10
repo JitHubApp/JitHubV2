@@ -6,9 +6,18 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Dashboard;
 
 public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
 {
@@ -341,9 +350,9 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
                 result.IsRefreshInProgress,
                 result.RefreshError is null
                     ? null
-                    : JitHub.WinUI.Helpers.UserFacingError.For(
+                    : JitHub.Core.Helpers.UserFacingError.For(
                         result.RefreshError,
-                        JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                        JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                         "dashboard-section"));
         }
         catch (GitHubAuthenticationException ex) when (reconnectOnUnauthorized)
@@ -353,7 +362,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
                 CacheState.Error,
                 null,
                 null,
-                ErrorMessage: JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Loading, "dashboard-notifications"),
+                ErrorMessage: JitHub.Core.Helpers.UserFacingError.For(ex, JitHub.Core.Helpers.UserFacingErrorKind.Loading, "dashboard-notifications"),
                 RequiresReconnect: true);
         }
         catch (GitHubApiException ex) when (reconnectOnUnauthorized && ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
@@ -363,7 +372,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
                 CacheState.Error,
                 null,
                 null,
-                ErrorMessage: JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Loading, "dashboard-notifications"),
+                ErrorMessage: JitHub.Core.Helpers.UserFacingError.For(ex, JitHub.Core.Helpers.UserFacingErrorKind.Loading, "dashboard-notifications"),
                 RequiresReconnect: true);
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
@@ -373,7 +382,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
                 CacheState.Error,
                 null,
                 null,
-                ErrorMessage: JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Loading, "dashboard-notifications"));
+                ErrorMessage: JitHub.Core.Helpers.UserFacingError.For(ex, JitHub.Core.Helpers.UserFacingErrorKind.Loading, "dashboard-notifications"));
         }
     }
 

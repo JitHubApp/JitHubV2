@@ -4,8 +4,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:activitiesconverters="using:JitHub.WinUI.Converters.Activities"
     xmlns:code="using:JitHub.WinUI.Converters.Code"
-    xmlns:commonconverters="using:JitHub.WinUI.Converters.Common"
+    xmlns:commonconverters="using:JitHub.WinUI.Converters"
+    xmlns:commits="using:JitHub.WinUI.Converters.Commits"
     xmlns:converters="using:JitHub.WinUI.Converters"
+    xmlns:repositories="using:JitHub.WinUI.Converters.Repositories"
     xmlns:issuesconverters="using:JitHub.WinUI.Converters.Issues"
     xmlns:pullrequestsconverters="using:JitHub.WinUI.Converters.PullRequests"
     xmlns:winui="using:Microsoft.UI.Xaml.Controls">
@@ -108,20 +110,20 @@
             <commonconverters:BoolToAccentColorConverter x:Key="BoolToAccentColorConverter" />
             <commonconverters:SizeToLengthConverter x:Key="SizeToLengthConverter" x:Name="SizeToLengthConverter" />
             <commonconverters:NumberToKizedStringConverter x:Key="NumberToKizedStringConverter" x:Name="NumberToKizedStringConverter" />
-            <commonconverters:DiffToMarkdownConverter x:Key="DiffToMarkdownConverter" x:Name="DiffToMarkdownConverter" />
+            <commits:DiffToMarkdownConverter x:Key="DiffToMarkdownConverter" x:Name="DiffToMarkdownConverter" />
             <commonconverters:ColorToSolidBrushConverter x:Key="ColorToSolidBrushConverter" x:Name="ColorToSolidBrushConverter" />
             <commonconverters:HexColorToSolidBrushConverter x:Key="HexColorToSolidBrushConverter" />
             <commonconverters:ObjToVisibilityConverter x:Key="ObjToVisibilityConverter" x:Name="ObjToVisibilityConverter" />
-            <commonconverters:ReactionTypeToEmojiConverter x:Key="ReactionTypeToEmojiConverter" x:Name="ReactionTypeToEmojiConverter" />
+            <issuesconverters:ReactionTypeToEmojiConverter x:Key="ReactionTypeToEmojiConverter" x:Name="ReactionTypeToEmojiConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" x:Name="BoolToVisibilityConverter" />
             <converters:BoolToVisibilityReverseConverter x:Key="BoolToVisibilityReverseConverter" x:Name="BoolToVisibilityReverseConverter" />
             <converters:HexColorToColorStringConverter x:Key="HexColorToColorStringConverter" x:Name="HexColorToColorStringConverter" />
             <converters:HexColorToForegroundConverter x:Key="HexColorToForegroundConverter" x:Name="HexColorToForegroundConverter" />
-            <converters:LanguageToVisibilityConverter x:Key="LanguageToVisibilityConverter" x:Name="LanguageToVisibilityConverter" />
-            <converters:OpenStatusToColorConverter x:Key="OpenStatusToColorConverter" x:Name="OpenStatusToColorConverter" />
+            <repositories:LanguageToVisibilityConverter x:Key="LanguageToVisibilityConverter" x:Name="LanguageToVisibilityConverter" />
+            <issuesconverters:OpenStatusToColorConverter x:Key="OpenStatusToColorConverter" x:Name="OpenStatusToColorConverter" />
             <converters:TimeAgoConverter x:Key="TimeAgoConverter" x:Name="TimeAgoConverter" />
             <converters:StringToEnabledConverter x:Key="StringToEnabledConverter" x:Name="StringToEnabledConverter" />
-            <converters:RepoStatusIconConverter x:Key="RepoStatusIconConverter" x:Name="RepoStatusIconConverter" />
+            <repositories:RepoStatusIconConverter x:Key="RepoStatusIconConverter" x:Name="RepoStatusIconConverter" />
 
             <issuesconverters:CommentDateBodyConverter x:Key="CommentDateBodyConverter" x:Name="CommentDateBodyConverter" />
             <issuesconverters:NumberOfCommentsToDescriptionDetailConverter x:Key="NumberOfCommentsToDescriptionDetailConverter" x:Name="NumberOfCommentsToDescriptionDetailConverter" />

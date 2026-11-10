@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using JitHub.Core.Services.Settings;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Dashboard;
 
 public sealed class DashboardWidgetLayoutService : IDashboardWidgetLayoutService
 {

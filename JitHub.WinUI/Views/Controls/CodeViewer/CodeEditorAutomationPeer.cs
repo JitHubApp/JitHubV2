@@ -1,5 +1,5 @@
 using System;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Localization;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Automation.Peers;

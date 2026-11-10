@@ -1,10 +1,14 @@
 using System;
 using System.Diagnostics;
-using JitHub.Models;
+using JitHub.Core.Models.Theming;
+using JitHub.Core.Services.Settings;
+using JitHub.Core.Services.Theming;
+using JitHub.Shared.Theming;
+using JitHub.WinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel;
 
-namespace JitHub.Services;
+namespace JitHub.WinUI.Services.Settings;
 
 public sealed class SettingsPreferencesService : ISettingsPreferencesService
 {

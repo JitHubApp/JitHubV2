@@ -1,6 +1,7 @@
+using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Markdown.Git;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public static class GitReferencePolicy
 {

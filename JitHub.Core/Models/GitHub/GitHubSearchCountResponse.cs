@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace JitHub.Models.GitHub;
+namespace JitHub.Core.Models.GitHub;
 
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class GitHubSearchCountResponse

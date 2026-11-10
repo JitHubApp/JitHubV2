@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Repositories;
 
 public enum RepositoryLibraryFilter
 {

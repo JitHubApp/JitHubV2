@@ -1,4 +1,4 @@
-using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.Core.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

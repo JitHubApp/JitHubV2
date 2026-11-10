@@ -4,9 +4,14 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.Lifecycle;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public enum CommitPrefetchReason
 {

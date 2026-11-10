@@ -116,7 +116,7 @@ public sealed class InlineAlignmentContractTests
 
                 string[] typography = textBlocks.Select(GetTypographySignature).Distinct(StringComparer.Ordinal).ToArray();
                 bool isReactionChip = path.EndsWith(
-                    Path.Combine("Controls", "Common", "CommentInteractionBar.xaml"),
+                    Path.Combine("Controls", "Comments", "CommentInteractionBar.xaml"),
                     StringComparison.OrdinalIgnoreCase);
                 if (typography.Length > 1 && !isReactionChip)
                 {

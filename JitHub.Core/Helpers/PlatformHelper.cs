@@ -1,8 +1,9 @@
 using System;
 using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.WinUI.Helpers
+namespace JitHub.Core.Helpers
 {
     public static class PlatformHelper
     {

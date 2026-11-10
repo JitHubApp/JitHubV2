@@ -14,9 +14,9 @@ public sealed class AvatarIdentityContractTests
     {
         string root = FindRepositoryRoot();
         string xaml = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "Common", "Avatar.xaml"));
+            root, "JitHub.WinUI", "Views", "Controls", "Images", "Avatar.xaml"));
         string code = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "Common", "Avatar.xaml.cs"));
+            root, "JitHub.WinUI", "Views", "Controls", "Images", "Avatar.xaml.cs"));
 
         Assert.Contains("AppIdentityButtonStyle", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId", xaml, StringComparison.Ordinal);
@@ -68,7 +68,7 @@ public sealed class AvatarIdentityContractTests
     {
         string root = FindRepositoryRoot();
         string sharedComment = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "UserCommentBlock.xaml"));
+            root, "JitHub.WinUI", "Views", "Controls", "Comments", "UserCommentBlock.xaml"));
         string myIssues = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Pages", "MyIssuesPage.xaml"));
 
@@ -143,13 +143,13 @@ public sealed class AvatarIdentityContractTests
             File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Issue", "RepoIssueDetailPane.xaml")));
         string repoPullRequests = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml"));
         string repoPullRequestViewModel = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "RepoPullRequestPageViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "PullRequests", "RepoPullRequestPageViewModel.cs"));
         string timelineViewModel = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
             "ViewModels",
-            "PullRequestViewModels",
-            "ConversationViewModels",
+            "PullRequests",
+            "Conversation",
             "PullRequestTimelineItemViewModel.cs"));
 
         Assert.Contains("Login=\"{x:Bind AuthenticatedLogin, Mode=OneWay}\"", myIssues, StringComparison.Ordinal);
@@ -164,7 +164,7 @@ public sealed class AvatarIdentityContractTests
         Assert.Contains("ActorLogin = null", timelineViewModel, StringComparison.Ordinal);
 
         string mePullRequestItems = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "MePullRequestSectionViewItems.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Me", "MePullRequestSectionViewItems.cs"));
         string reviewBlock = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "PullRequest", "Conversation", "ReviewBlock.xaml"));
         string reviewBlockCode = File.ReadAllText(Path.Combine(
@@ -188,9 +188,9 @@ public sealed class AvatarIdentityContractTests
         string repoPullRequests = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml"));
         string repoCommits = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "RepoCommitsPage.xaml"));
         string pullRequestViewModel = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "RepoPullRequestPageViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "PullRequests", "RepoPullRequestPageViewModel.cs"));
         string commitViewModel = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "Pages", "RepoCommitsPageViewModel.cs"));
+            root, "JitHub.WinUI", "ViewModels", "Commits", "RepoCommitsPageViewModel.cs"));
 
         AssertAvatarSource(repoIssues, "issue_list_author");
         AssertAvatarSource(repoPullRequests, "pull_request_list_author");
@@ -280,7 +280,7 @@ public sealed class AvatarIdentityContractTests
     {
         string root = FindRepositoryRoot();
         string comment = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "UserCommentBlock.xaml"));
+            root, "JitHub.WinUI", "Views", "Controls", "Comments", "UserCommentBlock.xaml"));
         string activity = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "App", "ActivityCard.xaml"));
 

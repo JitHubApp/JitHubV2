@@ -9,9 +9,16 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Notifications;
 
 public sealed class GitHubNotificationQueryService : IGitHubNotificationQueryService
 {
@@ -355,9 +362,9 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
                 cancellationToken);
             return string.IsNullOrWhiteSpace(error?.Message)
                 ? $"GitHub returned HTTP {(int)response.StatusCode}."
-                : JitHub.WinUI.Helpers.UserFacingError.ForInternalMessage(
+                : JitHub.Core.Helpers.UserFacingError.ForInternalMessage(
                     error.Message,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Action,
                     "notification-api");
         }
         catch (OperationCanceledException)

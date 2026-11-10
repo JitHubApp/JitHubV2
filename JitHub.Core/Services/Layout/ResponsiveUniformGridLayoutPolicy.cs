@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services.Layout;
+namespace JitHub.Core.Services.Layout;
 
 public readonly record struct ResponsiveUniformGridMetrics(int Columns, double ItemWidth);
 

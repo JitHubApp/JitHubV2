@@ -1,7 +1,7 @@
 using System;
 using System.Net;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 [Flags]
 public enum PullRequestDeniedCapability

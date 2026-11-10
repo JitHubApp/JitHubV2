@@ -1,9 +1,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Issues;
 
 public sealed record IssueSectionState(
     CacheState CacheState,

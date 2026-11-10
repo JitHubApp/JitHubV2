@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using Windows.Storage;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Storage;
 
 public interface IAppStoragePathProvider
 {

@@ -5,7 +5,7 @@ using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>
 /// Maps JitHub's app resources onto a renderer's local resource overrides.

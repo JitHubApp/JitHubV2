@@ -1,4 +1,4 @@
-namespace JitHub.Models.CodeViewer;
+namespace JitHub.Core.Models.CodeViewer;
 
 public sealed record FilePreviewDescriptor(
     RepoFilePreviewKind Kind,

@@ -220,6 +220,6 @@
 </section>
 
 @code {
-    private static string PaletteStyle(JitHub.Models.ThemePalettePreview preview) =>
+    private static string PaletteStyle(JitHub.Shared.Theming.ThemePalettePreview preview) =>
         $"--theme-canvas:{preview.Canvas};--theme-rail:{preview.Rail};--theme-surface:{preview.Surface};--theme-accent:{preview.Accent};--theme-ink:{preview.Ink}";
 }

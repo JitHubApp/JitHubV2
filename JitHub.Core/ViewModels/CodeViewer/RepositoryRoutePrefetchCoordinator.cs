@@ -1,10 +1,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.WinUI.ViewModels.CodeViewer;
+namespace JitHub.Core.ViewModels.CodeViewer;
 
 /// <summary>
 /// Owns the single predictive fetch associated with the current shell route.

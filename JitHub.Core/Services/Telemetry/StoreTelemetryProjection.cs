@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 /// <summary>
 /// Projects a few sanitized categorical dimensions into a second, bounded

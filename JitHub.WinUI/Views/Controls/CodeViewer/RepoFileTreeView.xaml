@@ -7,7 +7,7 @@
     xmlns:local="using:JitHub.WinUI.Views.Controls.CodeViewer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.CodeViewer"
+    xmlns:viewmodels="using:JitHub.Core.ViewModels.CodeViewer"
     d:DesignHeight="600"
     d:DesignWidth="280"
     AutomationProperties.AutomationId="RepoCodeFileTreePane"

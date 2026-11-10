@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace JitHub.Models.CodeViewer;
+namespace JitHub.Core.Models.CodeViewer;
 
 public static class RepoCodeAutomation
 {

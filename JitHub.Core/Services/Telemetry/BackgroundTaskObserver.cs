@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 /// <summary>
 /// Contains optional view-model and service work that intentionally outlives its caller.

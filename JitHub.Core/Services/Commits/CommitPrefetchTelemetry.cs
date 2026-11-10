@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public static class CommitPrefetchTelemetry
 {

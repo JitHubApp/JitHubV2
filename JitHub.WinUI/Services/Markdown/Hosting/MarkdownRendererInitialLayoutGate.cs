@@ -2,7 +2,7 @@ using System;
 using MarkdownRenderer.Controls;
 using Microsoft.UI.Xaml;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.Services.Markdown.Hosting;
 
 /// <summary>
 /// Holds back a renderer's first Markdown assignment until the renderer is

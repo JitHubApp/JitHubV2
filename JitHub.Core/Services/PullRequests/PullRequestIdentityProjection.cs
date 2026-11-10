@@ -1,7 +1,9 @@
 using System;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Profile;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public readonly record struct PullRequestIdentityPresentation(
     string DisplayName,

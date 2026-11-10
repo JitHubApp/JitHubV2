@@ -5,8 +5,8 @@
     xmlns:local="using:JitHub.WinUI.Views.Controls.PullRequest.Conversation"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls" xmlns:pullrequest="using:JitHub.WinUI.Views.Controls.PullRequest" xmlns:controls="using:JitHub.WinUI.Views.Controls" xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls" xmlns:pullrequest="using:JitHub.WinUI.Views.Controls.PullRequest" xmlns:controls="using:JitHub.WinUI.Views.Controls" xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.PullRequests.Conversation"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
@@ -16,7 +16,7 @@
             <ColumnDefinition Width="auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <common:Avatar
+        <images:Avatar
             x:Name="ReviewerAvatar"
             Grid.Column="0"
             Margin="{ThemeResource AppMargin0_0_8_0}"

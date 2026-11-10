@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace JitHub.Models.CodeViewer;
+namespace JitHub.Core.Models.CodeViewer;
 
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepoTreeNode
