@@ -1,8 +1,8 @@
 using System;
 using System.Globalization;
 using System.Net;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.Caching;
+using JitHub.Markdown.Images.RemoteContent;
 
 namespace JitHub.Services;
 

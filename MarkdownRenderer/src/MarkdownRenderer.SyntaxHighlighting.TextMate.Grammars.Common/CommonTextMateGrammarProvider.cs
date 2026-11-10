@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.Internal;
 
 namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 

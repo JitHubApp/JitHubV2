@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using CommunityToolkit.WinUI;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;

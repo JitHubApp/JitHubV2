@@ -10,7 +10,14 @@ public sealed class ResponsiveViewportAutomationContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI.Automation",
-            "Program.cs"));
+            "Windows",
+            "WindowSizing.cs"))
+            + File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "Probes",
+            "Profile",
+            "ProfileResponsiveProbe.cs"));
 
         Assert.Contains("static Rectangle ResizeWindow", source, StringComparison.Ordinal);
         Assert.Contains("GetResponsiveViewportLabel", source, StringComparison.Ordinal);
@@ -24,9 +31,11 @@ public sealed class ResponsiveViewportAutomationContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI.Automation",
-            "Program.cs"));
+            "Probes",
+            "Profile",
+            "ProfileResponsiveProbe.cs"));
         int start = source.IndexOf("static void RunProfileResponsiveProbe", StringComparison.Ordinal);
-        int end = source.IndexOf("static void RunProfileAvatarRoutingProbe", start, StringComparison.Ordinal);
+        int end = source.IndexOf("static void AssertProfileModeSwitchKeepsBoardStable", start, StringComparison.Ordinal);
         string probe = source[start..end];
 
         Assert.Contains("LaunchApplication(options.AppPath, \"--page=shell\"", probe, StringComparison.Ordinal);

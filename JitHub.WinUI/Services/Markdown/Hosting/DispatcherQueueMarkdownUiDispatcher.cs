@@ -1,5 +1,5 @@
 using System;
-using JitHub.Markdown;
+using JitHub.Markdown.Runtime;
 using Microsoft.UI.Dispatching;
 
 namespace JitHub.Services.Markdown.Hosting;

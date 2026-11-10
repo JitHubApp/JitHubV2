@@ -1,5 +1,5 @@
 using System;
-using JitHub.Markdown;
+using JitHub.Markdown.Links;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using Microsoft.Extensions.DependencyInjection;

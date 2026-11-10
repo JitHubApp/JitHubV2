@@ -1,6 +1,6 @@
 using System;
 using System.Globalization;
-using JitHub.Markdown;
+using JitHub.Markdown.Links;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;

@@ -1,5 +1,5 @@
 ﻿using System.Globalization;
-using JitHub.Markdown;
+using JitHub.Markdown.Localization;
 using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services.Markdown;

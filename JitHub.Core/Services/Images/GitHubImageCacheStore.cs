@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.Caching;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;

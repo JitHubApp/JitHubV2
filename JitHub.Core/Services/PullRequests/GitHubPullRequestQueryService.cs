@@ -6,6 +6,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI;
 
 namespace JitHub.Services;

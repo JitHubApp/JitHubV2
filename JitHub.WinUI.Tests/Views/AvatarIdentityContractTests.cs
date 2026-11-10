@@ -213,7 +213,9 @@ public sealed class AvatarIdentityContractTests
     public void ProfileAvatarProbeExercisesHoverAndCanonicalInternalRoutes()
     {
         string root = FindRepositoryRoot();
-        string automation = File.ReadAllText(Path.Combine(root, "JitHub.WinUI.Automation", "Program.cs"));
+        string automation = File.ReadAllText(Path.Combine(root, "JitHub.WinUI.Automation", "Probes", "ProbeCatalog.cs"))
+            + File.ReadAllText(Path.Combine(root, "JitHub.WinUI.Automation", "Probes", "Profile", "ProfileAvatarRoutingProbe.cs"))
+            + File.ReadAllText(Path.Combine(root, "JitHub.WinUI.Automation", "Probes", "Profile", "DirectRepositoryAvatarRouteProbe.cs"));
 
         Assert.Contains("MoveMouseToEmptyTitleBar(window, commandSearch)", automation, StringComparison.Ordinal);
         Assert.Contains("WaitForScreenshotRegionToStabilize(", automation, StringComparison.Ordinal);

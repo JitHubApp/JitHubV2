@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown.Svg.Internal;
 
 namespace JitHub.Markdown.Svg;
 

@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;

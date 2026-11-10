@@ -1,5 +1,6 @@
 using System.Diagnostics;
-using JitHub.Services;
+using JitHub.Performance.Observation;
+using JitHub.Performance.Readiness;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

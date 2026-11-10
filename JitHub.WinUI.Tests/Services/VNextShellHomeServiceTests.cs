@@ -11,6 +11,13 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class VNextShellHomeServiceTests
 {
+    // Upper bound for work the test expects to finish (a scheduled prefetch
+    // starting, cancellation and quiescence completing after release). It only
+    // turns a hang into a failure, so it is generous: CI runs these suites in
+    // Debug with coverage on a shared runner. Checks that work has NOT finished
+    // yet keep their short, explicit delays.
+    private static readonly TimeSpan ExpectedCompletionBound = TimeSpan.FromSeconds(15);
+
     [Fact]
     public void DashboardWidgetLayout_LoadsDefaultWhenMissing()
     {
@@ -453,7 +460,7 @@ public sealed class VNextShellHomeServiceTests
             47,
             IssuePrefetchReason.Hover,
             TimeSpan.Zero);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await entered.Task.WaitAsync(ExpectedCompletionBound);
 
         Task cancel = coordinator.CancelAccountAsync("42");
         Task quiesce = accountWork.QuiesceAsync("42");
@@ -462,7 +469,7 @@ public sealed class VNextShellHomeServiceTests
         Assert.False(quiesce.IsCompleted);
 
         release.SetResult();
-        await Task.WhenAll(cancel, quiesce).WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(cancel, quiesce).WaitAsync(ExpectedCompletionBound);
         await cache.ClearPartitionAsync("42");
 
         Assert.False(cache.TryGet("42", "octo", "hello-world", 47, out _));
@@ -527,7 +534,7 @@ public sealed class VNextShellHomeServiceTests
             scheduled.Dispose();
         }
 
-        PullRequestPrefetchResult result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        PullRequestPrefetchResult result = await completion.Task.WaitAsync(ExpectedCompletionBound);
 
         Assert.Equal(PullRequestPrefetchResult.Cancelled, result);
         Assert.False(cache.TryGet("42", "octo", "hello-world", 44, out _));
@@ -550,7 +557,7 @@ public sealed class VNextShellHomeServiceTests
             TimeSpan.Zero,
             (result, _) => completion.TrySetResult(result));
 
-        PullRequestPrefetchResult result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        PullRequestPrefetchResult result = await completion.Task.WaitAsync(ExpectedCompletionBound);
 
         Assert.Equal(PullRequestPrefetchResult.Success, result);
         Assert.True(cache.TryGet("42", "octo", "hello-world", 45, out _));
@@ -651,7 +658,7 @@ public sealed class VNextShellHomeServiceTests
             48,
             PullRequestPrefetchReason.Hover,
             TimeSpan.Zero);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await entered.Task.WaitAsync(ExpectedCompletionBound);
 
         Task cancel = coordinator.CancelAccountAsync("42");
         Task quiesce = accountWork.QuiesceAsync("42");
@@ -660,7 +667,7 @@ public sealed class VNextShellHomeServiceTests
         Assert.False(quiesce.IsCompleted);
 
         release.SetResult();
-        await Task.WhenAll(cancel, quiesce).WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(cancel, quiesce).WaitAsync(ExpectedCompletionBound);
         await cache.ClearPartitionAsync("42");
 
         Assert.False(cache.TryGet("42", "octo", "hello-world", 48, out _));

@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;

@@ -2,6 +2,10 @@ using System.Diagnostics;
 using System.Globalization;
 using MarkdownRenderer.Mermaid;
 using System.Runtime.InteropServices;
+using MarkdownRenderer.Mermaid.Internal.Rendering;
+using MarkdownRenderer.Mermaid.Localization;
+using MarkdownRenderer.Mermaid.NativeRuntime;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 namespace MarkdownRenderer.Mermaid.Tests;
 

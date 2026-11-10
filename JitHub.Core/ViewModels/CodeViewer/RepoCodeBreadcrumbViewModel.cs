@@ -2,7 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Markdown;
+using JitHub.Markdown.Links;
 using JitHub.Services.CodeViewer;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
