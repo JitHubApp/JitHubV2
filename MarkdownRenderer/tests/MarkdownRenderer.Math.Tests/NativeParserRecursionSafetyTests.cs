@@ -1,3 +1,4 @@
+using MarkdownRenderer.Math.Internal.Processing;
 using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;

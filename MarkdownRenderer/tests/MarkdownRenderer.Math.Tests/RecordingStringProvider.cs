@@ -1,3 +1,5 @@
+using MarkdownRenderer.Math.Localization;
+
 namespace MarkdownRenderer.Math.Tests;
 
 /// <summary>A string provider that records each key and language it is asked for.</summary>

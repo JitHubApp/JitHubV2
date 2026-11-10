@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using MarkdownRenderer.Math.Accessibility;
+using MarkdownRenderer.Math.Localization;
 using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;

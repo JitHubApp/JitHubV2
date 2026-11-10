@@ -1,3 +1,6 @@
+using MarkdownRenderer.Math.Internal.Processing;
+using MarkdownRenderer.Math.Internal.Scanning;
+using MarkdownRenderer.Math.Localization;
 using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;

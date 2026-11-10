@@ -1,4 +1,6 @@
 using System.Text;
+using MarkdownRenderer.Math.Internal.Processing;
+using MarkdownRenderer.Math.Internal.Scenes;
 using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;

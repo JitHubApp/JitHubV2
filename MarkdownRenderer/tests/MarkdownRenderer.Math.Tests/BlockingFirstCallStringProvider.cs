@@ -1,3 +1,5 @@
+using MarkdownRenderer.Math.Localization;
+
 namespace MarkdownRenderer.Math.Tests;
 
 /// <summary>A string provider whose first call blocks until released and records where it ran.</summary>
