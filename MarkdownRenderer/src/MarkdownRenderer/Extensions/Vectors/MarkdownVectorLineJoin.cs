@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Controls joins between stroked segments.</summary>
 public enum MarkdownVectorLineJoin

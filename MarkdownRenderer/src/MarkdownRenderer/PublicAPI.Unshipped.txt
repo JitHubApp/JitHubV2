@@ -5,14 +5,14 @@
 ~override MarkdownRenderer.Document.DocumentPosition.ToString() -> string
 ~override MarkdownRenderer.Document.DocumentRange.Equals(object obj) -> bool
 ~override MarkdownRenderer.Document.DocumentRange.ToString() -> string
-~override MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Equals(object obj) -> bool
-~override MarkdownRenderer.Extensions.MarkdownVectorPathOperation.ToString() -> string
-~override MarkdownRenderer.Extensions.MarkdownVectorPoint.Equals(object obj) -> bool
-~override MarkdownRenderer.Extensions.MarkdownVectorPoint.ToString() -> string
-~override MarkdownRenderer.Extensions.MarkdownVectorRectangle.Equals(object obj) -> bool
-~override MarkdownRenderer.Extensions.MarkdownVectorRectangle.ToString() -> string
-~override MarkdownRenderer.Extensions.MarkdownVectorTransform.Equals(object obj) -> bool
-~override MarkdownRenderer.Extensions.MarkdownVectorTransform.ToString() -> string
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Equals(object obj) -> bool
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.ToString() -> string
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.Equals(object obj) -> bool
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.ToString() -> string
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.Equals(object obj) -> bool
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.ToString() -> string
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.Equals(object obj) -> bool
+~override MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.ToString() -> string
 ~override MarkdownRenderer.Images.MarkdownImageResolution.Equals(object obj) -> bool
 ~override MarkdownRenderer.Images.MarkdownImageResolution.ToString() -> string
 ~override MarkdownRenderer.Images.Svg.MarkdownSvgColor.Equals(object obj) -> bool
@@ -601,7 +601,7 @@ MarkdownRenderer.Extensions.MarkdownContent.SemanticText.get -> string?
 MarkdownRenderer.Extensions.MarkdownContent.SourceSpan.get -> MarkdownRenderer.SourceSpan
 MarkdownRenderer.Extensions.MarkdownContent.StyleRole.get -> MarkdownRenderer.Theming.MarkdownStyleRole
 MarkdownRenderer.Extensions.MarkdownContent.Text.get -> string?
-MarkdownRenderer.Extensions.MarkdownContent.VectorScene.get -> MarkdownRenderer.Extensions.MarkdownVectorScene?
+MarkdownRenderer.Extensions.MarkdownContent.VectorScene.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene?
 MarkdownRenderer.Extensions.MarkdownContentAttributes
 MarkdownRenderer.Extensions.MarkdownContentBuilder
 MarkdownRenderer.Extensions.MarkdownContentBuilder.AddCodeBlock(string! code, string? language, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole = default(MarkdownRenderer.Theming.MarkdownStyleRole), System.Collections.Generic.IReadOnlyDictionary<string!, string!>? attributes = null) -> MarkdownRenderer.Extensions.MarkdownContentBuilder!
@@ -610,7 +610,7 @@ MarkdownRenderer.Extensions.MarkdownContentBuilder.AddCustom(string! customKind,
 MarkdownRenderer.Extensions.MarkdownContentBuilder.AddHostedElement(string! factoryKey, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole = MarkdownRenderer.Extensions.MarkdownAccessibilityRole.Group, System.Collections.Generic.IReadOnlyDictionary<string!, string!>? attributes = null, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null) -> MarkdownRenderer.Extensions.MarkdownContentBuilder!
 MarkdownRenderer.Extensions.MarkdownContentBuilder.AddImage(string! destination, string? alternativeText, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole = default(MarkdownRenderer.Theming.MarkdownStyleRole), System.Collections.Generic.IReadOnlyDictionary<string!, string!>? attributes = null) -> MarkdownRenderer.Extensions.MarkdownContentBuilder!
 MarkdownRenderer.Extensions.MarkdownContentBuilder.AddText(string! text, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole = default(MarkdownRenderer.Theming.MarkdownStyleRole), MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole = MarkdownRenderer.Extensions.MarkdownAccessibilityRole.Text) -> MarkdownRenderer.Extensions.MarkdownContentBuilder!
-MarkdownRenderer.Extensions.MarkdownContentBuilder.AddVectorScene(MarkdownRenderer.Extensions.MarkdownVectorScene! scene, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null, System.Collections.Generic.IReadOnlyDictionary<string!, string!>? attributes = null) -> MarkdownRenderer.Extensions.MarkdownContentBuilder!
+MarkdownRenderer.Extensions.MarkdownContentBuilder.AddVectorScene(MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene! scene, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Theming.MarkdownStyleRole styleRole, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null, System.Collections.Generic.IReadOnlyDictionary<string!, string!>? attributes = null) -> MarkdownRenderer.Extensions.MarkdownContentBuilder!
 MarkdownRenderer.Extensions.MarkdownContentBuilder.Build() -> MarkdownRenderer.Extensions.MarkdownContentFragment!
 MarkdownRenderer.Extensions.MarkdownContentBuilder.MarkdownContentBuilder() -> void
 MarkdownRenderer.Extensions.MarkdownContentFragment
@@ -674,162 +674,162 @@ MarkdownRenderer.Extensions.MarkdownSyntaxNode.Kind.get -> string!
 MarkdownRenderer.Extensions.MarkdownSyntaxNode.Literal.get -> string?
 MarkdownRenderer.Extensions.MarkdownSyntaxNode.MarkdownSyntaxNode(string! kind, MarkdownRenderer.SourceSpan sourceSpan, string? literal = null, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string!, string!>>? attributes = null, System.Collections.Generic.IEnumerable<MarkdownRenderer.Extensions.MarkdownSyntaxNode!>? children = null) -> void
 MarkdownRenderer.Extensions.MarkdownSyntaxNode.SourceSpan.get -> MarkdownRenderer.SourceSpan
-MarkdownRenderer.Extensions.MarkdownVectorCommand
-MarkdownRenderer.Extensions.MarkdownVectorCommand.ColorArgb.get -> uint?
-MarkdownRenderer.Extensions.MarkdownVectorCommand.End.get -> MarkdownRenderer.Extensions.MarkdownVectorPoint
-MarkdownRenderer.Extensions.MarkdownVectorCommand.IsClosed.get -> bool
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Kind.get -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Path.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation>!
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Rectangle.get -> MarkdownRenderer.Extensions.MarkdownVectorRectangle
-MarkdownRenderer.Extensions.MarkdownVectorCommand.SemanticIndex.get -> int
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Start.get -> MarkdownRenderer.Extensions.MarkdownVectorPoint
-MarkdownRenderer.Extensions.MarkdownVectorCommand.StrokeWidth.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Style.get -> MarkdownRenderer.Extensions.MarkdownVectorPaintStyle?
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Text.get -> string?
-MarkdownRenderer.Extensions.MarkdownVectorCommand.TextStyle.get -> MarkdownRenderer.Extensions.MarkdownVectorTextStyle?
-MarkdownRenderer.Extensions.MarkdownVectorCommand.Transform.get -> MarkdownRenderer.Extensions.MarkdownVectorTransform
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.BeginClip = 12 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.BeginGroup = 10 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.DrawEllipse = 8 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.DrawLine = 7 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.DrawPath = 6 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.DrawRectangle = 5 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.DrawText = 9 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.EndClip = 13 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.EndGroup = 11 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.FillPath = 0 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.FillRectangle = 2 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.StrokeLine = 4 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.StrokePath = 1 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorCommandKind.StrokeRectangle = 3 -> MarkdownRenderer.Extensions.MarkdownVectorCommandKind
-MarkdownRenderer.Extensions.MarkdownVectorFillRule
-MarkdownRenderer.Extensions.MarkdownVectorFillRule.EvenOdd = 1 -> MarkdownRenderer.Extensions.MarkdownVectorFillRule
-MarkdownRenderer.Extensions.MarkdownVectorFillRule.Nonzero = 0 -> MarkdownRenderer.Extensions.MarkdownVectorFillRule
-MarkdownRenderer.Extensions.MarkdownVectorFontRole
-MarkdownRenderer.Extensions.MarkdownVectorFontRole.Authored = 0 -> MarkdownRenderer.Extensions.MarkdownVectorFontRole
-MarkdownRenderer.Extensions.MarkdownVectorFontRole.Host = 1 -> MarkdownRenderer.Extensions.MarkdownVectorFontRole
-MarkdownRenderer.Extensions.MarkdownVectorLineCap
-MarkdownRenderer.Extensions.MarkdownVectorLineCap.Flat = 0 -> MarkdownRenderer.Extensions.MarkdownVectorLineCap
-MarkdownRenderer.Extensions.MarkdownVectorLineCap.Round = 1 -> MarkdownRenderer.Extensions.MarkdownVectorLineCap
-MarkdownRenderer.Extensions.MarkdownVectorLineCap.Square = 2 -> MarkdownRenderer.Extensions.MarkdownVectorLineCap
-MarkdownRenderer.Extensions.MarkdownVectorLineJoin
-MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Bevel = 2 -> MarkdownRenderer.Extensions.MarkdownVectorLineJoin
-MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Miter = 0 -> MarkdownRenderer.Extensions.MarkdownVectorLineJoin
-MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Round = 1 -> MarkdownRenderer.Extensions.MarkdownVectorLineJoin
-MarkdownRenderer.Extensions.MarkdownVectorLinkAction
-MarkdownRenderer.Extensions.MarkdownVectorLinkAction.Action.get -> string?
-MarkdownRenderer.Extensions.MarkdownVectorLinkAction.External.get -> bool
-MarkdownRenderer.Extensions.MarkdownVectorLinkAction.MarkdownVectorLinkAction(int semanticIndex, string? target, string? action, bool external = false) -> void
-MarkdownRenderer.Extensions.MarkdownVectorLinkAction.SemanticIndex.get -> int
-MarkdownRenderer.Extensions.MarkdownVectorLinkAction.Target.get -> string?
-MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintRole.Authored = 0 -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintRole.Foreground = 1 -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintRole.Link = 3 -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintRole.Surface = 2 -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.DashArray.get -> System.Collections.Generic.IReadOnlyList<float>!
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.DashOffset.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.FillArgb.get -> uint?
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.FillRole.get -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.FillRule.get -> MarkdownRenderer.Extensions.MarkdownVectorFillRule
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.HighContrastFillRole.get -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole?
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.HighContrastStrokeRole.get -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole?
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.LineCap.get -> MarkdownRenderer.Extensions.MarkdownVectorLineCap
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.LineJoin.get -> MarkdownRenderer.Extensions.MarkdownVectorLineJoin
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.MarkdownVectorPaintStyle(uint? fillArgb = null, uint? strokeArgb = null, float strokeWidth = 0, float opacity = 1, MarkdownRenderer.Extensions.MarkdownVectorFillRule fillRule = MarkdownRenderer.Extensions.MarkdownVectorFillRule.Nonzero, MarkdownRenderer.Extensions.MarkdownVectorLineCap lineCap = MarkdownRenderer.Extensions.MarkdownVectorLineCap.Flat, MarkdownRenderer.Extensions.MarkdownVectorLineJoin lineJoin = MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Miter, bool nonScalingStroke = false, System.Collections.Generic.IReadOnlyList<float>? dashArray = null, float dashOffset = 0) -> void
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.NonScalingStroke.get -> bool
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.Opacity.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.StrokeArgb.get -> uint?
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.StrokeRole.get -> MarkdownRenderer.Extensions.MarkdownVectorPaintRole
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.StrokeWidth.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.WithHighContrastRoles(MarkdownRenderer.Extensions.MarkdownVectorPaintRole fillRole, MarkdownRenderer.Extensions.MarkdownVectorPaintRole strokeRole) -> MarkdownRenderer.Extensions.MarkdownVectorPaintStyle!
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Equals(MarkdownRenderer.Extensions.MarkdownVectorPathOperation other) -> bool
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Kind.get -> MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation.MarkdownVectorPathOperation() -> void
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Point1.get -> MarkdownRenderer.Extensions.MarkdownVectorPoint
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Point2.get -> MarkdownRenderer.Extensions.MarkdownVectorPoint
-MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Point3.get -> MarkdownRenderer.Extensions.MarkdownVectorPoint
-MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind.Close = 4 -> MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind.CubicBezier = 3 -> MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind.Line = 1 -> MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind.Move = 0 -> MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind.QuadraticBezier = 2 -> MarkdownRenderer.Extensions.MarkdownVectorPathOperationKind
-MarkdownRenderer.Extensions.MarkdownVectorPoint
-MarkdownRenderer.Extensions.MarkdownVectorPoint.Equals(MarkdownRenderer.Extensions.MarkdownVectorPoint other) -> bool
-MarkdownRenderer.Extensions.MarkdownVectorPoint.MarkdownVectorPoint() -> void
-MarkdownRenderer.Extensions.MarkdownVectorPoint.MarkdownVectorPoint(float x, float y) -> void
-MarkdownRenderer.Extensions.MarkdownVectorPoint.X.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorPoint.Y.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorRectangle
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.Equals(MarkdownRenderer.Extensions.MarkdownVectorRectangle other) -> bool
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.Height.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.MarkdownVectorRectangle() -> void
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.MarkdownVectorRectangle(float x, float y, float width, float height) -> void
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.Width.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.X.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorRectangle.Y.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorScene
-MarkdownRenderer.Extensions.MarkdownVectorScene.Baseline.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorScene.Commands.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand!>!
-MarkdownRenderer.Extensions.MarkdownVectorScene.Height.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorScene.Links.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorLinkAction!>!
-MarkdownRenderer.Extensions.MarkdownVectorScene.MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand!>! commands, float referenceFontSize, MarkdownRenderer.Extensions.MarkdownVectorRectangle viewport, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorSemanticItem!>! semantics, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorLinkAction!>! links) -> void
-MarkdownRenderer.Extensions.MarkdownVectorScene.MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand!>! commands, float referenceFontSize) -> void
-MarkdownRenderer.Extensions.MarkdownVectorScene.MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorCommand!>! commands) -> void
-MarkdownRenderer.Extensions.MarkdownVectorScene.ReferenceFontSize.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorScene.Semantics.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorSemanticItem!>!
-MarkdownRenderer.Extensions.MarkdownVectorScene.Viewport.get -> MarkdownRenderer.Extensions.MarkdownVectorRectangle
-MarkdownRenderer.Extensions.MarkdownVectorScene.Width.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.Decorative = 8 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.Focusable = 1 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.Linked = 4 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.None = 0 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.Selectable = 2 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.Bounds.get -> MarkdownRenderer.Extensions.MarkdownVectorRectangle
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.Description.get -> string?
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.Flags.get -> MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.MarkdownVectorSemanticItem(uint sourceId, MarkdownRenderer.Extensions.MarkdownVectorSemanticRole role, string? name, string? description, int parentIndex, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Extensions.MarkdownVectorRectangle bounds, MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags flags = MarkdownRenderer.Extensions.MarkdownVectorSemanticFlags.None) -> void
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.Name.get -> string?
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.ParentIndex.get -> int
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.Role.get -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.SourceId.get -> uint
-MarkdownRenderer.Extensions.MarkdownVectorSemanticItem.SourceSpan.get -> MarkdownRenderer.SourceSpan
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole.Diagram = 0 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole.Edge = 3 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole.Group = 1 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole.Label = 4 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole.Legend = 5 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorSemanticRole.Node = 2 -> MarkdownRenderer.Extensions.MarkdownVectorSemanticRole
-MarkdownRenderer.Extensions.MarkdownVectorTextAlignment
-MarkdownRenderer.Extensions.MarkdownVectorTextAlignment.Center = 1 -> MarkdownRenderer.Extensions.MarkdownVectorTextAlignment
-MarkdownRenderer.Extensions.MarkdownVectorTextAlignment.End = 2 -> MarkdownRenderer.Extensions.MarkdownVectorTextAlignment
-MarkdownRenderer.Extensions.MarkdownVectorTextAlignment.Start = 0 -> MarkdownRenderer.Extensions.MarkdownVectorTextAlignment
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.Alignment.get -> MarkdownRenderer.Extensions.MarkdownVectorTextAlignment
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.FontFamily.get -> string!
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.FontRole.get -> MarkdownRenderer.Extensions.MarkdownVectorFontRole
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.FontSize.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.FontWeight.get -> ushort
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.Italic.get -> bool
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.MarkdownVectorTextStyle(string! fontFamily, float fontSize, ushort fontWeight = 400, bool italic = false, bool rightToLeft = false, MarkdownRenderer.Extensions.MarkdownVectorTextAlignment alignment = MarkdownRenderer.Extensions.MarkdownVectorTextAlignment.Start, MarkdownRenderer.Extensions.MarkdownVectorFontRole fontRole = MarkdownRenderer.Extensions.MarkdownVectorFontRole.Authored) -> void
-MarkdownRenderer.Extensions.MarkdownVectorTextStyle.RightToLeft.get -> bool
-MarkdownRenderer.Extensions.MarkdownVectorTransform
-MarkdownRenderer.Extensions.MarkdownVectorTransform.Equals(MarkdownRenderer.Extensions.MarkdownVectorTransform other) -> bool
-MarkdownRenderer.Extensions.MarkdownVectorTransform.M11.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTransform.M12.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTransform.M21.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTransform.M22.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTransform.M31.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTransform.M32.get -> float
-MarkdownRenderer.Extensions.MarkdownVectorTransform.MarkdownVectorTransform() -> void
-MarkdownRenderer.Extensions.MarkdownVectorTransform.MarkdownVectorTransform(float m11, float m12, float m21, float m22, float m31, float m32) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.ColorArgb.get -> uint?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.End.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.IsClosed.get -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Kind.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Path.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation>!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Rectangle.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.SemanticIndex.get -> int
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Start.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.StrokeWidth.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Style.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Text.get -> string?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.TextStyle.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.Transform.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.BeginClip = 12 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.BeginGroup = 10 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.DrawEllipse = 8 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.DrawLine = 7 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.DrawPath = 6 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.DrawRectangle = 5 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.DrawText = 9 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.EndClip = 13 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.EndGroup = 11 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.FillPath = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.FillRectangle = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.StrokeLine = 4 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.StrokePath = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind.StrokeRectangle = 3 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommandKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule.EvenOdd = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule.Nonzero = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole.Authored = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole.Host = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap.Flat = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap.Round = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap.Square = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin.Bevel = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin.Miter = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin.Round = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction.Action.get -> string?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction.External.get -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction.MarkdownVectorLinkAction(int semanticIndex, string? target, string? action, bool external = false) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction.SemanticIndex.get -> int
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction.Target.get -> string?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole.Authored = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole.Foreground = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole.Link = 3 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole.Surface = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.DashArray.get -> System.Collections.Generic.IReadOnlyList<float>!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.DashOffset.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.FillArgb.get -> uint?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.FillRole.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.FillRule.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.HighContrastFillRole.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.HighContrastStrokeRole.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.LineCap.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.LineJoin.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.MarkdownVectorPaintStyle(uint? fillArgb = null, uint? strokeArgb = null, float strokeWidth = 0, float opacity = 1, MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule fillRule = MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule.Nonzero, MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap lineCap = MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap.Flat, MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin lineJoin = MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin.Miter, bool nonScalingStroke = false, System.Collections.Generic.IReadOnlyList<float>? dashArray = null, float dashOffset = 0) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.NonScalingStroke.get -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.Opacity.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.StrokeArgb.get -> uint?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.StrokeRole.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.StrokeWidth.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.WithHighContrastRoles(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole fillRole, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole strokeRole) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Equals(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation other) -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Kind.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.MarkdownVectorPathOperation() -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Point1.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Point2.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Point3.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind.Close = 4 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind.CubicBezier = 3 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind.Line = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind.Move = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind.QuadraticBezier = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperationKind
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.Equals(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint other) -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.MarkdownVectorPoint() -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.MarkdownVectorPoint(float x, float y) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.X.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.Y.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.Equals(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle other) -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.Height.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.MarkdownVectorRectangle() -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.MarkdownVectorRectangle(float x, float y, float width, float height) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.Width.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.X.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.Y.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Baseline.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Commands.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!>!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Height.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Links.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction!>!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!>! commands, float referenceFontSize, MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle viewport, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem!>! semantics, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorLinkAction!>! links) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!>! commands, float referenceFontSize) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.MarkdownVectorScene(float width, float height, float baseline, System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!>! commands) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.ReferenceFontSize.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Semantics.get -> System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem!>!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Viewport.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorScene.Width.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags.Decorative = 8 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags.Focusable = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags.Linked = 4 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags.None = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags.Selectable = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.Bounds.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.Description.get -> string?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.Flags.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.MarkdownVectorSemanticItem(uint sourceId, MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole role, string? name, string? description, int parentIndex, MarkdownRenderer.SourceSpan sourceSpan, MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle bounds, MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags flags = MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticFlags.None) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.Name.get -> string?
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.ParentIndex.get -> int
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.Role.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.SourceId.get -> uint
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticItem.SourceSpan.get -> MarkdownRenderer.SourceSpan
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole.Diagram = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole.Edge = 3 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole.Group = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole.Label = 4 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole.Legend = 5 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole.Node = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorSemanticRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment.Center = 1 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment.End = 2 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment.Start = 0 -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.Alignment.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.FontFamily.get -> string!
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.FontRole.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.FontSize.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.FontWeight.get -> ushort
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.Italic.get -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.MarkdownVectorTextStyle(string! fontFamily, float fontSize, ushort fontWeight = 400, bool italic = false, bool rightToLeft = false, MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment alignment = MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextAlignment.Start, MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole fontRole = MarkdownRenderer.Extensions.Vectors.MarkdownVectorFontRole.Authored) -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle.RightToLeft.get -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.Equals(MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform other) -> bool
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.M11.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.M12.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.M21.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.M22.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.M31.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.M32.get -> float
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.MarkdownVectorTransform() -> void
+MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.MarkdownVectorTransform(float m11, float m12, float m21, float m22, float m31, float m32) -> void
 MarkdownRenderer.Gfm.GfmExtensions
 MarkdownRenderer.Gfm.GfmMarkdownRenderer
 MarkdownRenderer.GitHub.GitHubReadmeExtensions
@@ -1574,10 +1574,10 @@ override MarkdownRenderer.Document.MarkdownLink.ToString() -> string!
 override MarkdownRenderer.Document.MarkdownSourceMapEntry.Equals(object? obj) -> bool
 override MarkdownRenderer.Document.MarkdownSourceMapEntry.GetHashCode() -> int
 override MarkdownRenderer.Document.MarkdownSourceMapEntry.ToString() -> string!
-override MarkdownRenderer.Extensions.MarkdownVectorPathOperation.GetHashCode() -> int
-override MarkdownRenderer.Extensions.MarkdownVectorPoint.GetHashCode() -> int
-override MarkdownRenderer.Extensions.MarkdownVectorRectangle.GetHashCode() -> int
-override MarkdownRenderer.Extensions.MarkdownVectorTransform.GetHashCode() -> int
+override MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.GetHashCode() -> int
+override MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.GetHashCode() -> int
+override MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.GetHashCode() -> int
+override MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.GetHashCode() -> int
 override MarkdownRenderer.Html.SafeHtmlBudgets.Equals(object? obj) -> bool
 override MarkdownRenderer.Html.SafeHtmlBudgets.GetHashCode() -> int
 override MarkdownRenderer.Images.MarkdownDocumentSource.Equals(object? obj) -> bool
@@ -1657,35 +1657,35 @@ static MarkdownRenderer.Document.MarkdownSourceMapEntry.operator !=(MarkdownRend
 static MarkdownRenderer.Document.MarkdownSourceMapEntry.operator ==(MarkdownRenderer.Document.MarkdownSourceMapEntry? left, MarkdownRenderer.Document.MarkdownSourceMapEntry? right) -> bool
 static MarkdownRenderer.Extensions.MarkdownContentFragment.Empty.get -> MarkdownRenderer.Extensions.MarkdownContentFragment!
 static MarkdownRenderer.Extensions.MarkdownExtensionSet.Empty.get -> MarkdownRenderer.Extensions.MarkdownExtensionSet!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.BeginClip(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation>! path) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.BeginGroup(MarkdownRenderer.Extensions.MarkdownVectorTransform transform, int semanticIndex = -1) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.DrawEllipse(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.DrawLine(MarkdownRenderer.Extensions.MarkdownVectorPoint start, MarkdownRenderer.Extensions.MarkdownVectorPoint end, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.DrawPath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation>! path, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle! style, bool isClosed = false, int semanticIndex = -1) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.DrawRectangle(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.DrawText(string! text, MarkdownRenderer.Extensions.MarkdownVectorPoint baselineOrigin, MarkdownRenderer.Extensions.MarkdownVectorTextStyle! textStyle, MarkdownRenderer.Extensions.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.EndClip() -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.EndGroup() -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.FillPath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation>! path, uint? colorArgb = null) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.FillRectangle(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, uint? colorArgb = null) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.StrokeLine(MarkdownRenderer.Extensions.MarkdownVectorPoint start, MarkdownRenderer.Extensions.MarkdownVectorPoint end, float strokeWidth, uint? colorArgb = null) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.StrokePath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.MarkdownVectorPathOperation>! path, float strokeWidth, uint? colorArgb = null) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorCommand.StrokeRectangle(MarkdownRenderer.Extensions.MarkdownVectorRectangle rectangle, float strokeWidth, uint? colorArgb = null) -> MarkdownRenderer.Extensions.MarkdownVectorCommand!
-static MarkdownRenderer.Extensions.MarkdownVectorPaintStyle.CreateSemantic(MarkdownRenderer.Extensions.MarkdownVectorPaintRole fillRole, MarkdownRenderer.Extensions.MarkdownVectorPaintRole strokeRole, uint? fillArgb = null, uint? strokeArgb = null, float strokeWidth = 0, float opacity = 1, MarkdownRenderer.Extensions.MarkdownVectorFillRule fillRule = MarkdownRenderer.Extensions.MarkdownVectorFillRule.Nonzero, MarkdownRenderer.Extensions.MarkdownVectorLineCap lineCap = MarkdownRenderer.Extensions.MarkdownVectorLineCap.Flat, MarkdownRenderer.Extensions.MarkdownVectorLineJoin lineJoin = MarkdownRenderer.Extensions.MarkdownVectorLineJoin.Miter, bool nonScalingStroke = false, System.Collections.Generic.IReadOnlyList<float>? dashArray = null, float dashOffset = 0) -> MarkdownRenderer.Extensions.MarkdownVectorPaintStyle!
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.Close() -> MarkdownRenderer.Extensions.MarkdownVectorPathOperation
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.CubicBezierTo(MarkdownRenderer.Extensions.MarkdownVectorPoint control1, MarkdownRenderer.Extensions.MarkdownVectorPoint control2, MarkdownRenderer.Extensions.MarkdownVectorPoint end) -> MarkdownRenderer.Extensions.MarkdownVectorPathOperation
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.LineTo(MarkdownRenderer.Extensions.MarkdownVectorPoint point) -> MarkdownRenderer.Extensions.MarkdownVectorPathOperation
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.MoveTo(MarkdownRenderer.Extensions.MarkdownVectorPoint point) -> MarkdownRenderer.Extensions.MarkdownVectorPathOperation
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.operator !=(MarkdownRenderer.Extensions.MarkdownVectorPathOperation left, MarkdownRenderer.Extensions.MarkdownVectorPathOperation right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.operator ==(MarkdownRenderer.Extensions.MarkdownVectorPathOperation left, MarkdownRenderer.Extensions.MarkdownVectorPathOperation right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorPathOperation.QuadraticBezierTo(MarkdownRenderer.Extensions.MarkdownVectorPoint control, MarkdownRenderer.Extensions.MarkdownVectorPoint end) -> MarkdownRenderer.Extensions.MarkdownVectorPathOperation
-static MarkdownRenderer.Extensions.MarkdownVectorPoint.operator !=(MarkdownRenderer.Extensions.MarkdownVectorPoint left, MarkdownRenderer.Extensions.MarkdownVectorPoint right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorPoint.operator ==(MarkdownRenderer.Extensions.MarkdownVectorPoint left, MarkdownRenderer.Extensions.MarkdownVectorPoint right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorRectangle.operator !=(MarkdownRenderer.Extensions.MarkdownVectorRectangle left, MarkdownRenderer.Extensions.MarkdownVectorRectangle right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorRectangle.operator ==(MarkdownRenderer.Extensions.MarkdownVectorRectangle left, MarkdownRenderer.Extensions.MarkdownVectorRectangle right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorTransform.Identity.get -> MarkdownRenderer.Extensions.MarkdownVectorTransform
-static MarkdownRenderer.Extensions.MarkdownVectorTransform.operator !=(MarkdownRenderer.Extensions.MarkdownVectorTransform left, MarkdownRenderer.Extensions.MarkdownVectorTransform right) -> bool
-static MarkdownRenderer.Extensions.MarkdownVectorTransform.operator ==(MarkdownRenderer.Extensions.MarkdownVectorTransform left, MarkdownRenderer.Extensions.MarkdownVectorTransform right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.BeginClip(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation>! path) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.BeginGroup(MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform transform, int semanticIndex = -1) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.DrawEllipse(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle rectangle, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.DrawLine(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint start, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint end, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.DrawPath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation>! path, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle! style, bool isClosed = false, int semanticIndex = -1) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.DrawRectangle(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle rectangle, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.DrawText(string! text, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint baselineOrigin, MarkdownRenderer.Extensions.Vectors.MarkdownVectorTextStyle! textStyle, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle! style, int semanticIndex = -1) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.EndClip() -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.EndGroup() -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.FillPath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation>! path, uint? colorArgb = null) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.FillRectangle(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle rectangle, uint? colorArgb = null) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.StrokeLine(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint start, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint end, float strokeWidth, uint? colorArgb = null) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.StrokePath(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation>! path, float strokeWidth, uint? colorArgb = null) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand.StrokeRectangle(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle rectangle, float strokeWidth, uint? colorArgb = null) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorCommand!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle.CreateSemantic(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole fillRole, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintRole strokeRole, uint? fillArgb = null, uint? strokeArgb = null, float strokeWidth = 0, float opacity = 1, MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule fillRule = MarkdownRenderer.Extensions.Vectors.MarkdownVectorFillRule.Nonzero, MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap lineCap = MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineCap.Flat, MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin lineJoin = MarkdownRenderer.Extensions.Vectors.MarkdownVectorLineJoin.Miter, bool nonScalingStroke = false, System.Collections.Generic.IReadOnlyList<float>? dashArray = null, float dashOffset = 0) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPaintStyle!
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.Close() -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.CubicBezierTo(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint control1, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint control2, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint end) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.LineTo(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint point) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.MoveTo(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint point) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.operator !=(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.operator ==(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation.QuadraticBezierTo(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint control, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint end) -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorPathOperation
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.operator !=(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint.operator ==(MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorPoint right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.operator !=(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle.operator ==(MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorRectangle right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.Identity.get -> MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.operator !=(MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform right) -> bool
+static MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform.operator ==(MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform left, MarkdownRenderer.Extensions.Vectors.MarkdownVectorTransform right) -> bool
 static MarkdownRenderer.Gfm.GfmExtensions.UseGitHubFlavoredMarkdown(this MarkdownRenderer.Controls.MarkdownDocumentView! view, MarkdownRenderer.MarkdownEngine? engine = null) -> MarkdownRenderer.Controls.MarkdownDocumentView!
 static MarkdownRenderer.Gfm.GfmExtensions.UseGitHubFlavoredMarkdown(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder! builder) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
 static MarkdownRenderer.Gfm.GfmExtensions.UseGitHubFlavoredMarkdown(this MarkdownRenderer.Controls.MarkdownScrollView! view, MarkdownRenderer.MarkdownEngine? engine = null) -> MarkdownRenderer.Controls.MarkdownScrollView!

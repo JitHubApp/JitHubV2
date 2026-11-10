@@ -1,5 +1,6 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal;

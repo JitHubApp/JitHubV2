@@ -1,7 +1,7 @@
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using Xunit;
 
-namespace MarkdownRenderer.Tests.Extensions;
+namespace MarkdownRenderer.Tests.Extensions.Vectors;
 
 public sealed class MarkdownVectorPaintRoleTests
 {

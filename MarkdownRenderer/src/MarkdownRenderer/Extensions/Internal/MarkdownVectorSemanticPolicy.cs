@@ -1,3 +1,5 @@
+using MarkdownRenderer.Extensions.Vectors;
+
 namespace MarkdownRenderer.Extensions.Internal;
 
 /// <summary>

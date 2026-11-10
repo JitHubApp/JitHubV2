@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>An immutable rectangle in device-independent scene coordinates.</summary>
 public readonly record struct MarkdownVectorRectangle

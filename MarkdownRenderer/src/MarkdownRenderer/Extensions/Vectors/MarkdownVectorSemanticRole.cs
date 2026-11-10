@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Semantic role for a child within an atomic vector scene.</summary>
 public enum MarkdownVectorSemanticRole

@@ -1,4 +1,5 @@
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 using MarkdownRenderer.Mermaid.Internal.VectorScenes;
 

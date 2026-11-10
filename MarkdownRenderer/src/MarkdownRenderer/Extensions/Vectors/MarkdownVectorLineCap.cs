@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Controls the shape at the ends of stroked segments.</summary>
 public enum MarkdownVectorLineCap

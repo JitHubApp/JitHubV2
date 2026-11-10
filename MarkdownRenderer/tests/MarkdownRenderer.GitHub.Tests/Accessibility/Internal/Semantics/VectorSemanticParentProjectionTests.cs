@@ -4,8 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Extensions.Vectors;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests.Accessibility.Internal.Semantics;

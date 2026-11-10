@@ -1,6 +1,7 @@
 using MarkdownRenderer;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Math;
 
 // Every check goes through the public host path: an engine with

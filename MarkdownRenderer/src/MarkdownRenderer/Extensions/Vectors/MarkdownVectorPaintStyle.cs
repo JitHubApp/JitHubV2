@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Immutable fill and stroke values for one vector command.</summary>
 public sealed class MarkdownVectorPaintStyle

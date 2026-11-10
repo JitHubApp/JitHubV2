@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Controls how a vector contour is filled.</summary>
 public enum MarkdownVectorFillRule

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal.CompletedScenes;
 using MarkdownRenderer.Performance.Internal.ProgressiveScenes;

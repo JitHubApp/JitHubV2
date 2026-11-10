@@ -1,6 +1,6 @@
 using System;
 using Windows.UI;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Text;
 
 namespace MarkdownRenderer.Layout.Internal.Vectors.Drawing;

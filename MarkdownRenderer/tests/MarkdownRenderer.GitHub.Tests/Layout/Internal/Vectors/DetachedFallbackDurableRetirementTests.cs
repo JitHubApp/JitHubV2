@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Internal.Context;

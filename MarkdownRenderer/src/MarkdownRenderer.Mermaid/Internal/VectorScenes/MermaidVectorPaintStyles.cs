@@ -1,4 +1,4 @@
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 
 namespace MarkdownRenderer.Mermaid.Internal.VectorScenes;

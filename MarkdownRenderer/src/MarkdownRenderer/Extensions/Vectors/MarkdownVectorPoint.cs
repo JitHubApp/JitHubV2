@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>A finite point in device-independent scene coordinates.</summary>
 public readonly record struct MarkdownVectorPoint

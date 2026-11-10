@@ -10,7 +10,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Text;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Placement;

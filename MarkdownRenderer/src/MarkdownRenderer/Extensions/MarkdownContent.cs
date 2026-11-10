@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Extensions;

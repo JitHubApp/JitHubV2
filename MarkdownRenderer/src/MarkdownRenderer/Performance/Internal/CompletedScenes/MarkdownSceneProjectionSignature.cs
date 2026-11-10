@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 
 namespace MarkdownRenderer.Performance.Internal.CompletedScenes;
 

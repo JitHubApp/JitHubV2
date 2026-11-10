@@ -1,5 +1,5 @@
 using System.Threading;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Inlines.Placement;
 using MarkdownRenderer.Layout.Internal.Context;

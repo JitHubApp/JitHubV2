@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>A declarative host-approved link or action associated with scene semantics.</summary>
 public sealed class MarkdownVectorLinkAction

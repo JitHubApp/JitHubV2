@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>
 /// Controls whether vector text keeps its authored font family or resolves

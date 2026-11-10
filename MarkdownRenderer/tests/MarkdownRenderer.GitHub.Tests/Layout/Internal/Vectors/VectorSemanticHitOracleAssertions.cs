@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using Windows.Foundation;
 using Xunit;

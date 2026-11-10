@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Behavioral flags carried by a vector semantic item.</summary>
 [Flags]

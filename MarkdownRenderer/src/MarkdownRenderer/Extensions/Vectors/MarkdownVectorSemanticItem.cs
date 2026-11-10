@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Immutable, stable semantic identity and bounds within a vector scene.</summary>
 public sealed class MarkdownVectorSemanticItem

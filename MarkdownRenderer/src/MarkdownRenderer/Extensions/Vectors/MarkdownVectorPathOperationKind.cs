@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Identifies one operation in a device-independent vector path.</summary>
 public enum MarkdownVectorPathOperationKind

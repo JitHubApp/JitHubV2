@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Identifies one painter-neutral scene command.</summary>
 public enum MarkdownVectorCommandKind

@@ -1,6 +1,6 @@
 using System;
 using System.Numerics;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout.Internal.Vectors.Drawing;

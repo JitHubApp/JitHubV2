@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Extensions.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 
 namespace MarkdownRenderer.Performance.Internal.Residency;

@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>An immutable vector-path operation.</summary>
 public readonly record struct MarkdownVectorPathOperation

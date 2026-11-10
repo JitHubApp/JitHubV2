@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.Extensions;
+namespace MarkdownRenderer.Extensions.Vectors;
 
 /// <summary>Font and positioning attributes for an already-resolved text line.</summary>
 public sealed class MarkdownVectorTextStyle
