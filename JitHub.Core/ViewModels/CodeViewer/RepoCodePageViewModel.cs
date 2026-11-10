@@ -14,6 +14,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Markdown.Documents;
 using JitHub.Models.CodeViewer;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;

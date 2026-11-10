@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FlaUI.Core.AutomationElements;
-using JitHub.Services;
+using JitHub.Performance.Budgets;
+using JitHub.Performance.Observation;
+using JitHub.Performance.Readiness;
 using static JitHub.WinUI.PerformanceGate.Elements.RouteElements;
 using static JitHub.WinUI.PerformanceGate.Routes.RouteProbeTimeouts;
 

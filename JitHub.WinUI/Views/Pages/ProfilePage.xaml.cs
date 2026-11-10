@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Threading.Tasks;
 using JitHub.Models.NavArgs;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.ViewModels.Pages;

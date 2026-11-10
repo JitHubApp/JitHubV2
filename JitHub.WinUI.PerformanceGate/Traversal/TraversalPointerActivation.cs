@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
-using JitHub.Services;
+using JitHub.Performance.Budgets;
 using static JitHub.WinUI.PerformanceGate.Elements.RouteElements;
 using static JitHub.WinUI.PerformanceGate.Native.NativePointerInput;
 using static JitHub.WinUI.PerformanceGate.Native.NativeWindowMethods;

@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 
-namespace JitHub.Services;
+namespace JitHub.Performance.Observation;
 
 public readonly record struct ProductPerformanceHeartbeat(
     long Frame,

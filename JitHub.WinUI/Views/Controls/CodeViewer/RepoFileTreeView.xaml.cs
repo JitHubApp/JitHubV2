@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.CodeViewer;

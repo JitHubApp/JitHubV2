@@ -11,6 +11,7 @@ using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Controls;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.GitHub;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Pages;

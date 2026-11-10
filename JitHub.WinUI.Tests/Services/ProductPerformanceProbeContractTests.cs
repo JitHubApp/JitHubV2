@@ -1198,8 +1198,7 @@ public sealed class ProductPerformanceProbeContractTests
         string budgetSource = File.ReadAllText(Path.Combine(
             root,
             "JitHub.Performance",
-            "Services",
-            "Performance",
+            "Budgets",
             "ProductPerformanceBudget.cs"));
         MatchCollection routeMatches = Regex.Matches(
             budgetSource,

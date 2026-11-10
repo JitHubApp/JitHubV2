@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using JitHub.Performance.Budgets;
 
-namespace JitHub.Services;
+namespace JitHub.Performance.Planning;
 
 public sealed record ProductPerformanceRunCase(
     ProductPerformanceFixture Fixture,

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using JitHub.Services;
+using JitHub.Performance.Budgets;
 
 namespace JitHub.WinUI.Automation.Performance;
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using JitHub.Models;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;

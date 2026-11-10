@@ -1,4 +1,5 @@
-using JitHub.Services;
+using JitHub.Performance.Budgets;
+using JitHub.Performance.Planning;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

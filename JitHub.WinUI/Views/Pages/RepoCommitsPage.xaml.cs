@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.WinUI;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
+using JitHub.Performance.Readiness;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;

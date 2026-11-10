@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Performance.Budgets;
 
 namespace JitHub.WinUI.PerformanceGate.Options;
 

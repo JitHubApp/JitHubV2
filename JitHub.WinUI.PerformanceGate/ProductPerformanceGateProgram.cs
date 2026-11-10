@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using JitHub.Services;
+using JitHub.Performance.Budgets;
+using JitHub.Performance.Planning;
+using JitHub.Performance.Reports;
 using JitHub.WinUI.PerformanceGate.Options;
 using JitHub.WinUI.PerformanceGate.Routes;
 

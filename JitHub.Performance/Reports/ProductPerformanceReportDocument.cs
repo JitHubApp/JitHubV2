@@ -5,8 +5,9 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using JitHub.Performance.Budgets;
 
-namespace JitHub.Services;
+namespace JitHub.Performance.Reports;
 
 public sealed record ProductPerformanceReportDocument(
     int SchemaVersion,

@@ -5,7 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 
-namespace JitHub.Services;
+namespace JitHub.Performance.Readiness;
 
 public sealed record ProductPerformanceRouteCommit(
     string Route,
