@@ -1,5 +1,6 @@
 using System.Globalization;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Math.Localization;
 using MarkdownRenderer.Theming;
 using Xunit;
 

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Internal;
 using MarkdownRenderer.Theming;
 using Windows.UI;
 

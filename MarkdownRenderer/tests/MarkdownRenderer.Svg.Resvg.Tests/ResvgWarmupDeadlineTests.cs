@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Svg.Resvg.Tests.TestSupport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

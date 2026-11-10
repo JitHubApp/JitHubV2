@@ -1,5 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using MarkdownRenderer.Math;
+using MarkdownRenderer.Math.Internal.Processing;
+using MarkdownRenderer.Math.Internal.Scanning;
 
 namespace MarkdownRenderer.Benchmarks;
 
