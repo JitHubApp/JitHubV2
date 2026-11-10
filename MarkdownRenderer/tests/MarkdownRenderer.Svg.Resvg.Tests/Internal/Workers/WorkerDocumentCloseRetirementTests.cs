@@ -1,6 +1,6 @@
 using System.IO;
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Xunit;

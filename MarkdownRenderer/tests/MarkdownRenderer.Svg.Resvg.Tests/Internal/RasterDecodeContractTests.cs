@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers;
 using Xunit;

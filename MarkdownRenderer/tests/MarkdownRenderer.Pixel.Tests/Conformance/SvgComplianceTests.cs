@@ -1,8 +1,8 @@
 using System;
 using System.IO;
 using System.Linq;
-using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Svg;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Pixel.Tests.TestSupport;
 using MarkdownRenderer.Svg.Resvg;
 using Xunit;

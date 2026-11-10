@@ -1,5 +1,5 @@
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Sources;
 using MarkdownRenderer.Svg.Resvg.Tests.TestSupport;
 using Xunit;

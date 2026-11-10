@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using Windows.Foundation;
 using SvgTileKey = (int X, int Y, int Width, int Height);

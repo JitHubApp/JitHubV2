@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Buffers;
 using System.Security.Cryptography;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using MarkdownRenderer.Svg.Resvg.Internal.Documents;
 using MarkdownRenderer.Svg.Resvg.Internal.Preflight;

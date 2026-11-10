@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.Layout.Internal.Images;
 

@@ -6,6 +6,7 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Accessibility.Internal.Peers;

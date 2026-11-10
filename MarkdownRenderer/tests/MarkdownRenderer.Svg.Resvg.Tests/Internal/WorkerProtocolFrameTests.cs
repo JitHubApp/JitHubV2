@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 

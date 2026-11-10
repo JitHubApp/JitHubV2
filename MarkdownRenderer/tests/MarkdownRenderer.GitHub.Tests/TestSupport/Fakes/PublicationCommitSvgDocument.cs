@@ -1,4 +1,4 @@
-﻿using MarkdownRenderer.Images;
+﻿using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 

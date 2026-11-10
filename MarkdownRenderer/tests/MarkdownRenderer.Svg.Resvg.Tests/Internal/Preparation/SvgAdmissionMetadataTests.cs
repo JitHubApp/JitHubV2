@@ -1,6 +1,6 @@
 using System.Text;
-using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Svg;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Preparation;
 using Xunit;
 

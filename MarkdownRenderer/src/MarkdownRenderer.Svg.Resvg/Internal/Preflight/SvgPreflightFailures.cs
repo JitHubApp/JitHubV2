@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Preflight;
 

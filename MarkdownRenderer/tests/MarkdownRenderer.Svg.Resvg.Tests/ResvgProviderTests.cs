@@ -3,7 +3,7 @@ using System.Diagnostics.Tracing;
 using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 using MarkdownRenderer.Svg.Resvg.Tests.TestSupport;
 using Xunit;

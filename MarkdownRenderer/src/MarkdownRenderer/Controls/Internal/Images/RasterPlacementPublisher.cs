@@ -10,6 +10,7 @@ using MarkdownRenderer.Controls.Internal.Pipeline.Commit;
 using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Focus;

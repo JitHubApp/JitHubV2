@@ -12,6 +12,8 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Hosting.Internal;

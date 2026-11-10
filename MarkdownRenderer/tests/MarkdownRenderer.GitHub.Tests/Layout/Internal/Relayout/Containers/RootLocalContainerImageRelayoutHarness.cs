@@ -2,7 +2,7 @@
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub.Tests.Layout.Internal.Inlines.Placement;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Building;
 using MarkdownRenderer.Layout.Internal.Context;

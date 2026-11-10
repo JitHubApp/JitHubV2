@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 

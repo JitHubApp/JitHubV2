@@ -3,7 +3,7 @@ using System.Threading;
 using MarkdownRenderer.Controls.Internal.Pipeline.Rebuild;
 using MarkdownRenderer.Controls.Internal.Rendering;
 using MarkdownRenderer.Controls.Internal.View;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Microsoft.UI.Xaml;
 using RebuildReason = MarkdownRenderer.Controls.Internal.Pipeline.Rebuild.MarkdownRebuildCoordinatorReason;
 

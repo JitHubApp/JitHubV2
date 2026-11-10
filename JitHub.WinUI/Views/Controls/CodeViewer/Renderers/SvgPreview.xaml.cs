@@ -8,7 +8,7 @@ using JitHub.Core.Services.Telemetry;
 using JitHub.Core.ViewModels.CodeViewer;
 using JitHub.WinUI.Services.Markdown;
 using JitHub.WinUI.Views.Controls.App;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

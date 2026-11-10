@@ -1,6 +1,6 @@
 using System.Text;
 using System.Xml;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.Preparation;
 using MarkdownRenderer.Svg.Resvg.Internal.Sources;
 

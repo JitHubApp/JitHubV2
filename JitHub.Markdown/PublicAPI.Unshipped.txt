@@ -447,5 +447,5 @@ static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(Sy
 static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(System.Uri? uri) -> bool
 static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out System.Uri? uri, out bool mayNavigateInternally) -> bool
 static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, out System.Uri? uri) -> bool
-static JitHub.Markdown.Svg.RepositorySvgPixelFormatPolicy.Select(bool forceSoftwareRenderer, bool rgbaSupported) -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
+static JitHub.Markdown.Svg.RepositorySvgPixelFormatPolicy.Select(bool forceSoftwareRenderer, bool rgbaSupported) -> MarkdownRenderer.Images.Svg.MarkdownSvgPixelFormat
 virtual JitHub.Markdown.Images.Caching.GitHubImageFetcher.Invoke(JitHub.Markdown.Images.Caching.GitHubImageCacheEntry? cachedEntry, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.Caching.GitHubImageDownload?>!

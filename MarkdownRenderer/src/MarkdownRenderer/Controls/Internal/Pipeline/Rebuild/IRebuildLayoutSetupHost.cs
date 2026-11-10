@@ -1,5 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 

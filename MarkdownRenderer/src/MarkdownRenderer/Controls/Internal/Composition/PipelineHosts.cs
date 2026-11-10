@@ -10,6 +10,7 @@ using RebuildReason = MarkdownRenderer.Controls.Internal.Pipeline.Rebuild.Markdo
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;

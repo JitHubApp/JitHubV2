@@ -8,7 +8,7 @@ using JitHub.Core.Services.Localization;
 using JitHub.Markdown.Svg;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Services.CodeViewer;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;

@@ -1,6 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using Microsoft.Graphics.Canvas;

@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;

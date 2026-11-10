@@ -1,5 +1,5 @@
 using JitHub.Markdown.Svg;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using Xunit;
 
 namespace JitHub.Markdown.Tests.Svg;

@@ -2,7 +2,8 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Raster;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.Svg.Resvg.TestSupport;
 

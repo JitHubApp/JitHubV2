@@ -1,5 +1,5 @@
 using System.Text;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using MarkdownRenderer.Svg.Resvg.Internal.Preflight;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers;

@@ -1,5 +1,5 @@
 using System.Buffers;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapOutput;
 

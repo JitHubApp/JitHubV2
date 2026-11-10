@@ -4,14 +4,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal;
-using SvgFailure = (MarkdownRenderer.Images.MarkdownSvgFailureReason Reason, string Description);
+using SvgFailure = (MarkdownRenderer.Images.Svg.MarkdownSvgFailureReason Reason, string Description);
 using SvgPreflight = (Windows.Foundation.Size Intrinsic, string? Title, string? Desc, string ContentHash, string SecurityPartitionHash);
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;

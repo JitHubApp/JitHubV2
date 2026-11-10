@@ -1,3 +1,5 @@
+using MarkdownRenderer.Images.Svg;
+
 namespace MarkdownRenderer.Images;
 
 /// <summary>Event payload for an image the renderer could not expose.</summary>

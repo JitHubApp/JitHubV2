@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 using MarkdownRenderer.Svg.Resvg.Internal.StaticSnapshots;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal.Preparation;

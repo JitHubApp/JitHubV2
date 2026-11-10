@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Svg;
 
 namespace MarkdownRenderer.Layout.Internal.Images;
 

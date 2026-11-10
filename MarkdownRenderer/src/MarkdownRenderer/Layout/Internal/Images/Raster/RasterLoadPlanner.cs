@@ -9,6 +9,7 @@ using Windows.UI;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Images.Raster;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Performance;
