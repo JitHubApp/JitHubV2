@@ -199,12 +199,23 @@ public sealed partial class CodePreview : UserControl
                 try
                 {
                     if (!ReferenceEquals(_outlineCts, request) || token.IsCancellationRequested) return;
-                    SymbolsList.ItemsSource = symbols;
+                    // An empty result is an empty array, and the Native AOT app has
+                    // no WinRT vtable for CodeSymbol[], so XAML would reject it as
+                    // an ItemsSource (E_INVALIDARG). The list is collapsed then
+                    // anyway, so it gets no source, as on the error path.
+                    SymbolsList.ItemsSource = symbols.Count == 0 ? null : symbols;
                     NoSymbolsText.Text = CodeSymbolExtractor.Supports(language)
                         ? LocalizedResourceText.GetString("RepoCode/Outline/NoSymbols", "No symbols were found in this file.")
                         : LocalizedResourceText.GetString("RepoCode/Outline/Unavailable", "Outline is not available for this language.");
                     NoSymbolsText.Visibility = symbols.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
                     SymbolsList.Visibility = symbols.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+                    committed.TrySetResult(true);
+                }
+                catch (Exception exception)
+                {
+                    // An exception escaping a dispatcher callback ends the process.
+                    // Fault the build instead, so the guard shows the outline error.
+                    committed.TrySetException(exception);
                 }
                 finally
                 {
