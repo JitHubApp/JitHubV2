@@ -2,6 +2,7 @@ using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -16,8 +17,8 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableRelayoutAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableQueries;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableRelayoutAssertions;
 using static MarkdownRenderer.GitHub.Tests.RootLocalTableVectorQueries;
 
 namespace MarkdownRenderer.GitHub.Tests;

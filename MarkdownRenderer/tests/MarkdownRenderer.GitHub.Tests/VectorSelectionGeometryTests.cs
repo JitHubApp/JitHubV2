@@ -1,6 +1,8 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Snapshots;
@@ -12,8 +14,8 @@ using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.VectorAccessibilityAssertions;
-using static MarkdownRenderer.GitHub.Tests.VectorAccessibilityFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.VectorAccessibilityAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.VectorAccessibilityFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

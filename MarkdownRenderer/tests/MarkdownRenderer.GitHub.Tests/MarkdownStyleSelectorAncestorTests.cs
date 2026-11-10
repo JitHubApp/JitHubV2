@@ -4,6 +4,7 @@ using System.Reflection;
 using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Building;
 using MarkdownRenderer.Layout.Internal.Context;

@@ -3,6 +3,7 @@ using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Focus;
@@ -11,7 +12,7 @@ using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Theming;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.VectorAccessibilityFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.VectorAccessibilityFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

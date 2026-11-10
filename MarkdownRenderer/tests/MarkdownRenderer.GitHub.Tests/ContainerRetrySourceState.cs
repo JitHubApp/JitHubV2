@@ -1,5 +1,6 @@
 ﻿using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
@@ -7,7 +8,7 @@ using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutTestTree;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ContainerRelayoutTestTree;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

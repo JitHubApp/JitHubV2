@@ -5,6 +5,7 @@ using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.UI;
 using WinRT;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

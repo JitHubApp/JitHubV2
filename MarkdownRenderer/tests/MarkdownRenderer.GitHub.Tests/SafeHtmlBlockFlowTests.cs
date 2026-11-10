@@ -1,4 +1,5 @@
-﻿using MarkdownRenderer.Images;
+﻿using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
@@ -9,7 +10,7 @@ using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SafeHtmlRenderingFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

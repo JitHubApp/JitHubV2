@@ -1,4 +1,6 @@
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -18,8 +20,8 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ImageRelayoutTestSupport;
-using static MarkdownRenderer.GitHub.Tests.MixedInlineVectorImageRelayoutFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ImageRelayoutTestSupport;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.MixedInlineVectorImageRelayoutFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

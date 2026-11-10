@@ -1,5 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Builders;
 using MarkdownRenderer.Images.Internal.Raster;
 using Xunit;
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Layout.Internal.Boxes;

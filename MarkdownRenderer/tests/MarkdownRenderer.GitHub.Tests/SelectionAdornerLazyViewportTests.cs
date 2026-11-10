@@ -1,4 +1,6 @@
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
@@ -6,7 +8,7 @@ using MarkdownRenderer.Selection.Internal;
 using Windows.Foundation;
 using Xunit.Abstractions;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SelectionAdornerViewportFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SelectionAdornerViewportFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -1,4 +1,5 @@
 using Markdig.Syntax.Inlines;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
@@ -13,7 +14,7 @@ using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;
 using Xunit.Abstractions;
-using static MarkdownRenderer.GitHub.Tests.RelativeScriptFontSizeFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.RelativeScriptFontSizeFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

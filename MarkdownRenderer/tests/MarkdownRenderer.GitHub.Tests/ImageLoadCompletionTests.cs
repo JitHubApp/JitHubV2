@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls.Internal.Images;
 using MarkdownRenderer.Controls.Internal.Threading;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;

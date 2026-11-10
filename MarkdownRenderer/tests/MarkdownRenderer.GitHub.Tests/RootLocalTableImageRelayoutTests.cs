@@ -1,5 +1,7 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
@@ -20,8 +22,8 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.RootLocalTableFixtureChecks;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableRelayoutAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableQueries;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableRelayoutAssertions;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

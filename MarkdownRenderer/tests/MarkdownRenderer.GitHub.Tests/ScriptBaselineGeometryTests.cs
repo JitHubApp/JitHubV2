@@ -1,6 +1,9 @@
 using System.Numerics;
 using NumericMath = global::System.Math;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
@@ -14,8 +17,8 @@ using Windows.Foundation;
 using Windows.UI;
 using WinRT;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ScriptBaselineFixture;
-using static MarkdownRenderer.GitHub.Tests.ScriptRasterAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ScriptBaselineFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.ScriptRasterAssertions;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

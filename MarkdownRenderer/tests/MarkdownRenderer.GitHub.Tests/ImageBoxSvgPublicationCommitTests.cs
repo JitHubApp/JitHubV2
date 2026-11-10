@@ -1,5 +1,7 @@
 using System.Collections;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Context;
@@ -18,7 +20,7 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SvgPublicationCommitTestOperations;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SvgPublicationCommitTestOperations;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

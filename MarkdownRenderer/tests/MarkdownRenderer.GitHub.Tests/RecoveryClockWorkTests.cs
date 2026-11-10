@@ -2,6 +2,7 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Internal.Focus;
 using MarkdownRenderer.Controls.Internal.Pipeline.Commit;
 using MarkdownRenderer.Controls.Internal.Recovery;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using Xunit;
 

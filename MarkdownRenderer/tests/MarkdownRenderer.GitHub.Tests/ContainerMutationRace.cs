@@ -1,4 +1,5 @@
-﻿using MarkdownRenderer.Layout.Internal.Boxes;
+﻿using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
+using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
@@ -6,7 +7,7 @@ using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutTestTree;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ContainerRelayoutTestTree;
 using static MarkdownRenderer.GitHub.Tests.RootLocalContainerImageRelayoutHarness;
 using ContainerMutation = MarkdownRenderer.GitHub.Tests.RootLocalContainerImageRelayoutTests.ContainerMutation;
 

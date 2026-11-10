@@ -2,6 +2,7 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

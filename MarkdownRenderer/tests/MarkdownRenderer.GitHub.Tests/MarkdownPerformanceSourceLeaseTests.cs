@@ -1,3 +1,5 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Internal.Concurrency;
@@ -5,7 +7,7 @@ using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Performance.Internal.Session;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.MarkdownPerformanceSourceLeaseFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.MarkdownPerformanceSourceLeaseFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -1,11 +1,14 @@
 using System.Runtime.CompilerServices;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SvgPublicationCommitTestOperations;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SvgPublicationCommitTestOperations;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

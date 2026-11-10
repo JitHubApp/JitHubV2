@@ -1,10 +1,12 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ImageBoxSvgRendererFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ImageBoxSvgRendererFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

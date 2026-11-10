@@ -1,3 +1,5 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
@@ -7,8 +9,8 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.LinkInlineStyleMapAssertions;
-using static MarkdownRenderer.GitHub.Tests.RelativeScriptFontSizeFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.LinkInlineStyleMapAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.RelativeScriptFontSizeFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

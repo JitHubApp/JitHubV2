@@ -1,6 +1,8 @@
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -15,7 +17,7 @@ using Windows.Foundation;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SelectionAdornerViewportFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SelectionAdornerViewportFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

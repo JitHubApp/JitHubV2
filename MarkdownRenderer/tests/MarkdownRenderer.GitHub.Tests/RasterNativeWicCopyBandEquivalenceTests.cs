@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Builders;
 using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Layout.Internal.RenderResources;

@@ -7,6 +7,7 @@ using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Builders;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

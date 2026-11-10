@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Xunit;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;

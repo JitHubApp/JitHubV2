@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -14,8 +15,8 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableRelayoutAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableQueries;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableRelayoutAssertions;
 using static MarkdownRenderer.GitHub.Tests.RootLocalTableVectorQueries;
 
 namespace MarkdownRenderer.GitHub.Tests;

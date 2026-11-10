@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Parsing.Internal;

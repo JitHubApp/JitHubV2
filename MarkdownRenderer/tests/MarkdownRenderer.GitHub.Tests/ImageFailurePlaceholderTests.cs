@@ -1,4 +1,5 @@
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

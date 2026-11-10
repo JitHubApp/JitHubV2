@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Performance.Internal.Residency;

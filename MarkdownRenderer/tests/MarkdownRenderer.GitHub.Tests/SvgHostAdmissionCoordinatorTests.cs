@@ -1,11 +1,13 @@
 using System.Runtime.CompilerServices;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SvgHostAdmissionFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SvgHostAdmissionFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

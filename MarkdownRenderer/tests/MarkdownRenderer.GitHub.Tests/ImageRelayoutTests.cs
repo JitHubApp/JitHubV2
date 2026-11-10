@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls.Internal.Threading;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using Xunit;
 

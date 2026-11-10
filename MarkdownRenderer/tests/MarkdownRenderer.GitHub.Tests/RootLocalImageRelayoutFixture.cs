@@ -1,5 +1,6 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -14,7 +15,7 @@ using Windows.Foundation;
 using Windows.Graphics.DirectX;
 using Windows.UI;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ImageRelayoutTestSupport;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ImageRelayoutTestSupport;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -4,6 +4,7 @@ using MarkdownRenderer.Controls.Internal.Input.Gestures;
 using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Controls.Internal.Selection.ContextMenu;
 using MarkdownRenderer.Controls.Internal.View;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 using Xunit;

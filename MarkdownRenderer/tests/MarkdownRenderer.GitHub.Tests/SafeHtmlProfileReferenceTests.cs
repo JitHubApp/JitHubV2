@@ -1,4 +1,5 @@
 ﻿using Markdig;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Math;
@@ -7,7 +8,7 @@ using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SafeHtmlRenderingFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

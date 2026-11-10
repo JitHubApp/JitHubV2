@@ -2,6 +2,8 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Internal.Pipeline.Rebuild;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
@@ -9,7 +11,7 @@ using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using MarkdownRenderer.Theming;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ProgressiveSceneDeferralFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ProgressiveSceneDeferralFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

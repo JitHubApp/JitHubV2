@@ -3,6 +3,7 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Internal.Recovery;
 using MarkdownRenderer.Controls.Internal.Threading;
 using MarkdownRenderer.Controls.Internal.View;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

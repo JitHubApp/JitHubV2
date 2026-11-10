@@ -1,10 +1,11 @@
-﻿using MarkdownRenderer.Html;
+﻿using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
+using MarkdownRenderer.Html;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.SafeHtmlRenderingFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

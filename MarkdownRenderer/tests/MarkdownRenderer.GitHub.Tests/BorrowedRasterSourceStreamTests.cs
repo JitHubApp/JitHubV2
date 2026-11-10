@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Storage.Streams;
 using Xunit;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -12,7 +13,7 @@ using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ImageRelayoutTestSupport;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ImageRelayoutTestSupport;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

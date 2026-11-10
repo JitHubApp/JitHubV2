@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
@@ -9,7 +10,7 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableQueries;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

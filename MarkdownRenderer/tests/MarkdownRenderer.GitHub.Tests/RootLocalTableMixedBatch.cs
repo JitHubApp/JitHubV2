@@ -1,3 +1,5 @@
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
@@ -6,8 +8,8 @@ using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Tables;
 using Microsoft.Graphics.Canvas.Text;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableRelayoutAssertions;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableQueries;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableRelayoutAssertions;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

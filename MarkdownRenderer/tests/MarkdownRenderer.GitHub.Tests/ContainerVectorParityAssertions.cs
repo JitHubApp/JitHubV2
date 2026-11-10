@@ -2,6 +2,7 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
@@ -15,7 +16,7 @@ using MarkdownRenderer.Math;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutTestTree;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ContainerRelayoutTestTree;
 using static MarkdownRenderer.GitHub.Tests.RootLocalContainerVectorRelayoutHarness;
 
 namespace MarkdownRenderer.GitHub.Tests;

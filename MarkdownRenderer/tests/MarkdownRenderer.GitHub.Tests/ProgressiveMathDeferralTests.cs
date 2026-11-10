@@ -1,6 +1,7 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Math;
@@ -11,7 +12,7 @@ using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.ProgressiveSceneDeferralFixture;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ProgressiveSceneDeferralFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

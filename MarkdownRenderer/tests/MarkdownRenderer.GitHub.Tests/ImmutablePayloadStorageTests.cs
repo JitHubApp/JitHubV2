@@ -21,6 +21,8 @@ using MarkdownRenderer.Engine.Internal;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Gfm.Internal.Compatibility;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Images.Internal.Raster;

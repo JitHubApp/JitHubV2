@@ -1,11 +1,12 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Theming;
 using Xunit;
-using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Assertions.RootLocalTableQueries;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

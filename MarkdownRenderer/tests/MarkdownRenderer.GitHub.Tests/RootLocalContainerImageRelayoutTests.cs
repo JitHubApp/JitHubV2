@@ -4,6 +4,7 @@ using System.Text;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
@@ -28,7 +29,7 @@ using Windows.UI;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutBudgetAssertions;
 using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutParityAssertions;
-using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutTestTree;
+using static MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures.ContainerRelayoutTestTree;
 using static MarkdownRenderer.GitHub.Tests.RootLocalContainerImageRelayoutHarness;
 
 namespace MarkdownRenderer.GitHub.Tests;
