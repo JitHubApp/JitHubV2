@@ -1,4 +1,5 @@
 using System.Diagnostics.Tracing;
+using MarkdownRenderer.PerformanceHarness.Core.Events;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.Graphics.DirectX;
@@ -250,7 +251,7 @@ public sealed class SharedCanvasBitmapCacheSvgTests
     [Fact]
     public void LruEvictionContainsEveryFaultAndPreservesNewEntryLiveReference()
     {
-        using var performanceSink = new MarkdownRenderer.PerformanceHarness.PerformanceEventListener();
+        using var performanceSink = new MarkdownRenderer.PerformanceHarness.Core.Events.PerformanceEventListener();
         using var listener = new BitmapCacheCleanupFailureListener();
         using var faultingListener = new FaultingBitmapCacheCleanupListener();
         int failuresBefore = _renderResources.Images.BitmapCache.GetSnapshot().DisposalFailureCount;

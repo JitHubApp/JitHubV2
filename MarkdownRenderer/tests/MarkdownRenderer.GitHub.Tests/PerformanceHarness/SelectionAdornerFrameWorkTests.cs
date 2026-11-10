@@ -1,4 +1,4 @@
-using MarkdownRenderer.PerformanceHarness;
+using MarkdownRenderer.PerformanceHarness.Core.Events;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests.PerformanceHarness;

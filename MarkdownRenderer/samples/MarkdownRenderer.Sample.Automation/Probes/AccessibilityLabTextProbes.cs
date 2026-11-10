@@ -1,6 +1,7 @@
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Tools;
+using MarkdownRenderer.Sample.Automation.Uia;
 using static MarkdownRenderer.Sample.Automation.Uia.AutomationElementText;
 using static MarkdownRenderer.Sample.Automation.Uia.ProbeAssert;
 using static MarkdownRenderer.Sample.Automation.Uia.SampleWindowQueries;

@@ -8,7 +8,7 @@
        or shipped. It sees the renderer's internals because the event ledger
        is the renderer's in-process performance sink. -->
   <PropertyGroup>
-    <RootNamespace>MarkdownRenderer.PerformanceHarness</RootNamespace>
+    <RootNamespace>MarkdownRenderer.PerformanceHarness.Core</RootNamespace>
     <AssemblyName>MarkdownRenderer.PerformanceHarness.Core</AssemblyName>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>

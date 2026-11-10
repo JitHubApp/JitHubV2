@@ -1,5 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Diagnostics;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Core.Measurement;
+using MarkdownRenderer.PerformanceHarness.Core.Reports;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
