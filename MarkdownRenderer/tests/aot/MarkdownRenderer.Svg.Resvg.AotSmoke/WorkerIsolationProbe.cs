@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
+namespace MarkdownRenderer.Svg.Resvg.AotSmoke;
+
 internal static partial class WorkerIsolationProbe
 {
     private const uint SnapshotProcesses = 0x00000002;
