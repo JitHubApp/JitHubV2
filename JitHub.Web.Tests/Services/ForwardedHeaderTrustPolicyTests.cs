@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace JitHub.Web.Tests;
+namespace JitHub.Web.Tests.Services;
 
 public sealed class ForwardedHeaderTrustPolicyTests
 {

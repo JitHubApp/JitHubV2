@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
-namespace JitHub.Web.Tests;
+namespace JitHub.Web.Tests.Services;
 
 public sealed class OAuthHandoffBackendRegistrationTests
 {

@@ -2,7 +2,7 @@ using JitHub.Shared.Security;
 using JitHub.Web.Services;
 using Xunit;
 
-namespace JitHub.Web.Tests;
+namespace JitHub.Web.Tests.Services;
 
 public sealed class OAuthHandoffStoreTests
 {

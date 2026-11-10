@@ -6,7 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace JitHub.Web.Tests;
+namespace JitHub.Web.Tests.Services;
 
 public sealed class OAuthRedirectUriPolicyTests
 {

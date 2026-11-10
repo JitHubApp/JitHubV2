@@ -6,7 +6,7 @@ using JitHub.Shared.Theming;
 using JitHub.Web.Content;
 using Xunit;
 
-namespace JitHub.Web.Tests;
+namespace JitHub.Web.Tests.Content;
 
 public sealed class LandingPageContentTests
 {
