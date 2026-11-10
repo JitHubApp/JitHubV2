@@ -4,6 +4,7 @@ using System.Buffers;
 using System.Threading;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;

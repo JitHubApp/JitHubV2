@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

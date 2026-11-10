@@ -2,6 +2,7 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Internal.Images;
 using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Controls.Internal.View;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

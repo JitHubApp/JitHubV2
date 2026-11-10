@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Builders;
 using MarkdownRenderer.Images;

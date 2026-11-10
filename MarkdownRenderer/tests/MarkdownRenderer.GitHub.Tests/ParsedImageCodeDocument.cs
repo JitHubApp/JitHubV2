@@ -8,6 +8,7 @@ using Markdig;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Building;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;

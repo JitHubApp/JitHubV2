@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.GitHub.Tests;

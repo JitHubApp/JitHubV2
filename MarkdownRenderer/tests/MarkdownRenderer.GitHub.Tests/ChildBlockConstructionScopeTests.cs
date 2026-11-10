@@ -1,6 +1,7 @@
 using Markdig.Syntax;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Gfm;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout.Internal.Boxes;

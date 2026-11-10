@@ -1,6 +1,7 @@
 ﻿using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;

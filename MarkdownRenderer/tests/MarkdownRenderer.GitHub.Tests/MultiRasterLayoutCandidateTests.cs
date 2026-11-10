@@ -1,6 +1,7 @@
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;

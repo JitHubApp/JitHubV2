@@ -1,5 +1,7 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;

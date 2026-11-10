@@ -3,6 +3,7 @@ using Markdig.Helpers;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.GitHub.Internal;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.SourceProjection;
 using MarkdownRenderer.Parsing.Internal;

@@ -9,6 +9,7 @@ using MarkdownRenderer.Accessibility.Internal.TextRanges;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;

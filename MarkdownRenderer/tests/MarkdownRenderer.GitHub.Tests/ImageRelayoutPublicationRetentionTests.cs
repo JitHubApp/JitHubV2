@@ -6,6 +6,7 @@ using MarkdownRenderer.Controls.Internal.Pipeline.Commit;
 using MarkdownRenderer.Controls.Internal.Recovery;
 using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;

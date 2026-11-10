@@ -1,5 +1,7 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Building;

@@ -4,6 +4,7 @@ using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Layout.Internal.Boxes;

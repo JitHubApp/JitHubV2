@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Inlines.Placement;

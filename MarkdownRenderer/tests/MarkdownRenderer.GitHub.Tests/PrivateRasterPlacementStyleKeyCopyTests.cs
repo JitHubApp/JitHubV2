@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Building;
 using MarkdownRenderer.Layout.Internal.Context;

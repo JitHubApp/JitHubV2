@@ -15,6 +15,7 @@ using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.PrivatePlacement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

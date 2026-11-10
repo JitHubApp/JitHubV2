@@ -1,4 +1,6 @@
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;

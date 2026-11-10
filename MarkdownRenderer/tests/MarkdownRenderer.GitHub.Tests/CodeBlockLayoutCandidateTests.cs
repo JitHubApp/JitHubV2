@@ -10,6 +10,7 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Context;

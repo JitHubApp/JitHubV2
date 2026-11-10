@@ -1,3 +1,4 @@
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Assertions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;

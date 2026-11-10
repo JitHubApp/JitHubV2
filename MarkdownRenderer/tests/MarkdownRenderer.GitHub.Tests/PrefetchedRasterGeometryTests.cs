@@ -5,6 +5,8 @@ using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.GitHub.Tests.Layout.Internal.Images.Raster;
 using Windows.Foundation;
 using Xunit;
 
