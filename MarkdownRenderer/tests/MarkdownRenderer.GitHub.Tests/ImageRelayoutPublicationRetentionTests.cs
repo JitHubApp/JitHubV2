@@ -4,6 +4,7 @@ using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;

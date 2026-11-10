@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
-using MarkdownRenderer.Utilities;
 using Xunit;
+using MarkdownRenderer.Internal.Caching;
 
 namespace MarkdownRenderer.Tests;
 

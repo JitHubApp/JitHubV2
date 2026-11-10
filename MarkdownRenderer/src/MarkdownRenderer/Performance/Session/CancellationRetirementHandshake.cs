@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Performance;
 

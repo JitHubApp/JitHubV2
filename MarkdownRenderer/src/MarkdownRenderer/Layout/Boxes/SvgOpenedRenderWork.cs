@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

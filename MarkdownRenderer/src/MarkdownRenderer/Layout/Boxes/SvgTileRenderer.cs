@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using SvgTileKey = (int X, int Y, int Width, int Height);

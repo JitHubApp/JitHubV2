@@ -10,6 +10,7 @@ using Windows.UI;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 

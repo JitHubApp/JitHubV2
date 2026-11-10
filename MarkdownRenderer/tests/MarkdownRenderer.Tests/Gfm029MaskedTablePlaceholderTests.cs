@@ -1,6 +1,7 @@
 using Markdig;
 using Markdig.Extensions.Tables;
 using Xunit;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 
 namespace MarkdownRenderer.Tests;
 

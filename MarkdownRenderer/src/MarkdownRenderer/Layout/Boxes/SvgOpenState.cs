@@ -1,6 +1,7 @@
 using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Performance;
 using SvgPreflight = (Windows.Foundation.Size Intrinsic, string? Title, string? Desc, string ContentHash, string SecurityPartitionHash);
 

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;

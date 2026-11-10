@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Internal.Concurrency;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 
 namespace MarkdownRenderer.Controls.Pipeline;

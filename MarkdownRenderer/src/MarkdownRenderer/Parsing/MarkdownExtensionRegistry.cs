@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Markdig;
+using MarkdownRenderer.Engine.Internal;
 
 namespace MarkdownRenderer.Parsing;
 

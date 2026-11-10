@@ -1,7 +1,7 @@
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Gfm;
-using MarkdownRenderer.Gfm.Renderers;
+using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

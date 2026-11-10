@@ -1,5 +1,5 @@
 using System;
-using MarkdownRenderer.Utilities;
+using MarkdownRenderer.Internal.Caching;
 
 namespace MarkdownRenderer.Layout;
 

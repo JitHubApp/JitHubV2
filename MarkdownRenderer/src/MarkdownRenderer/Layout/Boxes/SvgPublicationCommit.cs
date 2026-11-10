@@ -3,6 +3,7 @@ using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

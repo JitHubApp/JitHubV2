@@ -2,11 +2,11 @@ using MarkdownRenderer.Layout;
 using System.Diagnostics.Tracing;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Utilities;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.Graphics.DirectX;
 using Xunit;
+using MarkdownRenderer.Internal.Caching;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

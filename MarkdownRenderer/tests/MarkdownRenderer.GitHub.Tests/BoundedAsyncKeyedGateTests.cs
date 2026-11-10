@@ -1,3 +1,4 @@
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 

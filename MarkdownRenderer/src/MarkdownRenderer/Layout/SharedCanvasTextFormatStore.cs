@@ -2,8 +2,8 @@ using System;
 using System.Threading;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
+using MarkdownRenderer.Internal.Caching;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Utilities;
 
 namespace MarkdownRenderer.Layout;
 

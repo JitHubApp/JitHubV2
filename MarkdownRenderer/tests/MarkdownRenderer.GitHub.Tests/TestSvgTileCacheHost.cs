@@ -1,5 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Boxes;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;

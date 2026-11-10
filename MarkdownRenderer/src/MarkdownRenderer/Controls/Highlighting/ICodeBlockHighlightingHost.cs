@@ -2,6 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 

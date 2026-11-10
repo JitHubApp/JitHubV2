@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using static MarkdownRenderer.TaskFaultObservation;
+using static MarkdownRenderer.Internal.Concurrency.TaskFaultObservation;
 
 namespace MarkdownRenderer.Controls;
 

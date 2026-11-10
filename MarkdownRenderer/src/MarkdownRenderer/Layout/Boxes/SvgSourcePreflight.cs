@@ -2,7 +2,7 @@ using System;
 using System.Security.Cryptography;
 using System.Threading;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Utilities;
+using MarkdownRenderer.Internal.Hashing;
 using Windows.Foundation;
 using SvgPreflight = (Windows.Foundation.Size Intrinsic, string? Title, string? Desc, string ContentHash, string SecurityPartitionHash);
 

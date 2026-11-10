@@ -1,8 +1,8 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Internal.Caching;
 using Microsoft.Graphics.Canvas;
-using MarkdownRenderer.Utilities;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout.Boxes;

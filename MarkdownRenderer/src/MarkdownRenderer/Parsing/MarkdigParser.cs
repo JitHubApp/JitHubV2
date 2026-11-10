@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Markdig;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 
 namespace MarkdownRenderer.Parsing;
 

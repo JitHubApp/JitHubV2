@@ -2,8 +2,8 @@ using System;
 using System.Text;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Internal.Hashing;
 using MarkdownRenderer.Parsing;
-using MarkdownRenderer.Utilities;
 
 namespace MarkdownRenderer.Layout;
 

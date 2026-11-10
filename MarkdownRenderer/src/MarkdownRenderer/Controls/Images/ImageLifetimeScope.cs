@@ -1,5 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Controls.Images;
 

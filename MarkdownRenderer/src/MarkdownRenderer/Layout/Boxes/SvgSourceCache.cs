@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Utilities;
+using MarkdownRenderer.Internal.Caching;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

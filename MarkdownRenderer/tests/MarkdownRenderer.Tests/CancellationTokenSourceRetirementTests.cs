@@ -1,4 +1,5 @@
 using Xunit;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Tests;
 

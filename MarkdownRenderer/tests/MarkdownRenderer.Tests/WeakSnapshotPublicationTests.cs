@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Internal.Concurrency;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

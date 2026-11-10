@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Markdig.Parsers;
 using Markdig.Syntax;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.GitHub;

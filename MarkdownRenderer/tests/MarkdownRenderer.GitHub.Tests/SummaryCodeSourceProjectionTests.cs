@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Markdig;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;

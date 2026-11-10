@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 using SvgTileKey = (int X, int Y, int Width, int Height);
 
 namespace MarkdownRenderer.Layout.Boxes;

@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Internal.Concurrency;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

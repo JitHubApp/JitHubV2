@@ -1,5 +1,5 @@
 using System.Windows.Input;
-using MarkdownRenderer.Gfm.Renderers;
+using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using Xunit;

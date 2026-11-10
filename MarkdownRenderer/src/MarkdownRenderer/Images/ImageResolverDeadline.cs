@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using static MarkdownRenderer.TaskFaultObservation;
+using static MarkdownRenderer.Internal.Concurrency.TaskFaultObservation;
 
 namespace MarkdownRenderer.Images;
 

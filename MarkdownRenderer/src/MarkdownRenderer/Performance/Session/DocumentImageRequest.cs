@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Performance;
 
@@ -31,7 +32,7 @@ internal sealed class DocumentImageRequest(
         Action<Exception, Task> onFailure)
     {
         Task completion = CompleteAsync(operation, onSuccess, onFailure);
-        MarkdownRenderer.TaskFaultObservation.ObserveFault(completion);
+        MarkdownRenderer.Internal.Concurrency.TaskFaultObservation.ObserveFault(completion);
     }
 
     private static async Task CompleteAsync(

@@ -28,6 +28,7 @@ using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Controls.Composition;
 
