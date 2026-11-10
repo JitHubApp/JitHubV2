@@ -9,7 +9,7 @@ using JitHub.Core.Services.Gists;
 using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Localization;
 using JitHub.Core.ViewModels.Gists;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Scrolling;

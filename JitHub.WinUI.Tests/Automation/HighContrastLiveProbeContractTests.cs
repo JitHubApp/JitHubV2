@@ -96,26 +96,31 @@ public sealed class HighContrastLiveProbeContractTests
     public void ProbeExposesAStandaloneDispatchSurfaceWithoutDependingOnProgramHelpers()
     {
         string source = ReadProbeSource();
-        string program = File.ReadAllText(Path.Combine(
+        string catalog = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI.Automation",
-            "Program.cs"));
+            "Probes",
+            "ProbeCatalog.cs"));
 
         Assert.Contains("internal static class HighContrastLiveProbe", source, StringComparison.Ordinal);
         Assert.Contains("public static void Run(CaptureOptions options)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("RunSettingsHighContrastProbe", source, StringComparison.Ordinal);
         Assert.DoesNotContain("NativeMethods.IsHighContrastEnabled", source, StringComparison.Ordinal);
         Assert.Contains(
-            "string.Equals(options.Probe, \"high-contrast-live\", StringComparison.OrdinalIgnoreCase)",
-            program,
+            "new Dictionary<string, Action<CaptureOptions>>(StringComparer.OrdinalIgnoreCase)",
+            catalog,
             StringComparison.Ordinal);
-        Assert.Contains("HighContrastLiveProbe.Run(options);", program, StringComparison.Ordinal);
+        Assert.Contains("{ \"high-contrast-live\", HighContrastLiveProbe.Run },", catalog, StringComparison.Ordinal);
     }
 
-    private static string ReadProbeSource() => File.ReadAllText(Path.Combine(
-        FindRepositoryRoot(),
-        "JitHub.WinUI.Automation",
-        "HighContrastLiveProbe.cs"));
+    /// <summary>
+    /// The live High Contrast probe is a family of classes in one folder of the
+    /// automation project; its contracts hold across all of them.
+    /// </summary>
+    private static string ReadProbeSource() => string.Concat(Directory
+        .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI.Automation", "Probes", "HighContrast"), "*.cs")
+        .Order(StringComparer.Ordinal)
+        .Select(File.ReadAllText));
 
     private static string FindRepositoryRoot()
     {

@@ -291,10 +291,14 @@ public sealed class SettingsResponsiveWorkspaceContractTests
     [Fact]
     public void ResponsiveAutomation_CoversThemesWidthsDialogsAndPseudoLongLabels()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string automationRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI.Automation");
+        string source = File.ReadAllText(Path.Combine(automationRoot, "Probes", "ProbeCatalog.cs"))
+            + File.ReadAllText(Path.Combine(automationRoot, "Applications", "ProbeApplicationLauncher.cs"))
+            + File.ReadAllText(Path.Combine(automationRoot, "Probes", "Theming", "ThemePaletteProbe.cs"))
+            + string.Concat(Directory
+                .EnumerateFiles(Path.Combine(automationRoot, "Probes", "Settings"), "*.cs")
+                .Order(StringComparer.Ordinal)
+                .Select(File.ReadAllText));
 
         foreach (string size in new[] { "(1366, 900)", "(1180, 800)", "(900, 700)", "(760, 650)", "(640, 600)" })
         {

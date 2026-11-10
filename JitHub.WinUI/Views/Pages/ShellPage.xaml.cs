@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Controls;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;

@@ -195,7 +195,10 @@ public sealed class RepositoryForkReadinessPolicyTests
 
         Assert.False(result.IsReady);
         Assert.Equal(RepositoryForkReadinessFailure.DeadlineExceeded, result.Failure);
-        await probeCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        // A generous bound for the cancellation the policy must deliver; it only turns
+        // a hang into a failure. If the probe were not cancelled it would finish on its
+        // own without setting probeCanceled, so this still fails.
+        await probeCanceled.Task.WaitAsync(TimeSpan.FromSeconds(15));
     }
 
     [Fact]

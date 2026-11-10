@@ -68,7 +68,11 @@ public sealed class PullRequestMarkdownFormIdentityContractTests
     [Fact]
     public void LiveHarnessExercisesIdentitylessReplyFormsAndContainerRecreation()
     {
-        string harness = File.ReadAllText(ReadPath("JitHub.WinUI.Automation", "Program.cs"));
+        string harness = File.ReadAllText(ReadPath("JitHub.WinUI.Automation", "Probes", "ProbeCatalog.cs"))
+            + string.Concat(Directory
+                .EnumerateFiles(ReadPath("JitHub.WinUI.Automation", "Probes", "PullRequests"), "*.cs")
+                .Order(StringComparer.Ordinal)
+                .Select(File.ReadAllText));
         string queryFixture = File.ReadAllText(ReadPath(
             "JitHub.Core",
             "Services",

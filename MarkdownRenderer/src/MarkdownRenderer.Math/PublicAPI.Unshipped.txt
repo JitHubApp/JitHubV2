@@ -6,46 +6,46 @@ const MarkdownRenderer.Math.MathFeature.CSharpMathRevision = "2d7dec98695dac6944
 const MarkdownRenderer.Math.MathFeature.IncludesNativeFormulaProcessor = true -> bool
 const MarkdownRenderer.Math.MathFeature.PackageId = "MarkdownRenderer.Math" -> string!
 const MarkdownRenderer.Math.MathFeature.ParserFeatureId = "markdown.math.dollar" -> string!
-const MarkdownRenderer.Math.MathStringKeys.AutomationName = "Math.AutomationName" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Denominator = "Math.Denominator" -> string!
-const MarkdownRenderer.Math.MathStringKeys.DividedBy = "Math.DividedBy" -> string!
-const MarkdownRenderer.Math.MathStringKeys.EndFraction = "Math.EndFraction" -> string!
-const MarkdownRenderer.Math.MathStringKeys.EndRoot = "Math.EndRoot" -> string!
-const MarkdownRenderer.Math.MathStringKeys.EndSubscript = "Math.EndSubscript" -> string!
-const MarkdownRenderer.Math.MathStringKeys.EndSuperscript = "Math.EndSuperscript" -> string!
-const MarkdownRenderer.Math.MathStringKeys.EqualsOperator = "Math.Equals" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Fraction = "Math.Fraction" -> string!
-const MarkdownRenderer.Math.MathStringKeys.InvalidFormula = "Math.InvalidFormula" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Minus = "Math.Minus" -> string!
-const MarkdownRenderer.Math.MathStringKeys.NestingTooDeep = "Math.NestingTooDeep" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Numerator = "Math.Numerator" -> string!
-const MarkdownRenderer.Math.MathStringKeys.OriginalTex = "Math.OriginalTex" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Plus = "Math.Plus" -> string!
-const MarkdownRenderer.Math.MathStringKeys.ProcessingFailed = "Math.ProcessingFailed" -> string!
-const MarkdownRenderer.Math.MathStringKeys.ProcessingTimedOut = "Math.ProcessingTimedOut" -> string!
-const MarkdownRenderer.Math.MathStringKeys.SceneTooComplex = "Math.SceneTooComplex" -> string!
-const MarkdownRenderer.Math.MathStringKeys.SceneTooLarge = "Math.SceneTooLarge" -> string!
-const MarkdownRenderer.Math.MathStringKeys.SourceTooLong = "Math.SourceTooLong" -> string!
-const MarkdownRenderer.Math.MathStringKeys.SquareRoot = "Math.SquareRoot" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Subscript = "Math.Subscript" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Superscript = "Math.Superscript" -> string!
-const MarkdownRenderer.Math.MathStringKeys.Times = "Math.Times" -> string!
-const MarkdownRenderer.Math.MathStringKeys.UnmatchedDisplayDelimiter = "Math.UnmatchedDisplayDelimiter" -> string!
-const MarkdownRenderer.Math.MathStringKeys.UnmatchedInlineDelimiter = "Math.UnmatchedInlineDelimiter" -> string!
-const MarkdownRenderer.Math.MathStringKeys.WorkingMemoryExceeded = "Math.WorkingMemoryExceeded" -> string!
-MarkdownRenderer.Math.DefaultMathAccessibilityFormatter
-MarkdownRenderer.Math.DefaultMathAccessibilityFormatter.DefaultMathAccessibilityFormatter(MarkdownRenderer.Math.IMathStringProvider? strings = null) -> void
-MarkdownRenderer.Math.DefaultMathAccessibilityFormatter.FormatAsync(MarkdownRenderer.Math.MathFormulaRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.MathAccessibilityDescription!>
-MarkdownRenderer.Math.IMathAccessibilityFormatter
-MarkdownRenderer.Math.IMathAccessibilityFormatter.FormatAsync(MarkdownRenderer.Math.MathFormulaRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.MathAccessibilityDescription!>
-MarkdownRenderer.Math.IMathStringProvider
-MarkdownRenderer.Math.IMathStringProvider.GetString(string! resourceKey, string? languageTag) -> string?
-MarkdownRenderer.Math.MathAccessibilityDescription
-MarkdownRenderer.Math.MathAccessibilityDescription.AutomationName.get -> string!
-MarkdownRenderer.Math.MathAccessibilityDescription.CopyText.get -> string!
-MarkdownRenderer.Math.MathAccessibilityDescription.HelpText.get -> string!
-MarkdownRenderer.Math.MathAccessibilityDescription.MathAccessibilityDescription(string! automationName, string! structuralSpeech, string! helpText, string! copyText) -> void
-MarkdownRenderer.Math.MathAccessibilityDescription.StructuralSpeech.get -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.AutomationName = "Math.AutomationName" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Denominator = "Math.Denominator" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.DividedBy = "Math.DividedBy" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.EndFraction = "Math.EndFraction" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.EndRoot = "Math.EndRoot" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.EndSubscript = "Math.EndSubscript" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.EndSuperscript = "Math.EndSuperscript" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.EqualsOperator = "Math.Equals" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Fraction = "Math.Fraction" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.InvalidFormula = "Math.InvalidFormula" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Minus = "Math.Minus" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.NestingTooDeep = "Math.NestingTooDeep" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Numerator = "Math.Numerator" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.OriginalTex = "Math.OriginalTex" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Plus = "Math.Plus" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.ProcessingFailed = "Math.ProcessingFailed" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.ProcessingTimedOut = "Math.ProcessingTimedOut" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.SceneTooComplex = "Math.SceneTooComplex" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.SceneTooLarge = "Math.SceneTooLarge" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.SourceTooLong = "Math.SourceTooLong" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.SquareRoot = "Math.SquareRoot" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Subscript = "Math.Subscript" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Superscript = "Math.Superscript" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.Times = "Math.Times" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.UnmatchedDisplayDelimiter = "Math.UnmatchedDisplayDelimiter" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.UnmatchedInlineDelimiter = "Math.UnmatchedInlineDelimiter" -> string!
+const MarkdownRenderer.Math.Localization.MathStringKeys.WorkingMemoryExceeded = "Math.WorkingMemoryExceeded" -> string!
+MarkdownRenderer.Math.Accessibility.DefaultMathAccessibilityFormatter
+MarkdownRenderer.Math.Accessibility.DefaultMathAccessibilityFormatter.DefaultMathAccessibilityFormatter(MarkdownRenderer.Math.Localization.IMathStringProvider? strings = null) -> void
+MarkdownRenderer.Math.Accessibility.DefaultMathAccessibilityFormatter.FormatAsync(MarkdownRenderer.Math.MathFormulaRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription!>
+MarkdownRenderer.Math.Accessibility.IMathAccessibilityFormatter
+MarkdownRenderer.Math.Accessibility.IMathAccessibilityFormatter.FormatAsync(MarkdownRenderer.Math.MathFormulaRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription!>
+MarkdownRenderer.Math.Localization.IMathStringProvider
+MarkdownRenderer.Math.Localization.IMathStringProvider.GetString(string! resourceKey, string? languageTag) -> string?
+MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription
+MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription.AutomationName.get -> string!
+MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription.CopyText.get -> string!
+MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription.HelpText.get -> string!
+MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription.MathAccessibilityDescription(string! automationName, string! structuralSpeech, string! helpText, string! copyText) -> void
+MarkdownRenderer.Math.Accessibility.MathAccessibilityDescription.StructuralSpeech.get -> string!
 MarkdownRenderer.Math.MathFeature
 MarkdownRenderer.Math.MathFormulaDisplayMode
 MarkdownRenderer.Math.MathFormulaDisplayMode.Display = 1 -> MarkdownRenderer.Math.MathFormulaDisplayMode
@@ -81,9 +81,9 @@ MarkdownRenderer.Math.MathSourceRange.MathSourceRange() -> void
 MarkdownRenderer.Math.MathSourceRange.MathSourceRange(int start, int length) -> void
 MarkdownRenderer.Math.MathSourceRange.Slice(string! source) -> System.ReadOnlySpan<char>
 MarkdownRenderer.Math.MathSourceRange.Start.get -> int
-MarkdownRenderer.Math.MathStringKeys
+MarkdownRenderer.Math.Localization.MathStringKeys
 override MarkdownRenderer.Math.MathSourceRange.GetHashCode() -> int
-static MarkdownRenderer.Math.MathMarkdownExtensions.UseMathematics(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Math.MathProcessingOptions? options = null, MarkdownRenderer.Math.IMathAccessibilityFormatter? accessibilityFormatter = null, MarkdownRenderer.Math.IMathStringProvider? strings = null) -> MarkdownRenderer.MarkdownEngineBuilder!
+static MarkdownRenderer.Math.MathMarkdownExtensions.UseMathematics(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Math.MathProcessingOptions? options = null, MarkdownRenderer.Math.Accessibility.IMathAccessibilityFormatter? accessibilityFormatter = null, MarkdownRenderer.Math.Localization.IMathStringProvider? strings = null) -> MarkdownRenderer.MarkdownEngineBuilder!
 static MarkdownRenderer.Math.MathProcessingOptions.Default.get -> MarkdownRenderer.Math.MathProcessingOptions!
 static MarkdownRenderer.Math.MathSourceRange.FromBounds(int start, int end) -> MarkdownRenderer.Math.MathSourceRange
 static MarkdownRenderer.Math.MathSourceRange.operator !=(MarkdownRenderer.Math.MathSourceRange left, MarkdownRenderer.Math.MathSourceRange right) -> bool

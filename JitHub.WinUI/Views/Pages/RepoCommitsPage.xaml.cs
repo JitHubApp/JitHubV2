@@ -12,7 +12,7 @@ using JitHub.Core.Models.GitHub.Commits;
 using JitHub.Core.Services.Commits;
 using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Telemetry;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Models.Navigation;
 using JitHub.WinUI.Performance;

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.Internal;
 using TextMateSharp.Grammars;
 using TextMateSharp.Registry;
 

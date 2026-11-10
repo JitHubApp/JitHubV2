@@ -1,5 +1,6 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Mermaid.Internal.Rendering;
 
 namespace MarkdownRenderer.Mermaid.Tests;
 

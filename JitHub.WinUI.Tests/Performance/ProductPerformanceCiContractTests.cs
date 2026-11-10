@@ -16,7 +16,7 @@ public sealed class ProductPerformanceCiContractTests
         Assert.Contains("FullyQualifiedName~ProductPerformance", workflow);
         Assert.Contains("product-performance-report.json", workflow);
         Assert.Contains("JitHub.WinUI.Automation\\JitHub.WinUI.Automation.csproj", workflow);
-        Assert.True(File.Exists(Path.Combine(root, "JitHub.WinUI.Automation", "ProductPerformanceReport.cs")));
+        Assert.True(File.Exists(Path.Combine(root, "JitHub.WinUI.Automation", "Performance", "ProductPerformanceReport.cs")));
         Assert.Contains("cold, warm, offline, and large-account", workflow);
         Assert.Contains("jithub-interactive", workflow);
         Assert.Matches("(?m)^on:\n(?:  #.*\n)*  push:\n    branches: \\[main\\]$", workflow);

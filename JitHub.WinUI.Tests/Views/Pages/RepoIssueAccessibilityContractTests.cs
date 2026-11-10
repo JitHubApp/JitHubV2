@@ -98,9 +98,15 @@ public sealed class RepoIssueAccessibilityContractTests
         }
 
         string automationSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+                FindRepositoryRoot(),
+                "JitHub.WinUI.Automation",
+                "Workspaces",
+                "AdaptivePaneButtons.cs"))
+            + File.ReadAllText(Path.Combine(
+                FindRepositoryRoot(),
+                "JitHub.WinUI.Automation",
+                "Workspaces",
+                "AdaptiveWorkspaceDrawers.cs"));
         Assert.Contains("\"MyIssuesCloseListPaneButton\"", automationSource, StringComparison.Ordinal);
         Assert.Contains("\"MyIssuesCloseInspectorPaneButton\"", automationSource, StringComparison.Ordinal);
         Assert.Contains("did not expose its in-panel close control", automationSource, StringComparison.Ordinal);

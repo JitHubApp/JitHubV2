@@ -23,7 +23,7 @@ using JitHub.Core.Services.Lifecycle;
 using JitHub.Core.Services.Localization;
 using JitHub.Core.Services.Telemetry;
 using JitHub.Markdown.Documents;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using Microsoft.UI.Dispatching;
 
 namespace JitHub.Core.ViewModels.CodeViewer;

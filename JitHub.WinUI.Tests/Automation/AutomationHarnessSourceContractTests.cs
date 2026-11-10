@@ -10,10 +10,8 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void AuthLifecycleProbeCoversRecoverableProductionStateTransitions()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "ProbeCatalog.cs")
+            + ReadAutomationSource("Probes", "Authentication", "AuthLifecycleProbe.cs");
 
         Assert.Contains("\"auth-lifecycle\"", source, StringComparison.Ordinal);
         Assert.Contains("RunAuthCancelScenario", source, StringComparison.Ordinal);
@@ -32,15 +30,11 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void HomeWidgetBoardProbeExercisesTheLiveModalDrawerKeyboardContract()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Home", "HomeWidgetBoardProbe.cs");
         int start = source.IndexOf("static void RunHomeWidgetBoardProbe", StringComparison.Ordinal);
-        int end = source.IndexOf("static void RunHomeCustomizeProbe", start, StringComparison.Ordinal);
 
-        Assert.True(start >= 0 && end > start);
-        string probe = source[start..end];
+        Assert.True(start >= 0);
+        string probe = source[start..];
         Assert.Contains("VirtualKeyShort.SHIFT", probe, StringComparison.Ordinal);
         Assert.Contains("VirtualKeyShort.TAB", probe, StringComparison.Ordinal);
         Assert.Contains("VirtualKeyShort.ESCAPE", probe, StringComparison.Ordinal);
@@ -59,10 +53,7 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void StarsCategoryCleanupReacquiresVisibleStateAndUsesStableDialogIdentity()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Stars", "StarsCategories.cs");
 
         Assert.Contains("StarsDeleteCategoryDialog", source, StringComparison.Ordinal);
         Assert.Contains("FindVisibleStarsCategory(window, categoryName)", source, StringComparison.Ordinal);
@@ -72,10 +63,7 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void ImplicitAppSelectionRejectsStaleBuildOutputs()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Options", "CaptureOptions.cs");
 
         Assert.Contains("GetNewestSourceWriteTimeUtc", source, StringComparison.Ordinal);
         Assert.Contains("GetFreshnessArtifact(candidate)", source, StringComparison.Ordinal);
@@ -94,10 +82,10 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void DesktopProbeOwnsOnlyItsExactLaunchProcesses()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Applications", "ProbeApplicationLauncher.cs")
+            + ReadAutomationSource("Applications", "ApplicationProcessCleanup.cs")
+            + ReadAutomationSource("Native", "NativeMethods.Capture.cs")
+            + ReadAutomationSource("Probes", "Theming", "ThemePaletteProbe.cs");
 
         Assert.Contains("AutomationApplicationRegistration", source, StringComparison.Ordinal);
         Assert.Contains("excludedProcessIds.Contains(process.Id)", source, StringComparison.Ordinal);
@@ -305,10 +293,8 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void RepoCodeAutomationRequiresDeterministicSourceAndLivePerformanceGates()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "RepoCode", "RepoCodePerformanceProbe.cs")
+            + ReadAutomationSource("Probes", "RepoCode", "RepoCodeNavigation.cs");
 
         Assert.Contains("--scenario=repo-code-performance", source, StringComparison.Ordinal);
         Assert.Contains("FindMandatoryRepoCodeSourceFile", source, StringComparison.Ordinal);
@@ -328,10 +314,8 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void RepoCodeResponsiveProbeExercisesCsvSemanticsAndSvgZoomExtremes()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "RepoCode", "RepoCodeResponsiveWorkspaceProbe.cs")
+            + ReadAutomationSource("Probes", "RepoCode", "RepoCodeContentSurfacesProbe.cs");
 
         Assert.Contains("ExerciseRepoCodeContentSurfaces(window, options)", source, StringComparison.Ordinal);
         Assert.Contains("candidate.Patterns.Grid.Pattern.RowCount.Value == 7", source, StringComparison.Ordinal);
@@ -352,10 +336,8 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void RepoCodeHighContrastProbeExercisesLiveEditorAtWideAndCompactWidths()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "ProbeCatalog.cs")
+            + ReadAutomationSource("Probes", "RepoCode", "RepoCodeHighContrastProbe.cs");
 
         Assert.Contains("repo-code-high-contrast", source, StringComparison.Ordinal);
         Assert.Contains("--high-contrast", source, StringComparison.Ordinal);
@@ -367,10 +349,7 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void RepoIssuesProbeAssertsCurrentDeterministicPreviewMarkdown()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Issues", "RepoIssuesPageProbe.cs");
 
         Assert.Contains(
             "This public preview issue demonstrates cached, responsive repository issue navigation.",
@@ -395,10 +374,7 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void AdaptiveWorkspaceDrawerProbeUsesRealPointerClicksForFocusTransitions()
     {
-        string probe = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string probe = ReadAutomationSource("Workspaces", "AdaptiveWorkspaceDrawers.cs");
 
         Assert.Contains("leadingButton.Click();", probe, StringComparison.Ordinal);
         Assert.Contains("leadingCloseButton.Click();", probe, StringComparison.Ordinal);
@@ -413,10 +389,7 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void NoFlashListProbeReacquiresVirtualizedRowsByStableIdentity()
     {
-        string probe = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string probe = ReadAutomationSource("Workspaces", "WorkItemListSelection.cs");
 
         Assert.Contains("string listAutomationId = GetAutomationId(list);", probe, StringComparison.Ordinal);
         Assert.Contains("string targetAutomationId = GetAutomationId(target);", probe, StringComparison.Ordinal);
@@ -445,10 +418,9 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void GracefulCloseRequiresExactOwnershipAndNormalExitWithoutForceFallback()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Applications", "ApplicationProcessCleanup.cs")
+            + ReadAutomationSource("Native", "NativeMethods.cs")
+            + ReadAutomationSource("Native", "NativeMethods.Processes.cs");
 
         int closeStart = source.IndexOf("static void TryClose(Application app)", StringComparison.Ordinal);
         int cleanupStart = source.IndexOf("static void KillExistingApplicationInstances", closeStart, StringComparison.Ordinal);
@@ -488,24 +460,20 @@ public sealed class AutomationHarnessSourceContractTests
 
         string wait = source[waitStart..terminateStart];
         Assert.Contains("if (processId <= 0)", wait, StringComparison.Ordinal);
-        Assert.Contains("catch (ArgumentException)\n    {", wait.Replace("\r\n", "\n"), StringComparison.Ordinal);
+        Assert.Contains("catch (ArgumentException)\n        {", wait.Replace("\r\n", "\n"), StringComparison.Ordinal);
         Assert.Contains("Absence is the successful state this cleanup wait is proving.", wait, StringComparison.Ordinal);
-        Assert.Contains("catch (InvalidOperationException)\n    {\n        return true;", wait.Replace("\r\n", "\n"), StringComparison.Ordinal);
+        Assert.Contains("catch (InvalidOperationException)\n        {\n            return true;", wait.Replace("\r\n", "\n"), StringComparison.Ordinal);
     }
 
     [Fact]
     public void SettingsExportPickerUsesOwnedWindowAndLocalizationIndependentDialogContracts()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Settings", "SettingsExportPickerProbe.cs");
 
         int methodStart = source.IndexOf("static void AssertSettingsExportPicker(", StringComparison.Ordinal);
-        int methodEnd = source.IndexOf("static void RunStarsLibraryProbe", methodStart, StringComparison.Ordinal);
-        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        Assert.True(methodStart >= 0);
 
-        string method = source[methodStart..methodEnd];
+        string method = source[methodStart..];
         Assert.Contains("NativeMethods.TryFindLargestOwnedTopLevelWindow(appWindowHandle, out IntPtr pickerHandle)", method, StringComparison.Ordinal);
         Assert.Contains("automation.FromHandle(pickerHandle)", method, StringComparison.Ordinal);
         Assert.Contains("ByAutomationId(\"FileNameControlHost\")", method, StringComparison.Ordinal);
@@ -519,16 +487,12 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void ShellResponsiveProbeValidatesPersistentWideRailToggle()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Shell", "ShellResponsiveProbe.cs");
 
         int methodStart = source.IndexOf("static void RunShellResponsiveProbe", StringComparison.Ordinal);
-        int methodEnd = source.IndexOf("static void RunShellNavClicksProbe", methodStart, StringComparison.Ordinal);
-        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        Assert.True(methodStart >= 0);
 
-        string method = source[methodStart..methodEnd];
+        string method = source[methodStart..];
         Assert.Contains("user collapses wide shell rail", method, StringComparison.Ordinal);
         Assert.Contains("user-collapsed shell rail remains collapsed after resize", method, StringComparison.Ordinal);
         Assert.Contains("user expands wide shell rail", method, StringComparison.Ordinal);
@@ -539,15 +503,11 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void RepositoryActionsUseLiveSharedStarsStateAndGracefulRelaunchBoundaries()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Repositories", "RepositoryActionsProbe.cs");
 
         int probeStart = source.IndexOf("static void RunRepositoryActionsProbe", StringComparison.Ordinal);
-        int probeEnd = source.IndexOf("static void RunCommitsResponsiveWorkspaceProbe", probeStart, StringComparison.Ordinal);
-        Assert.True(probeStart >= 0 && probeEnd > probeStart);
-        string probe = source[probeStart..probeEnd];
+        Assert.True(probeStart >= 0);
+        string probe = source[probeStart..];
 
         Assert.DoesNotContain("RunStarsLibraryProbe", probe, StringComparison.Ordinal);
         Assert.Contains("ExerciseSharedStarsMutation(window, automation);", probe, StringComparison.Ordinal);
@@ -579,16 +539,16 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void ThemePaletteProbeRequiresExactLiveAccentRepaintAndWindowOnlyEvidence()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+        string source = ReadAutomationSource("Probes", "Theming", "ThemeSwitchProbe.cs")
+            + ReadAutomationSource("Probes", "Theming", "ThemePaletteProbe.cs")
+            + ReadAutomationSource("Screenshots", "WindowCapture.cs")
+            + ReadAutomationSource("Native", "NativeMethods.Capture.cs");
 
         int switchStart = source.IndexOf("static void RunThemeSwitchProbe", StringComparison.Ordinal);
         int paletteStart = source.IndexOf("static void RunThemePaletteProbe", switchStart, StringComparison.Ordinal);
         int paletteEnd = source.IndexOf("static void RunThemePaletteHomeMatrix", paletteStart, StringComparison.Ordinal);
         int captureStart = source.IndexOf("static void CaptureWindow(Window window, string path)", StringComparison.Ordinal);
-        int captureEnd = source.IndexOf("static void WaitForScreenshotRegionToStabilize", captureStart, StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("static void CaptureElement", captureStart, StringComparison.Ordinal);
         Assert.True(switchStart >= 0 && paletteStart > switchStart && paletteEnd > paletteStart);
         Assert.True(captureStart >= 0 && captureEnd > captureStart);
 
@@ -604,6 +564,10 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("PrintWindow(windowHandle, deviceContext, PwRenderFullContent)", source, StringComparison.Ordinal);
         Assert.Contains("GetPhysicalWindowBounds(windowHandle)", source, StringComparison.Ordinal);
     }
+
+    private static string ReadAutomationSource(params string[] pathFromAutomationProject) =>
+        File.ReadAllText(Path.Combine(
+            [FindRepositoryRoot(), "JitHub.WinUI.Automation", .. pathFromAutomationProject]));
 
     private static string ReadRendererSource(params string[] pathFromRendererProject) =>
         File.ReadAllText(Path.Combine(

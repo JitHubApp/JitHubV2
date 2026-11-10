@@ -18,7 +18,7 @@ using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.Me;
 using JitHub.Core.Services.Performance;
 using JitHub.Core.Services.Storage;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 
 namespace JitHub.Core.Services.PullRequests;
 

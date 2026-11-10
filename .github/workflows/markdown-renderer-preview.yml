@@ -353,7 +353,7 @@ jobs:
           # own testhost, keyed by the suite whose project owns them.
           $deadlineSensitiveTests = [ordered]@{
             hostedCancellation = @{ Suite = 'core'; Name = 'MarkdownRenderer.Tests.HostedElementLifecycleContractTests.ThrowingCancellationCallbackCannotEscapeCleanup' }
-            authoredSvgDoctype = @{ Suite = 'svg'; Name = 'MarkdownRenderer.Svg.Resvg.Tests.SvgResourceBudgetTests.Validate_RejectsExternalDoctypeInTheAuthoredRootDocument' }
+            authoredSvgDoctype = @{ Suite = 'svg'; Name = 'MarkdownRenderer.Svg.Resvg.Tests.Internal.Preparation.SvgResourceBudgetTests.Validate_RejectsExternalDoctypeInTheAuthoredRootDocument' }
           }
           $exclusionTerms = @{}
           foreach ($suite in @('core', 'svg')) {

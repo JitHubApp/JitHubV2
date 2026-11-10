@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
 using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Me;

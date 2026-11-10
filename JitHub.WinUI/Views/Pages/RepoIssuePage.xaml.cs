@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown.Authoring;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Issue;

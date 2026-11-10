@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using JitHub.Core.Models.GitHub.Repositories;
 using JitHub.Core.Services.Layout;
 using JitHub.Core.ViewModels.Search;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Shell;
 using Microsoft.UI.Xaml;

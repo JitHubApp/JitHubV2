@@ -1,4 +1,10 @@
 using System.Globalization;
+using MarkdownRenderer.Math.Accessibility;
+using MarkdownRenderer.Math.Internal.Processing;
+using MarkdownRenderer.Math.Internal.Scanning;
+using MarkdownRenderer.Math.Internal.Scenes;
+using MarkdownRenderer.Math.Localization;
+using MarkdownRenderer.Math.Tests.TestSupport;
 using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;

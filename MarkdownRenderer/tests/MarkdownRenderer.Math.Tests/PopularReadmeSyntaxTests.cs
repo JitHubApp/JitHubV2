@@ -1,4 +1,6 @@
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Math.Internal.Processing;
+using MarkdownRenderer.Math.Internal.Scanning;
 using MarkdownRenderer.Theming;
 using Xunit;
 

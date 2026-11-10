@@ -26,6 +26,12 @@ namespace JitHub.Core.Tests.Services.Profile;
 
 public sealed class GitHubProfileQueryServiceTests
 {
+    // Upper bound for work the test expects to finish (a request starting,
+    // cancellation, quiescence and the shutdown drain). It only turns a hang into
+    // a failure, so it is generous: CI runs these suites in parallel on a shared
+    // runner.
+    private static readonly TimeSpan ExpectedCompletionBound = TimeSpan.FromSeconds(15);
+
     [Fact]
     public async Task GetProfileAsync_PublicPreviewReturnsRichNativeProfileSnapshot()
     {
@@ -374,10 +380,10 @@ public sealed class GitHubProfileQueryServiceTests
             "token",
             "42",
             new GitHubUserProfileUpdateRequest { Name = "Updated name" });
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.Started.Task.WaitAsync(ExpectedCompletionBound);
 
-        await coordinator.CancelAccountAsync("42").WaitAsync(TimeSpan.FromSeconds(2));
-        await accountWork.QuiesceAsync("42").WaitAsync(TimeSpan.FromSeconds(2));
+        await coordinator.CancelAccountAsync("42").WaitAsync(ExpectedCompletionBound);
+        await accountWork.QuiesceAsync("42").WaitAsync(ExpectedCompletionBound);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => mutation);
         Assert.True(handler.CancellationObserved.Task.IsCompletedSuccessfully);
@@ -407,7 +413,7 @@ public sealed class GitHubProfileQueryServiceTests
             "42",
             new GitHubUserProfileUpdateRequest { Name = "Updated name" },
             cancellation.Token);
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.Started.Task.WaitAsync(ExpectedCompletionBound);
 
         cancellation.Cancel();
 
@@ -434,11 +440,11 @@ public sealed class GitHubProfileQueryServiceTests
             new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
 
         Task mutation = service.FollowUserAsync("token", "42", "octocat");
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await handler.Started.Task.WaitAsync(ExpectedCompletionBound);
 
         ApplicationTaskShutdownResult shutdown = await coordinator
-            .ShutdownAsync(TimeSpan.FromSeconds(2))
-            .WaitAsync(TimeSpan.FromSeconds(3));
+            .ShutdownAsync(ExpectedCompletionBound)
+            .WaitAsync(ExpectedCompletionBound + ExpectedCompletionBound);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => mutation);
         Assert.True(shutdown.Completed);

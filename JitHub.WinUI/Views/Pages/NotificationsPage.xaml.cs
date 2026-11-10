@@ -2,7 +2,7 @@ using System;
 using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Notifications;
 using JitHub.Core.ViewModels.Notifications;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;

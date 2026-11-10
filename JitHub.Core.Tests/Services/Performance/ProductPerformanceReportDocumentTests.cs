@@ -1,5 +1,6 @@
 using System.Text.Json;
-using JitHub.Services;
+using JitHub.Performance.Budgets;
+using JitHub.Performance.Reports;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.Performance;

@@ -108,7 +108,9 @@ public sealed class PullRequestResponsiveActionContractTests
     {
         string automation = File.ReadAllText(SourcePath(
             "JitHub.WinUI.Automation",
-            "Program.cs"));
+            "Probes",
+            "PullRequests",
+            "PullRequestsResponsiveWorkspaceProbe.cs"));
         string queryService = File.ReadAllText(SourcePath(
             "JitHub.Core",
             "Services",

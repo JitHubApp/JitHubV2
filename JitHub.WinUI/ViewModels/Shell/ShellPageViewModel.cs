@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Views.Pages;
 using JitHub.WinUI.Views.Pages.Design;

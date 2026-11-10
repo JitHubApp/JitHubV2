@@ -298,9 +298,16 @@ public sealed class VNextLocalizationContractTests
         Assert.Contains("Target=\"SearchBoxFrame.Width\" Value=\"{ThemeResource AppDimension220}\"", shellXaml, StringComparison.Ordinal);
 
         string automation = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+                root,
+                "JitHub.WinUI.Automation",
+                "Probes",
+                "ProbeCatalog.cs"))
+            + File.ReadAllText(Path.Combine(
+                root,
+                "JitHub.WinUI.Automation",
+                "Probes",
+                "Localization",
+                "VNextPseudoLocalizationProbe.cs"));
         Assert.Contains("vnext-pseudo-localization", automation, StringComparison.Ordinal);
         foreach (string page in new[]
                  {

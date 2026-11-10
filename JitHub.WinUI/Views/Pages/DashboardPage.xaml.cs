@@ -10,7 +10,7 @@ using JitHub.Core.Services.Dashboard;
 using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Notifications;
 using JitHub.Core.Services.Stars;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.Services.Dialogs;

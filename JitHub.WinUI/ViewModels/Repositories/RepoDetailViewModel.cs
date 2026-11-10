@@ -1,5 +1,5 @@
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
-using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Core.Helpers;

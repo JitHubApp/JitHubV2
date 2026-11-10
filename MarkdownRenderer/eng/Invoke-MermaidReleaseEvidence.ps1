@@ -342,6 +342,7 @@ $consumerProject = @'
     [Text.UTF8Encoding]::new($false))
 $consumerProgram = @'
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Mermaid.NativeRuntime;
 
 MermaidNativeRuntimeInfo runtime = MermaidNativeRuntime.Probe();
 if (!runtime.IsAvailable)

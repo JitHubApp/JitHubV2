@@ -14,8 +14,16 @@ public sealed class AutomationProcessCleanupContractTests
             "JitHub.WinUI.Automation",
             "app.manifest"));
         string source = File.ReadAllText(FindRepositoryFile(
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
+                "JitHub.WinUI.Automation",
+                "Program.cs"))
+            + File.ReadAllText(FindRepositoryFile(
+                "JitHub.WinUI.Automation",
+                "Native",
+                "NativeMethods.Windows.cs"))
+            + File.ReadAllText(FindRepositoryFile(
+                "JitHub.WinUI.Automation",
+                "Screenshots",
+                "WindowCapture.cs"));
 
         Assert.Contains("<ApplicationManifest>app.manifest</ApplicationManifest>", project, StringComparison.Ordinal);
         Assert.Contains(">PerMonitorV2,PerMonitor</dpiAwareness>", manifest, StringComparison.Ordinal);
@@ -29,7 +37,8 @@ public sealed class AutomationProcessCleanupContractTests
     {
         string source = File.ReadAllText(FindRepositoryFile(
             "JitHub.WinUI.Automation",
-            "Program.cs"));
+            "Applications",
+            "ApplicationProcessCleanup.cs"));
         int methodStart = source.IndexOf("static bool WaitForProcessExit", StringComparison.Ordinal);
         int methodEnd = source.IndexOf("static bool TryTerminateOwnedProcess", methodStart, StringComparison.Ordinal);
 
@@ -38,7 +47,7 @@ public sealed class AutomationProcessCleanupContractTests
         Assert.Contains("catch (ArgumentException)", method, StringComparison.Ordinal);
         Assert.Contains("catch (InvalidOperationException)", method, StringComparison.Ordinal);
         Assert.Equal(2, CountOccurrences(method, "return true;"));
-        Assert.DoesNotContain("catch (ArgumentException)\n    {\n        return false;", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("catch (ArgumentException)\n        {\n            return false;", method, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string source, string value)

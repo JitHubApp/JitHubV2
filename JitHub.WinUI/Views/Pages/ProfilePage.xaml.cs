@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Views.Dialogs;
 using JitHub.WinUI.Helpers;
 using JitHub.Core.Helpers;

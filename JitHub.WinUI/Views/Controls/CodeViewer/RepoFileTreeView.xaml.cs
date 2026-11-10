@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using JitHub.Core.Services.CodeViewer;
 using JitHub.Core.Services.Localization;
 using JitHub.Core.ViewModels.CodeViewer;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;

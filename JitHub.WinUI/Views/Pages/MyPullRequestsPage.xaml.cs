@@ -5,7 +5,7 @@ using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Me;
 using JitHub.Core.Services.PullRequests;
 using JitHub.Core.ViewModels.Me;
-using JitHub.Services;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Me;
 using JitHub.WinUI.Views.Controls.Scrolling;

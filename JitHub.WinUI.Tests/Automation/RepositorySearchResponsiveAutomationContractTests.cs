@@ -6,14 +6,21 @@ namespace JitHub.WinUI.Tests.Automation;
 
 public sealed class RepositorySearchResponsiveAutomationContractTests
 {
-    private static readonly string ProgramPath = FindRepositoryFile(
+    private static readonly string ProbeCatalogPath = FindRepositoryFile(
         "JitHub.WinUI.Automation",
-        "Program.cs");
+        "Probes",
+        "ProbeCatalog.cs");
+
+    private static readonly string ProbePath = FindRepositoryFile(
+        "JitHub.WinUI.Automation",
+        "Probes",
+        "Search",
+        "RepositorySearchResponsiveProbe.cs");
 
     [Fact]
     public void ProbeRetainsCanonicalWidthsAndBehavioralAssertions()
     {
-        string source = File.ReadAllText(ProgramPath);
+        string source = File.ReadAllText(ProbeCatalogPath) + File.ReadAllText(ProbePath);
 
         Assert.Contains("repo-search-responsive", source, StringComparison.Ordinal);
         Assert.Contains("RunRepositorySearchResponsiveProbe", source, StringComparison.Ordinal);

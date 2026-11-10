@@ -4,7 +4,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Math.Internal;
+using MarkdownRenderer.Math.Accessibility;
+using MarkdownRenderer.Math.Internal.Processing;
+using MarkdownRenderer.Math.Internal.Scenes;
+using MarkdownRenderer.Math.Localization;
+using MarkdownRenderer.Math.Localization.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Math;

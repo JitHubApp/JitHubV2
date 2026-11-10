@@ -1,3 +1,5 @@
+using MarkdownRenderer.Math.Internal.Compilation;
+
 namespace MarkdownRenderer.Math.Internal;
 
 /// <summary>

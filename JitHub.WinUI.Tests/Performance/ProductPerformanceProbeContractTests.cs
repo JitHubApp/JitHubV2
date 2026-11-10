@@ -10,10 +10,7 @@ public sealed class ProductPerformanceProbeContractTests
     public void RouteProbe_ArchivesBoundedDiagnosticsForEveryIteration()
     {
         string root = FindRepositoryRoot();
-        string source = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI.PerformanceGate",
-            "ProductPerformanceRouteProbe.cs"));
+        string source = ReadRouteProbeSource(root);
 
         Assert.Contains("ArchiveDiagnostics(runCase, partitionRoot)", source, StringComparison.Ordinal);
         Assert.Contains("runCase.Fixture.ToString().ToLowerInvariant()", source, StringComparison.Ordinal);
@@ -927,10 +924,7 @@ public sealed class ProductPerformanceProbeContractTests
     public void RouteProbe_SeparatesStartupFromInShellDataReadyNavigationAndExactTraversal()
     {
         string root = FindRepositoryRoot();
-        string source = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI.PerformanceGate",
-            "ProductPerformanceRouteProbe.cs"));
+        string source = ReadRouteProbeSource(root);
 
         int startupStart = source.IndexOf("long startupStartedTimestamp = Stopwatch.GetTimestamp();", StringComparison.Ordinal);
         int launch = source.IndexOf("Application.Launch(startInfo)", StringComparison.Ordinal);
@@ -970,7 +964,7 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("Thread.Sleep(75);", source);
         Assert.Contains("SendNativeClick();", source);
         int activationStart = source.IndexOf(
-            "private static Func<long> PrepareTraversalActivation(",
+            "internal static Func<long> PrepareTraversalActivation(",
             StringComparison.Ordinal);
         int activationEnd = source.IndexOf(
             "private static Point ResolveTraversalClickPoint(",
@@ -1177,10 +1171,7 @@ public sealed class ProductPerformanceProbeContractTests
     public void PerformanceGate_PersistsPerTraversalTimingAndAppStageTrace()
     {
         string root = FindRepositoryRoot();
-        string source = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI.PerformanceGate",
-            "ProductPerformanceRouteProbe.cs"));
+        string source = ReadRouteProbeSource(root);
 
         Assert.Contains("traversal-observations.ndjson", source, StringComparison.Ordinal);
         Assert.Contains("IsTransientUiAutomationTimeout", source, StringComparison.Ordinal);
@@ -1207,8 +1198,7 @@ public sealed class ProductPerformanceProbeContractTests
         string budgetSource = File.ReadAllText(Path.Combine(
             root,
             "JitHub.Performance",
-            "Services",
-            "Performance",
+            "Budgets",
             "ProductPerformanceBudget.cs"));
         MatchCollection routeMatches = Regex.Matches(
             budgetSource,
@@ -1385,6 +1375,17 @@ public sealed class ProductPerformanceProbeContractTests
                 $"Canonical route '{route}' has no product-side large-account/performance fixture consumer.");
         }
     }
+
+    /// <summary>
+    /// The performance gate's route probe and the traversal, scrolling, element
+    /// and native input classes it drives, with the route probe itself first.
+    /// </summary>
+    private static string ReadRouteProbeSource(string root) => string.Concat(
+        new[] { "Routes", "Traversal", "Scrolling", "Elements", "Native" }
+            .SelectMany(folder => Directory
+                .EnumerateFiles(Path.Combine(root, "JitHub.WinUI.PerformanceGate", folder), "*.cs")
+                .Order(StringComparer.Ordinal))
+            .Select(File.ReadAllText));
 
     private static string FindRepositoryRoot()
     {
