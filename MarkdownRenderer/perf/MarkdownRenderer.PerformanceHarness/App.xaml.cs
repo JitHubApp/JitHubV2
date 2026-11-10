@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using MarkdownRenderer.PerformanceHarness.Core.Configuration;
+using MarkdownRenderer.PerformanceHarness.Hosting;
 using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.PerformanceHarness;

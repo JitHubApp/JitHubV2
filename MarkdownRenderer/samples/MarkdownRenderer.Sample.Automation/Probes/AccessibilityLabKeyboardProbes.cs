@@ -2,6 +2,7 @@ using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
+using MarkdownRenderer.Sample.Automation.Uia;
 using static MarkdownRenderer.Sample.Automation.Uia.AutomationElementText;
 using static MarkdownRenderer.Sample.Automation.Uia.FocusClassification;
 using static MarkdownRenderer.Sample.Automation.Uia.ProbeAssert;
