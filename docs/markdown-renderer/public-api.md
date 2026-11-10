@@ -178,6 +178,12 @@ private source through admitted renders and cancellation callbacks before
 document retirement releases it; this lifetime contract is not an aggregate
 source-memory cap.
 
+Image resolution contracts (`IMarkdownImageResolver`, `MarkdownImageAsset`,
+`MarkdownDocumentSource` and their companions) are in `MarkdownRenderer.Images`.
+SVG provider contracts are in `MarkdownRenderer.Images.Svg`, and raster decoder
+contracts (`IMarkdownRasterDecoder`, `MarkdownRaster`) are in
+`MarkdownRenderer.Images.Raster`.
+
 An SVG provider can implement optional capabilities that the views detect and
 use:
 
