@@ -1,5 +1,7 @@
 using JitHub.Services;
 
+namespace JitHub.WinUI.PerformanceGate.Options;
+
 internal sealed record ProductPerformanceGateOptions(
     string Command,
     string? AppPath,
@@ -11,6 +13,9 @@ internal sealed record ProductPerformanceGateOptions(
     IReadOnlyList<string>? Routes,
     string Repository)
 {
+    // This method stays whole because it is one pass over the arguments that reads the command and fills each --app,
+    // --output, --artifacts, --configuration, --iterations, --fixtures, --routes, and --repo default, then validates
+    // the command, app path, and owner/repository shape before building the options record.
     public static ProductPerformanceGateOptions Parse(string[] args)
     {
         string command = args.FirstOrDefault(static argument => !argument.StartsWith("--", StringComparison.Ordinal))
