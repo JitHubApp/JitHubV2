@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using JitHub.Markdown.Documents;
 using MarkdownRenderer.Images;
 using Xunit;
 

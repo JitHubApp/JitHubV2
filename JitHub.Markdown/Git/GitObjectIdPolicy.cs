@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Git;
 
 /// <summary>Recognizes full Git object ids, which name immutable commits and trees.</summary>
 public static class GitObjectIdPolicy

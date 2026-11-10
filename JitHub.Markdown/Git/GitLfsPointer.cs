@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Git;
 
 /// <summary>
 /// Recognizes the small text pointer returned by GitHub's Contents and raw

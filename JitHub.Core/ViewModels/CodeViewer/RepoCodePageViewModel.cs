@@ -12,7 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;

@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
-using JitHub.Markdown;
+using JitHub.Markdown.Authoring;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Tests.TestSupport;
 using Xunit;

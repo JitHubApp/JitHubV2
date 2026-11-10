@@ -8,7 +8,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;

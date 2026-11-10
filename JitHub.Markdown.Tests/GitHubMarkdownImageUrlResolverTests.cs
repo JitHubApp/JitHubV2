@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown.Git;
 using Xunit;
 
 namespace JitHub.Markdown.Tests;

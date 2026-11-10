@@ -11,13 +11,14 @@
 ~override JitHub.Markdown.Links.MarkdownGitHubRoute.ToString() -> string
 ~override JitHub.Markdown.MarkdownRemoteImageDecision.Equals(object obj) -> bool
 ~override JitHub.Markdown.MarkdownRemoteImageDecision.ToString() -> string
+const JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.RepositoryRootDocumentPath = "README.md" -> string!
 const JitHub.Markdown.Hosting.MarkdownHostContract.Comment = "Comment" -> string!
 const JitHub.Markdown.Hosting.MarkdownHostContract.Conversation = "Conversation" -> string!
 const JitHub.Markdown.Hosting.MarkdownHostContract.EditorPreview = "EditorPreview" -> string!
 const JitHub.Markdown.Hosting.MarkdownHostContract.ProfileReadme = "ProfileReadme" -> string!
 const JitHub.Markdown.Hosting.MarkdownHostContract.RepositoryReadme = "RepositoryReadme" -> string!
 const JitHub.Markdown.Images.GitHubImageLimits.MaxImageBytes = 33554432 -> int
-const JitHub.Markdown.MarkdownDocumentSourceFactory.RepositoryRootDocumentPath = "README.md" -> string!
+JitHub.Markdown.Authoring.CommentMarkdownFormatter
 JitHub.Markdown.Automation.AutomationScopedId
 JitHub.Markdown.Automation.MarkdownFormAutomationIdentity
 JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.MarkdownFormAutomationIdentity() -> void
@@ -37,9 +38,11 @@ JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.PreviewMode.get -> stri
 JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.PreviewMode.init -> void
 JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.WriteMode.get -> string!
 JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.WriteMode.init -> void
-JitHub.Markdown.CommentMarkdownFormatter
 JitHub.Markdown.DenyAllMarkdownImageResolver
 JitHub.Markdown.DenyAllMarkdownImageResolver.ResolveAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
+JitHub.Markdown.Documents.MarkdownDocumentSourceFactory
+JitHub.Markdown.Git.GitLfsPointer
+JitHub.Markdown.Git.GitObjectIdPolicy
 JitHub.Markdown.GitHubMarkdownImageReference
 JitHub.Markdown.GitHubMarkdownImageReference.Deconstruct(out string! Owner, out string! Repository, out string! Ref, out string! Path, out System.Uri! SourceUri) -> void
 JitHub.Markdown.GitHubMarkdownImageReference.Equals(JitHub.Markdown.GitHubMarkdownImageReference other) -> bool
@@ -56,8 +59,6 @@ JitHub.Markdown.GitHubMarkdownImageReference.Repository.init -> void
 JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.get -> System.Uri!
 JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.init -> void
 JitHub.Markdown.GitHubMarkdownImageUrlResolver
-JitHub.Markdown.GitLfsPointer
-JitHub.Markdown.GitObjectIdPolicy
 JitHub.Markdown.Hosting.MarkdownHostContract
 JitHub.Markdown.Hosting.MarkdownHostKind
 JitHub.Markdown.Hosting.MarkdownHostKind.Comment = 1 -> JitHub.Markdown.Hosting.MarkdownHostKind
@@ -283,7 +284,6 @@ JitHub.Markdown.Localization.IMarkdownResourceText.GetString(string! resourceKey
 JitHub.Markdown.Localization.JitHubMarkdownStringProvider
 JitHub.Markdown.Localization.JitHubMarkdownStringProvider.GetString(string! key, System.Globalization.CultureInfo! culture) -> string?
 JitHub.Markdown.Localization.JitHubMarkdownStringProvider.JitHubMarkdownStringProvider(JitHub.Markdown.Localization.IMarkdownResourceText! text) -> void
-JitHub.Markdown.MarkdownDocumentSourceFactory
 JitHub.Markdown.MarkdownRemoteContentConsent
 JitHub.Markdown.MarkdownRemoteContentConsent.Activate(MarkdownRenderer.Images.MarkdownDocumentSource? source) -> void
 JitHub.Markdown.MarkdownRemoteContentConsent.CurrentIdentity.get -> string!
@@ -389,23 +389,27 @@ override JitHub.Markdown.Images.GitHubMarkdownEncodedContent.ToString() -> strin
 override JitHub.Markdown.Images.GitHubRawImageFetchOutcome.GetHashCode() -> int
 override JitHub.Markdown.Links.MarkdownGitHubRoute.GetHashCode() -> int
 override JitHub.Markdown.MarkdownRemoteImageDecision.GetHashCode() -> int
+static JitHub.Markdown.Authoring.CommentMarkdownFormatter.AppendQuote(string? draft, string? body) -> string!
 static JitHub.Markdown.Automation.AutomationScopedId.Create(string! prefix, string? scope, string? suffix = null) -> string!
 static JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.GetPeerIds(string! prefix) -> JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds
 static JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.GetPreviewHostId(string! prefix) -> string!
 static JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.GetPreviewInstanceId(string! prefix) -> string!
 static JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.operator !=(JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds left, JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds right) -> bool
 static JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.operator ==(JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds left, JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds right) -> bool
-static JitHub.Markdown.CommentMarkdownFormatter.AppendQuote(string? draft, string? body) -> string!
 static JitHub.Markdown.DenyAllMarkdownImageResolver.CreateOrDenyAll(System.Func<MarkdownRenderer.Images.IMarkdownImageResolver?>! createResolver) -> MarkdownRenderer.Images.IMarkdownImageResolver!
 static JitHub.Markdown.DenyAllMarkdownImageResolver.Instance.get -> JitHub.Markdown.DenyAllMarkdownImageResolver!
+static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.CreateRepositoryDocument(string! kind, string! stableId, string! owner, string! repository, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource!
+static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(string! kind, string! stableId, string? githubUrl, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
+static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.TryCreateRepositoryFile(string! stableId, string? githubBlobUrl, string? documentPath, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
+static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.TryGetRepository(string? githubUrl, out string! owner, out string! repository) -> bool
+static JitHub.Markdown.Git.GitLfsPointer.IsPointer(System.ReadOnlySpan<byte> bytes) -> bool
+static JitHub.Markdown.Git.GitObjectIdPolicy.IsImmutableObjectId(string? value) -> bool
 static JitHub.Markdown.GitHubMarkdownImageReference.operator !=(JitHub.Markdown.GitHubMarkdownImageReference left, JitHub.Markdown.GitHubMarkdownImageReference right) -> bool
 static JitHub.Markdown.GitHubMarkdownImageReference.operator ==(JitHub.Markdown.GitHubMarkdownImageReference left, JitHub.Markdown.GitHubMarkdownImageReference right) -> bool
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateGitHubRawRouteUri(JitHub.Markdown.GitHubMarkdownImageReference reference) -> System.Uri!
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateRawUri(JitHub.Markdown.GitHubMarkdownImageReference reference) -> System.Uri!
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, System.Uri? baseUri, string? documentPath, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
-static JitHub.Markdown.GitLfsPointer.IsPointer(System.ReadOnlySpan<byte> bytes) -> bool
-static JitHub.Markdown.GitObjectIdPolicy.IsImmutableObjectId(string? value) -> bool
 static JitHub.Markdown.Hosting.MarkdownHostContract.GetAutomationId(string? value) -> string!
 static JitHub.Markdown.Hosting.MarkdownHostContract.GetAutomationId(string? value, string? instanceId) -> string!
 static JitHub.Markdown.Hosting.MarkdownHostContract.GetAutomationName(string? value) -> string!
@@ -440,10 +444,6 @@ static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(Sy
 static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(System.Uri? uri) -> bool
 static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out System.Uri? uri, out bool mayNavigateInternally) -> bool
 static JitHub.Markdown.Links.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, out System.Uri? uri) -> bool
-static JitHub.Markdown.MarkdownDocumentSourceFactory.CreateRepositoryDocument(string! kind, string! stableId, string! owner, string! repository, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource!
-static JitHub.Markdown.MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(string! kind, string! stableId, string? githubUrl, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
-static JitHub.Markdown.MarkdownDocumentSourceFactory.TryCreateRepositoryFile(string! stableId, string? githubBlobUrl, string? documentPath, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
-static JitHub.Markdown.MarkdownDocumentSourceFactory.TryGetRepository(string? githubUrl, out string! owner, out string! repository) -> bool
 static JitHub.Markdown.MarkdownRemoteImageDecision.operator !=(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
 static JitHub.Markdown.MarkdownRemoteImageDecision.operator ==(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
 static JitHub.Markdown.MarkdownRemoteImagePolicy.IsTrustedGitHubHost(string? host) -> bool

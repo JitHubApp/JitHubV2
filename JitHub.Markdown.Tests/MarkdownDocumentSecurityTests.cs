@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Documents;
 using MarkdownRenderer.Images;
 using Xunit;
 

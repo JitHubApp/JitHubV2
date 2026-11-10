@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using JitHub.Markdown.Git;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Documents;
 
 /// <summary>Creates stable Markdown identity and repository context without URL guessing in views.</summary>
 public static class MarkdownDocumentSourceFactory

@@ -1,6 +1,6 @@
 using System;
 using System.Text.Json.Serialization;
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.Services;
 using MarkdownRenderer.Images;
 

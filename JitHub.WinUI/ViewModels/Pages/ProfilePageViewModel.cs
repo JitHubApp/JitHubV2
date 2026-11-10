@@ -7,7 +7,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.Markdown.Links;
 using MarkdownRenderer.Images;
 using CommunityToolkit.Mvvm.ComponentModel;
