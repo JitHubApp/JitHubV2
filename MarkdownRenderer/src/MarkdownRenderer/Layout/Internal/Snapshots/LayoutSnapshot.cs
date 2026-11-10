@@ -23,6 +23,7 @@ using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.PrivatePlacement;
 using MarkdownRenderer.Layout.Internal.Relayout;
 using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Performance.Internal.Residency;
 
 namespace MarkdownRenderer.Layout.Internal.Snapshots;
 

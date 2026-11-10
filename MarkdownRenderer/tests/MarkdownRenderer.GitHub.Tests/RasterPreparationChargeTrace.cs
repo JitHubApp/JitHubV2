@@ -1,6 +1,7 @@
 using System.Diagnostics.Tracing;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

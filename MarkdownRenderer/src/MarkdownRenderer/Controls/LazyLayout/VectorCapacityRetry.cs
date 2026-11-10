@@ -4,6 +4,7 @@ using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Microsoft.UI.Dispatching;
 
 namespace MarkdownRenderer.Controls.LazyLayout;

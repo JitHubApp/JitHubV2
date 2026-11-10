@@ -13,6 +13,13 @@ using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.CompletedScenes;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
+using MarkdownRenderer.Performance.Internal.Residency;
+using MarkdownRenderer.Performance.Internal.Scheduling;
+using MarkdownRenderer.Performance.Internal.Session;
+using MarkdownRenderer.Performance.Internal.Session.ImageSources;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;

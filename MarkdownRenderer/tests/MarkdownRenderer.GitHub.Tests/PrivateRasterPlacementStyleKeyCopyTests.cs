@@ -246,7 +246,7 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             Assert.False(capture.TryAddRoot(
                 second, fixture.SourceContext, target, Width, out _));
 
-            Assert.False(MarkdownRenderer.Performance.MarkdownVectorSceneResidencyPolicy
+            Assert.False(MarkdownRenderer.Performance.Internal.Residency.MarkdownVectorSceneResidencyPolicy
                 .CanOmitForPrivatePlacement(new BlockBox[] { first, second }));
 
             composite = new StackBox { BlockIndex = 0 };

@@ -6,6 +6,7 @@ using Microsoft.Graphics.Canvas;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Raster;

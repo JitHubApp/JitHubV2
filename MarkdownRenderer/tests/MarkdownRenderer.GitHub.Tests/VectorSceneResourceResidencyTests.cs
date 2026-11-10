@@ -14,6 +14,8 @@ using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Layout.Internal.Vectors;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Residency;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

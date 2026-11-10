@@ -17,6 +17,7 @@ using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
 

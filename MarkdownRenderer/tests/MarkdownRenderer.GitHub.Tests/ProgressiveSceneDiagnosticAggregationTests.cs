@@ -7,6 +7,8 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

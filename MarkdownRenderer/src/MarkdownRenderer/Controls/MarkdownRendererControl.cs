@@ -22,6 +22,7 @@ using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 

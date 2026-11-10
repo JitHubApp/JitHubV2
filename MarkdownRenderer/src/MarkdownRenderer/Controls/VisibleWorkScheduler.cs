@@ -1,6 +1,7 @@
 using MarkdownRenderer.Controls.Highlighting;
 using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls;
 

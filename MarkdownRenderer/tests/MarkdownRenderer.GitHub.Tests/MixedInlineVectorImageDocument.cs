@@ -6,6 +6,8 @@ using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using Microsoft.UI.Xaml;
 using Xunit;
 

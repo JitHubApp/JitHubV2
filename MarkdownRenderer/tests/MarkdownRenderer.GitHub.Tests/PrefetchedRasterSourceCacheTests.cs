@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

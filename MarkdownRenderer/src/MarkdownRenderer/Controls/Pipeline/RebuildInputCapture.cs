@@ -4,6 +4,7 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Controls.Pipeline;

@@ -12,6 +12,7 @@ using MarkdownRenderer.Layout.Internal.PrivatePlacement;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Residency;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;

@@ -27,6 +27,7 @@ using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Residency;
 
 namespace MarkdownRenderer.Layout.Internal.Images;
 

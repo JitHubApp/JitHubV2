@@ -16,6 +16,7 @@ using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Raster;
 

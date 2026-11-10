@@ -4,6 +4,7 @@ using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;

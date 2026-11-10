@@ -3,6 +3,7 @@ using System.Threading;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Loading;
 

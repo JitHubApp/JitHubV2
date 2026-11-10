@@ -12,6 +12,7 @@ using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.CompletedScenes;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

@@ -7,6 +7,8 @@ using MarkdownRenderer.Performance;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.StyleRoles;
 using MarkdownDocumentSnapshot = MarkdownRenderer.Document.MarkdownDocument;
 using System.Threading;
 using Xunit;

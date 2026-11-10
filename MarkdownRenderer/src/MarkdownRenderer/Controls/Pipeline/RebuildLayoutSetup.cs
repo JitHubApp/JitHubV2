@@ -13,6 +13,7 @@ using MarkdownRenderer.Layout.Internal.Images.Placement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using MarkdownRenderer.Theming.Internal.ResourceDictionaries;

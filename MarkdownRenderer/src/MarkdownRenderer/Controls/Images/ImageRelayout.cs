@@ -10,6 +10,7 @@ using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Relayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls.Images;
 

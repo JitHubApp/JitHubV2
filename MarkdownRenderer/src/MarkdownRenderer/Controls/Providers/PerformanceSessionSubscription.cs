@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Xaml;

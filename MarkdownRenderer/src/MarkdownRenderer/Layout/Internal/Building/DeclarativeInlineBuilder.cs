@@ -6,6 +6,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Layout.Internal.Building;
 

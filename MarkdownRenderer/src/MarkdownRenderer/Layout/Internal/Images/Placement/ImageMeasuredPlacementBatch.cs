@@ -1,5 +1,6 @@
 using System;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Placement;
 

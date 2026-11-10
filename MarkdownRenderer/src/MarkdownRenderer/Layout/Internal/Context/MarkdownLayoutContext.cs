@@ -25,6 +25,7 @@ using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.SafeHtml;
 using MarkdownRenderer.Layout.Internal.SourceProjection;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Layout.Internal.Context;
 

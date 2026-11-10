@@ -24,6 +24,7 @@ using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls.Composition;
 

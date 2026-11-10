@@ -5,6 +5,7 @@ using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
 

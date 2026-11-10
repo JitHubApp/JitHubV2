@@ -11,6 +11,7 @@ using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Internal.Inlines.Runs;

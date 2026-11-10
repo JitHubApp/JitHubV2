@@ -5,6 +5,7 @@ using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Residency;
 
 namespace MarkdownRenderer.Layout.Internal.Snapshots;
 

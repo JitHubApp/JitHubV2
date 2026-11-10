@@ -3,6 +3,7 @@ using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls.Images;
 

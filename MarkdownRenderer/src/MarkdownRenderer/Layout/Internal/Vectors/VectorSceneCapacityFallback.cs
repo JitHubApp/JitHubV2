@@ -6,6 +6,7 @@ using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

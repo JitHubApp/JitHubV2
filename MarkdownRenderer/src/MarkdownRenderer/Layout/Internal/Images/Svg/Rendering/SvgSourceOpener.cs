@@ -10,6 +10,7 @@ using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using SvgFailure = (MarkdownRenderer.Images.MarkdownSvgFailureReason Reason, string Description);
 using SvgPreflight = (Windows.Foundation.Size Intrinsic, string? Title, string? Desc, string ContentHash, string SecurityPartitionHash);
 

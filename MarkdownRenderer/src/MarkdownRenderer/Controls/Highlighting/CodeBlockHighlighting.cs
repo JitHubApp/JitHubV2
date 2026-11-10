@@ -13,6 +13,8 @@ using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Residency;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Controls.Highlighting;

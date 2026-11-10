@@ -1,6 +1,7 @@
 using System;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls;
 

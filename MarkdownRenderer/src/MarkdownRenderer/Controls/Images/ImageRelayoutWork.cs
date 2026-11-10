@@ -11,6 +11,8 @@ using MarkdownRenderer.Layout.Internal.PrivatePlacement;
 using MarkdownRenderer.Layout.Internal.Relayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 
 namespace MarkdownRenderer.Controls.Images;
 

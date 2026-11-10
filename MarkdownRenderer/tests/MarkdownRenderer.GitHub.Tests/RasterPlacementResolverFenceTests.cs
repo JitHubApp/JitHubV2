@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

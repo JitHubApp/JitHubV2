@@ -11,6 +11,8 @@ using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
+using MarkdownRenderer.Performance.Internal.Residency;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

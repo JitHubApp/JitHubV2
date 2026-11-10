@@ -4,6 +4,7 @@ using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
 using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Performance.Internal;
 using Windows.Foundation;
 using Xunit;
 

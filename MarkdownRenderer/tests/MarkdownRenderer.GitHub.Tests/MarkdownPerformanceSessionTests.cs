@@ -2,6 +2,8 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 using Markdig;
 using Xunit;
 

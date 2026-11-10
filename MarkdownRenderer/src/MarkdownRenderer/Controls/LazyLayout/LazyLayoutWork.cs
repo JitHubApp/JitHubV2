@@ -7,6 +7,8 @@ using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 
 namespace MarkdownRenderer.Controls.LazyLayout;
 

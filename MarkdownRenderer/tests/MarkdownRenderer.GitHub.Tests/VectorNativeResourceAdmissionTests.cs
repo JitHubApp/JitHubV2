@@ -65,13 +65,13 @@ public sealed class VectorNativeResourceAdmissionTests
         using var second = new MarkdownRenderer.Performance.MarkdownPerformanceSession(
             MarkdownRenderer.Performance.MarkdownPerformanceOptions.Progressive);
         VectorNativeResourceAdmission firstAdmission =
-            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission;
+            ((MarkdownRenderer.Performance.Internal.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission;
         VectorNativeResourceAdmission secondAdmission =
-            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)second).VectorNativeAdmission;
+            ((MarkdownRenderer.Performance.Internal.IMarkdownPerformanceSessionInternal)second).VectorNativeAdmission;
 
         Assert.Same(
             firstAdmission,
-            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission);
+            ((MarkdownRenderer.Performance.Internal.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission);
         Assert.NotSame(firstAdmission, secondAdmission);
 
         Assert.Equal(VectorNativeAdmissionResult.Granted,

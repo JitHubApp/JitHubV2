@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Session.ImageSources;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

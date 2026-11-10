@@ -1,5 +1,6 @@
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls.Readiness;
 

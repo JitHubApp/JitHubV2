@@ -8,6 +8,8 @@ using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.CompletedScenes;
+using MarkdownRenderer.Performance.Internal.Residency;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;

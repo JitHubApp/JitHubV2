@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 
 namespace MarkdownRenderer.Controls.Providers;
 
