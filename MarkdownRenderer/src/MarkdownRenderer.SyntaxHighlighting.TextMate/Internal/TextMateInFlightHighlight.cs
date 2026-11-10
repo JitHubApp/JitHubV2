@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace MarkdownRenderer.SyntaxHighlighting.TextMate;
+namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Internal;
 
 /// <summary>
 /// One shared provider call and its waiters. Cancellation is requested off the

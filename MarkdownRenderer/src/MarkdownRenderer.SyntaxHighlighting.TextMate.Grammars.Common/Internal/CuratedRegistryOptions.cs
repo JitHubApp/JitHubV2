@@ -8,7 +8,7 @@ using TextMateSharp.Internal.Types;
 using TextMateSharp.Registry;
 using TextMateSharp.Themes;
 
-namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
+namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.Internal;
 
 /// <summary>
 /// Registry over the curated resources embedded in this assembly. Keeping this

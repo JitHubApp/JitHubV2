@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
+namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.Internal;
 
 internal enum TextMateProviderCheckpoint
 {

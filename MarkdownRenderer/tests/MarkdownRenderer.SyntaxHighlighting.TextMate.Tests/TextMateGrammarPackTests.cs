@@ -1,9 +1,11 @@
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.Internal;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Engine;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.Internal;
 using MarkdownRenderer.Theming;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;

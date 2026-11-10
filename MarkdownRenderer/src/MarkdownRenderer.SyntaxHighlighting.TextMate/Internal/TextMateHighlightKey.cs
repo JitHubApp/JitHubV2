@@ -1,6 +1,6 @@
 using System;
 
-namespace MarkdownRenderer.SyntaxHighlighting.TextMate;
+namespace MarkdownRenderer.SyntaxHighlighting.TextMate.Internal;
 
 /// <summary>
 /// Identifies one provider highlight: language, exact code, theme variant and
