@@ -1,9 +1,9 @@
 using System;
-using JitHub.Markdown.Automation;
+using JitHub.Markdown.Accessibility;
 using JitHub.Markdown.Hosting;
 using Xunit;
 
-namespace JitHub.Markdown.Tests.Automation;
+namespace JitHub.Markdown.Tests.Accessibility;
 
 public sealed class MarkdownFormAutomationIdentityTests
 {

@@ -1,7 +1,7 @@
 using System;
 using JitHub.Markdown.Hosting;
 
-namespace JitHub.Markdown.Automation;
+namespace JitHub.Markdown.Accessibility;
 
 /// <summary>
 /// Resolves the UI Automation identities of one Markdown form: the prefix every

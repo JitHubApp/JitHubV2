@@ -1,5 +1,5 @@
 using System;
-using JitHub.Markdown.Automation;
+using JitHub.Markdown.Accessibility;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 

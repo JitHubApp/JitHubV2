@@ -1,5 +1,5 @@
 using CommunityToolkit.WinUI.Controls;
-using JitHub.Markdown.Automation;
+using JitHub.Markdown.Accessibility;
 using JitHub.Markdown.Runtime;
 using JitHub.WinUI.ViewModels;
 using JitHub.WinUI.Helpers;

@@ -1,6 +1,6 @@
 #nullable enable
-~override JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Equals(object obj) -> bool
-~override JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.ToString() -> string
+~override JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Equals(object obj) -> bool
+~override JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.ToString() -> string
 ~override JitHub.Markdown.Hosting.MarkdownReadingRegionSize.Equals(object obj) -> bool
 ~override JitHub.Markdown.Hosting.MarkdownReadingRegionSize.ToString() -> string
 ~override JitHub.Markdown.Images.RemoteContent.MarkdownRemoteImageDecision.Equals(object obj) -> bool
@@ -19,25 +19,25 @@ const JitHub.Markdown.Hosting.MarkdownHostContract.ProfileReadme = "ProfileReadm
 const JitHub.Markdown.Hosting.MarkdownHostContract.RepositoryReadme = "RepositoryReadme" -> string!
 const JitHub.Markdown.Images.Caching.GitHubImageLimits.MaxImageBytes = 33554432 -> int
 JitHub.Markdown.Authoring.CommentMarkdownFormatter
-JitHub.Markdown.Automation.AutomationScopedId
-JitHub.Markdown.Automation.MarkdownFormAutomationIdentity
-JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.MarkdownFormAutomationIdentity() -> void
-JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.ResolvePrefix(string? automationInstanceId, string? attachedAutomationId) -> string!
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Deconstruct(out string! Mode, out string! WriteMode, out string! PreviewMode, out string! Editor, out string! Preview) -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Editor.get -> string!
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Editor.init -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Equals(JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds other) -> bool
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.MarkdownFormPeerAutomationIds() -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.MarkdownFormPeerAutomationIds(string! Mode, string! WriteMode, string! PreviewMode, string! Editor, string! Preview) -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Mode.get -> string!
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Mode.init -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Preview.get -> string!
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.Preview.init -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.PreviewMode.get -> string!
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.PreviewMode.init -> void
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.WriteMode.get -> string!
-JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.WriteMode.init -> void
+JitHub.Markdown.Accessibility.AutomationScopedId
+JitHub.Markdown.Accessibility.MarkdownFormAutomationIdentity
+JitHub.Markdown.Accessibility.MarkdownFormAutomationIdentity.MarkdownFormAutomationIdentity() -> void
+JitHub.Markdown.Accessibility.MarkdownFormAutomationIdentity.ResolvePrefix(string? automationInstanceId, string? attachedAutomationId) -> string!
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Deconstruct(out string! Mode, out string! WriteMode, out string! PreviewMode, out string! Editor, out string! Preview) -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Editor.get -> string!
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Editor.init -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Equals(JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds other) -> bool
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.MarkdownFormPeerAutomationIds() -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.MarkdownFormPeerAutomationIds(string! Mode, string! WriteMode, string! PreviewMode, string! Editor, string! Preview) -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Mode.get -> string!
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Mode.init -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Preview.get -> string!
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.Preview.init -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.PreviewMode.get -> string!
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.PreviewMode.init -> void
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.WriteMode.get -> string!
+JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.WriteMode.init -> void
 JitHub.Markdown.Documents.MarkdownDocumentSourceFactory
 JitHub.Markdown.Git.GitLfsPointer
 JitHub.Markdown.Git.GitObjectIdPolicy
@@ -371,7 +371,7 @@ JitHub.Markdown.Telemetry.IMarkdownTelemetrySink.TrackEvent(string! name, System
 JitHub.Markdown.Telemetry.MarkdownViewerTelemetry
 JitHub.Markdown.Telemetry.MarkdownViewerTelemetry.MarkdownViewerTelemetry(JitHub.Markdown.Telemetry.IMarkdownTelemetrySink? telemetryService, System.Func<string?>! getHostKind) -> void
 JitHub.Markdown.Telemetry.MarkdownViewerTelemetry.TrackMarkdownEvent(string! eventName, string? action, string! result, string? resource = null, string? policy = null, string? errorKind = null, string! source = "user") -> void
-override JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.GetHashCode() -> int
+override JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.GetHashCode() -> int
 override JitHub.Markdown.Hosting.MarkdownReadingRegionSize.GetHashCode() -> int
 override JitHub.Markdown.Images.Caching.GitHubCachedImage.Equals(object? obj) -> bool
 override JitHub.Markdown.Images.Caching.GitHubCachedImage.GetHashCode() -> int
@@ -390,12 +390,12 @@ override JitHub.Markdown.Images.Repository.GitHubMarkdownImageReference.GetHashC
 override JitHub.Markdown.Images.Repository.GitHubRawImageFetchOutcome.GetHashCode() -> int
 override JitHub.Markdown.Links.MarkdownGitHubRoute.GetHashCode() -> int
 static JitHub.Markdown.Authoring.CommentMarkdownFormatter.AppendQuote(string? draft, string? body) -> string!
-static JitHub.Markdown.Automation.AutomationScopedId.Create(string! prefix, string? scope, string? suffix = null) -> string!
-static JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.GetPeerIds(string! prefix) -> JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds
-static JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.GetPreviewHostId(string! prefix) -> string!
-static JitHub.Markdown.Automation.MarkdownFormAutomationIdentity.GetPreviewInstanceId(string! prefix) -> string!
-static JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.operator !=(JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds left, JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds right) -> bool
-static JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds.operator ==(JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds left, JitHub.Markdown.Automation.MarkdownFormPeerAutomationIds right) -> bool
+static JitHub.Markdown.Accessibility.AutomationScopedId.Create(string! prefix, string? scope, string? suffix = null) -> string!
+static JitHub.Markdown.Accessibility.MarkdownFormAutomationIdentity.GetPeerIds(string! prefix) -> JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds
+static JitHub.Markdown.Accessibility.MarkdownFormAutomationIdentity.GetPreviewHostId(string! prefix) -> string!
+static JitHub.Markdown.Accessibility.MarkdownFormAutomationIdentity.GetPreviewInstanceId(string! prefix) -> string!
+static JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.operator !=(JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds left, JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds right) -> bool
+static JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds.operator ==(JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds left, JitHub.Markdown.Accessibility.MarkdownFormPeerAutomationIds right) -> bool
 static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.CreateRepositoryDocument(string! kind, string! stableId, string! owner, string! repository, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource!
 static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(string! kind, string! stableId, string? githubUrl, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
 static JitHub.Markdown.Documents.MarkdownDocumentSourceFactory.TryCreateRepositoryFile(string! stableId, string? githubBlobUrl, string? documentPath, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?

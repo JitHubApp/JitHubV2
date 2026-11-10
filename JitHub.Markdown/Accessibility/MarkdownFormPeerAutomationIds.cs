@@ -1,4 +1,4 @@
-namespace JitHub.Markdown.Automation;
+namespace JitHub.Markdown.Accessibility;
 
 /// <summary>The automation ids of a Markdown form's interactive peers.</summary>
 /// <param name="Mode">The Write/Preview mode selector.</param>
