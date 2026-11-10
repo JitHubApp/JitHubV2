@@ -5,7 +5,7 @@ using MarkdownRenderer.Mermaid.Internal.Scenes;
 using MarkdownRenderer.Mermaid.Internal.Scenes.Decoding;
 using MarkdownRenderer.Mermaid.Localization;
 
-namespace MarkdownRenderer.Mermaid.Native.Internal;
+namespace MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 /// <summary>
 /// Owns the lazily created native Mermaid engine and runs one native render:

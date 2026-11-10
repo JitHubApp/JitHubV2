@@ -3,8 +3,8 @@ using System.Text;
 using MarkdownRenderer.Mermaid.Internal.Caching;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Localization;
-using MarkdownRenderer.Mermaid.Native;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 namespace MarkdownRenderer.Mermaid;
 

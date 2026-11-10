@@ -3,11 +3,11 @@ using System.Text;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
-using MarkdownRenderer.Mermaid.Native;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 using MarkdownRenderer.Mermaid.Tests.TestSupport;
 
-namespace MarkdownRenderer.Mermaid.Tests.Native;
+namespace MarkdownRenderer.Mermaid.Tests.NativeRuntime;
 
 public sealed class MermaidNativeIntegrationTests
 {

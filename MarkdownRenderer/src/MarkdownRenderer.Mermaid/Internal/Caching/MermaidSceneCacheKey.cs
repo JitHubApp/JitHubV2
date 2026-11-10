@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 namespace MarkdownRenderer.Mermaid.Internal.Caching;
 

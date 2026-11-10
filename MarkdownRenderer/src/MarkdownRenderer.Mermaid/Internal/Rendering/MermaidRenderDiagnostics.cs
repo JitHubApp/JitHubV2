@@ -2,7 +2,7 @@ using System.Globalization;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 using MarkdownRenderer.Mermaid.Localization;
 using MarkdownRenderer.Mermaid.Localization.Internal;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 namespace MarkdownRenderer.Mermaid.Internal.Rendering;
 

@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 [assembly: DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
 
-namespace MarkdownRenderer.Mermaid.Native;
+namespace MarkdownRenderer.Mermaid.NativeRuntime;
 
 /// <summary>Safely probes the optional native engine without executing parser or layout work.</summary>
 public static class MermaidNativeRuntime

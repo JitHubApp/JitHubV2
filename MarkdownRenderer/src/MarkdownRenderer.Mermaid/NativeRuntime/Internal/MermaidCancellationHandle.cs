@@ -1,6 +1,6 @@
 using Microsoft.Win32.SafeHandles;
 
-namespace MarkdownRenderer.Mermaid.Native.Internal;
+namespace MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 internal sealed class MermaidCancellationHandle : SafeHandleZeroOrMinusOneIsInvalid
 {

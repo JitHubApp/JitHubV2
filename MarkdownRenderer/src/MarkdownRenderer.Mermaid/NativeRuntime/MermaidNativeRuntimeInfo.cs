@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Mermaid.Native;
+namespace MarkdownRenderer.Mermaid.NativeRuntime;
 
 /// <summary>Read-only availability information for the optional native Mermaid engine.</summary>
 public sealed record MermaidNativeRuntimeInfo(

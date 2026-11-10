@@ -1,6 +1,6 @@
 #nullable enable
-~override MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Equals(object obj) -> bool
-~override MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.ToString() -> string
+~override MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Equals(object obj) -> bool
+~override MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.ToString() -> string
 const MarkdownRenderer.Mermaid.MermaidRenderBudgets.DefaultMaxConcurrentRenders = 4 -> int
 const MarkdownRenderer.Mermaid.MermaidRenderBudgets.DefaultMaxDepth = 64 -> int
 const MarkdownRenderer.Mermaid.MermaidRenderBudgets.DefaultMaxEdges = 4000 -> int
@@ -47,35 +47,35 @@ MarkdownRenderer.Mermaid.MermaidLayoutMode.ForceDirected = 3 -> MarkdownRenderer
 MarkdownRenderer.Mermaid.MermaidLayoutMode.NativeDefault = 0 -> MarkdownRenderer.Mermaid.MermaidLayoutMode
 MarkdownRenderer.Mermaid.MermaidLayoutMode.TidyTree = 2 -> MarkdownRenderer.Mermaid.MermaidLayoutMode
 MarkdownRenderer.Mermaid.MermaidMarkdownExtensions
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Deconstruct(out ushort Major, out ushort Minor) -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Equals(MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion other) -> bool
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Major.get -> ushort
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Major.init -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.MermaidNativeAbiVersion() -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.MermaidNativeAbiVersion(ushort Major, ushort Minor) -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Minor.get -> ushort
-MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.Minor.init -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntime
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.<Clone>$() -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo!
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.AbiVersion.get -> MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.AbiVersion.init -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Deconstruct(out MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus Status, out MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion AbiVersion, out string! Message) -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Equals(MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo? other) -> bool
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.IsAvailable.get -> bool
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.MermaidNativeRuntimeInfo(MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus Status, MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion AbiVersion, string! Message) -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Message.get -> string!
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Message.init -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Status.get -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Status.init -> void
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus.Available = 0 -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus.IncompatibleAbi = 4 -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus.IncompatibleArchitecture = 2 -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus.LoadFailure = 5 -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus.MissingExport = 3 -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
-MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus.NotInstalled = 1 -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Deconstruct(out ushort Major, out ushort Minor) -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Equals(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion other) -> bool
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Major.get -> ushort
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Major.init -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.MermaidNativeAbiVersion() -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.MermaidNativeAbiVersion(ushort Major, ushort Minor) -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Minor.get -> ushort
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.Minor.init -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntime
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.<Clone>$() -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo!
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.AbiVersion.get -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.AbiVersion.init -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Deconstruct(out MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus Status, out MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion AbiVersion, out string! Message) -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Equals(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo? other) -> bool
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.IsAvailable.get -> bool
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.MermaidNativeRuntimeInfo(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus Status, MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion AbiVersion, string! Message) -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Message.get -> string!
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Message.init -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Status.get -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Status.init -> void
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus.Available = 0 -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus.IncompatibleAbi = 4 -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus.IncompatibleArchitecture = 2 -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus.LoadFailure = 5 -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus.MissingExport = 3 -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
+MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus.NotInstalled = 1 -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeStatus
 MarkdownRenderer.Mermaid.MermaidRenderBudgets
 MarkdownRenderer.Mermaid.MermaidRenderBudgets.<Clone>$() -> MarkdownRenderer.Mermaid.MermaidRenderBudgets!
 MarkdownRenderer.Mermaid.MermaidRenderBudgets.Deadline.get -> System.TimeSpan
@@ -107,7 +107,7 @@ MarkdownRenderer.Mermaid.MermaidRenderer.Dispose() -> void
 MarkdownRenderer.Mermaid.MermaidRenderer.FontCatalog.get -> MarkdownRenderer.Mermaid.MermaidFontCatalog!
 MarkdownRenderer.Mermaid.MermaidRenderer.MermaidRenderer(MarkdownRenderer.Mermaid.MermaidRenderOptions? options = null, MarkdownRenderer.Mermaid.MermaidFontCatalog? fontCatalog = null) -> void
 MarkdownRenderer.Mermaid.MermaidRenderer.Options.get -> MarkdownRenderer.Mermaid.MermaidRenderOptions!
-MarkdownRenderer.Mermaid.MermaidRenderer.RuntimeInfo.get -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo!
+MarkdownRenderer.Mermaid.MermaidRenderer.RuntimeInfo.get -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo!
 MarkdownRenderer.Mermaid.MermaidRenderOptions
 MarkdownRenderer.Mermaid.MermaidRenderOptions.<Clone>$() -> MarkdownRenderer.Mermaid.MermaidRenderOptions!
 MarkdownRenderer.Mermaid.MermaidRenderOptions.AllowBudgetIncreases.get -> bool
@@ -135,10 +135,10 @@ MarkdownRenderer.Mermaid.MermaidThemeVariant.Forest = 4 -> MarkdownRenderer.Merm
 MarkdownRenderer.Mermaid.MermaidThemeVariant.HighContrast = 3 -> MarkdownRenderer.Mermaid.MermaidThemeVariant
 MarkdownRenderer.Mermaid.MermaidThemeVariant.Light = 1 -> MarkdownRenderer.Mermaid.MermaidThemeVariant
 MarkdownRenderer.Mermaid.MermaidThemeVariant.Neutral = 5 -> MarkdownRenderer.Mermaid.MermaidThemeVariant
-override MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.GetHashCode() -> int
-override MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.Equals(object? obj) -> bool
-override MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.GetHashCode() -> int
-override MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.ToString() -> string!
+override MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.GetHashCode() -> int
+override MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.Equals(object? obj) -> bool
+override MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.GetHashCode() -> int
+override MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.ToString() -> string!
 override MarkdownRenderer.Mermaid.MermaidRenderBudgets.Equals(object? obj) -> bool
 override MarkdownRenderer.Mermaid.MermaidRenderBudgets.GetHashCode() -> int
 override MarkdownRenderer.Mermaid.MermaidRenderBudgets.ToString() -> string!
@@ -148,11 +148,11 @@ override MarkdownRenderer.Mermaid.MermaidRenderOptions.ToString() -> string!
 static MarkdownRenderer.Mermaid.MermaidFontCatalog.Default.get -> MarkdownRenderer.Mermaid.MermaidFontCatalog!
 static MarkdownRenderer.Mermaid.MermaidMarkdownExtensions.UseMermaid(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Mermaid.MermaidRenderer! renderer) -> MarkdownRenderer.MarkdownEngineBuilder!
 static MarkdownRenderer.Mermaid.MermaidMarkdownExtensions.UseMermaid(this MarkdownRenderer.MarkdownEngineBuilder! builder, MarkdownRenderer.Mermaid.MermaidRenderOptions? options = null, MarkdownRenderer.Mermaid.MermaidFontCatalog? fontCatalog = null) -> MarkdownRenderer.MarkdownEngineBuilder!
-static MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.operator !=(MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion left, MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion right) -> bool
-static MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion.operator ==(MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion left, MarkdownRenderer.Mermaid.Native.MermaidNativeAbiVersion right) -> bool
-static MarkdownRenderer.Mermaid.Native.MermaidNativeRuntime.Probe() -> MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo!
-static MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.operator !=(MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo? left, MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo? right) -> bool
-static MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo.operator ==(MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo? left, MarkdownRenderer.Mermaid.Native.MermaidNativeRuntimeInfo? right) -> bool
+static MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.operator !=(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion left, MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion right) -> bool
+static MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion.operator ==(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion left, MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeAbiVersion right) -> bool
+static MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntime.Probe() -> MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo!
+static MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.operator !=(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo? left, MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo? right) -> bool
+static MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo.operator ==(MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo? left, MarkdownRenderer.Mermaid.NativeRuntime.MermaidNativeRuntimeInfo? right) -> bool
 static MarkdownRenderer.Mermaid.MermaidRenderBudgets.Default.get -> MarkdownRenderer.Mermaid.MermaidRenderBudgets!
 static MarkdownRenderer.Mermaid.MermaidRenderBudgets.operator !=(MarkdownRenderer.Mermaid.MermaidRenderBudgets? left, MarkdownRenderer.Mermaid.MermaidRenderBudgets? right) -> bool
 static MarkdownRenderer.Mermaid.MermaidRenderBudgets.operator ==(MarkdownRenderer.Mermaid.MermaidRenderBudgets? left, MarkdownRenderer.Mermaid.MermaidRenderBudgets? right) -> bool

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Mermaid;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 namespace MarkdownRenderer.Mermaid.Tests.TestSupport;
 

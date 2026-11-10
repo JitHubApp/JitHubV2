@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Mermaid.Native;
+namespace MarkdownRenderer.Mermaid.NativeRuntime;
 
 public enum MermaidNativeRuntimeStatus
 {

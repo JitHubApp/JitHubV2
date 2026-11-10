@@ -3,7 +3,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace MarkdownRenderer.Mermaid.Native.Internal;
+namespace MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
 internal enum NativeStatus : int
 {

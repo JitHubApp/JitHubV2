@@ -2,10 +2,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
-using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 using MarkdownRenderer.Mermaid.Tests.TestSupport;
 
-namespace MarkdownRenderer.Mermaid.Tests.Native.Internal;
+namespace MarkdownRenderer.Mermaid.Tests.NativeRuntime.Internal;
 
 /// <summary>The native ABI fails closed on malformed source and on engine release racing a render.</summary>
 public sealed class MermaidNativeFailClosedTests

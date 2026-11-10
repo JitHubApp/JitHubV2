@@ -1,17 +1,17 @@
 using Microsoft.Win32.SafeHandles;
 
-namespace MarkdownRenderer.Mermaid.Native.Internal;
+namespace MarkdownRenderer.Mermaid.NativeRuntime.Internal;
 
-internal sealed class MermaidBufferHandle : SafeHandleZeroOrMinusOneIsInvalid
+internal sealed class MermaidEngineHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    internal MermaidBufferHandle(nint value)
+    internal MermaidEngineHandle(nint value)
         : base(ownsHandle: true) => SetHandle(value);
 
     protected override bool ReleaseHandle()
     {
         try
         {
-            return NativeMethods.BufferRelease(handle) == NativeStatus.Success;
+            return NativeMethods.EngineRelease(handle) == NativeStatus.Success;
         }
         catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
