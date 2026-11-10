@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Selection;
@@ -9,6 +9,7 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;

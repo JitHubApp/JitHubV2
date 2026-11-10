@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;

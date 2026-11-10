@@ -4,6 +4,7 @@ using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Highlighting;

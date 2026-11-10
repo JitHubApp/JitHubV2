@@ -9,7 +9,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -26,6 +25,7 @@ using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 
 namespace MarkdownRenderer.Controls.Composition;
 

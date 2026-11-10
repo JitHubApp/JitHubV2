@@ -4,7 +4,6 @@ using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Gfm;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

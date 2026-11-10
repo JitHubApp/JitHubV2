@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices.WindowsRuntime;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -7,6 +7,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

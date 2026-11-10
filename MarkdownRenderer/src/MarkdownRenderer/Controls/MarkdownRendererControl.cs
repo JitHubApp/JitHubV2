@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls.Composition;
 using MarkdownRenderer.Controls.Pipeline;

@@ -1,6 +1,6 @@
 using System;
 using Windows.Foundation;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

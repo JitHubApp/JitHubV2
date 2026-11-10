@@ -14,10 +14,10 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.Layout;
 

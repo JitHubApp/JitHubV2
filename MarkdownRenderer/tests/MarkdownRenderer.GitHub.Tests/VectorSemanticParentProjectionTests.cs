@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
 using Xunit;

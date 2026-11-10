@@ -91,7 +91,7 @@ public sealed class SafeHtmlDecorativeSpacerTests
         InlineContainerBox owner = Assert.Single(
             FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
             box => box.Runs.Contains(spacer));
-        MarkdownRenderer.Accessibility.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
         int boundaryStart = semantics.Text.IndexOf(boundaryText, StringComparison.Ordinal);
         Assert.True(boundaryStart >= 0);
         int expected = boundaryStart + boundaryOffset;
@@ -117,7 +117,7 @@ public sealed class SafeHtmlDecorativeSpacerTests
         InlineContainerBox owner = Assert.Single(
             FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
             box => box.Runs.Contains(spacer));
-        MarkdownRenderer.Accessibility.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
         Assert.True(semantics.TryGetInlineContainerNode(owner, out var semanticNode));
         Assert.Equal(semanticNode.TextStart, semanticNode.TextEnd);
 

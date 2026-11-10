@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;

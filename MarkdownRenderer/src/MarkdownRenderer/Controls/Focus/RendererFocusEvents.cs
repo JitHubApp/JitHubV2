@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;

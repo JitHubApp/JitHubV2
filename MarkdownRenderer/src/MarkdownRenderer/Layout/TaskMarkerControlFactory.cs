@@ -1,8 +1,8 @@
 using System;
 using System.Globalization;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -38,7 +38,7 @@ internal static class TaskMarkerControlFactory
         };
     }
 
-    internal static float GetMarkerSize(Theming.ThemeSnapshot snapshot, bool editableRequested)
+    internal static float GetMarkerSize(ThemeSnapshot snapshot, bool editableRequested)
     {
         float scaledGlyphSlot = Math.Max(
             BaseMarkerSize,
@@ -49,7 +49,7 @@ internal static class TaskMarkerControlFactory
     }
 
     internal static (Windows.UI.Color Accent, Windows.UI.Color Foreground) GetColors(
-        Theming.ThemeSnapshot snapshot)
+        ThemeSnapshot snapshot)
         => (snapshot.SelectionHighlightColor, snapshot.SelectionForegroundColor);
 
     internal static string CreateAutomationId(SourceSpan sourceRange) => string.Concat(

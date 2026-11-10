@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Microsoft.UI.Xaml;

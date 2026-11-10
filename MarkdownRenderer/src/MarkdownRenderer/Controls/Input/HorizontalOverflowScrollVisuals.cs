@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Layout;

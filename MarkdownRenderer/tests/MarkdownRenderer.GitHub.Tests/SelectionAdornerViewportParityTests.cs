@@ -7,6 +7,7 @@ using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 using Microsoft.UI.Xaml;
 using Windows.UI;

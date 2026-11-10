@@ -1,4 +1,4 @@
-﻿using MarkdownRenderer.Accessibility;
+﻿using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
@@ -8,6 +8,7 @@ using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

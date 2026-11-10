@@ -1,4 +1,4 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;

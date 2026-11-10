@@ -6,6 +6,7 @@ using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

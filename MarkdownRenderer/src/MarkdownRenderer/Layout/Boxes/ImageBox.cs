@@ -7,7 +7,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Internal.Concurrency;

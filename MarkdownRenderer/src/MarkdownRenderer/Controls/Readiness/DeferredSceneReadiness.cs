@@ -1,5 +1,5 @@
 using System.Threading;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

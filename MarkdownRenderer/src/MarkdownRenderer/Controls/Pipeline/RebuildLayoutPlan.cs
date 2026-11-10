@@ -1,9 +1,10 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 
 namespace MarkdownRenderer.Controls.Pipeline;

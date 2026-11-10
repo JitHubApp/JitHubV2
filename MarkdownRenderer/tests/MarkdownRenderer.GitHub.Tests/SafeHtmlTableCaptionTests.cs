@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
-using MarkdownRenderer.Accessibility;
 using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
@@ -16,6 +15,7 @@ using Windows.UI;
 using Xunit;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Selection.Internal;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

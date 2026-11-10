@@ -1,4 +1,3 @@
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

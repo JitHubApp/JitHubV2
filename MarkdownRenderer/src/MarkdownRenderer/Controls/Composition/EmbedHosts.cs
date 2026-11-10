@@ -26,6 +26,7 @@ using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.Controls.Composition;
 
@@ -152,7 +153,7 @@ internal sealed class EmbedHosts :
 
     IMarkdownPerformanceSession? ICodeBlockHighlightingHost.PerformanceSession => _control.PerformanceSession;
 
-    Theming.ThemeSnapshot? ICodeBlockHighlightingHost.ThemeSnapshot => Owners.Published.Theme;
+    ThemeSnapshot? ICodeBlockHighlightingHost.ThemeSnapshot => Owners.Published.Theme;
 
     double ICodeBlockHighlightingHost.LazyScrollVelocityPixelsPerSecond => Owners.LazyLayout.ScrollVelocity;
 

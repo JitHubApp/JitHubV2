@@ -1,5 +1,4 @@
 using System;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;

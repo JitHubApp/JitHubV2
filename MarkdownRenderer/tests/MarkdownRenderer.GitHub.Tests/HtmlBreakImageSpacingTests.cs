@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Markdig;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;

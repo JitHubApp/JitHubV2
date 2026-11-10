@@ -1,4 +1,4 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Controls.Input;

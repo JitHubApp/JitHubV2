@@ -141,10 +141,10 @@ public sealed class SafeHtmlProfileReferenceTests
             static block => block.Lines.ToString().Contains("## Following heading", StringComparison.Ordinal));
 
         using LayoutSnapshot snapshot = Build(source, registry, parsedDocument: parsed);
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Heading);
         Assert.Equal(2, heading.HeadingLevel);
         Assert.Equal("Following heading", snapshot.SemanticDocument.GetText(heading));
         TextRun text = Assert.Single(FlattenRuns(snapshot).OfType<TextRun>(),
@@ -189,9 +189,9 @@ public sealed class SafeHtmlProfileReferenceTests
         var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
         using LayoutSnapshot snapshot = Build(source, registry, parsedDocument: parsed.ParsedDocument);
         InlineImageRun[] images = FlattenRuns(snapshot).OfType<InlineImageRun>().ToArray();
-        string[] headings = MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        string[] headings = MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
             .EnumerateDepthFirst(snapshot.SemanticDocument.Root)
-            .Where(static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading)
+            .Where(static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Heading)
             .Select(snapshot.SemanticDocument.GetText)
             .ToArray();
 

@@ -25,6 +25,7 @@ using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.Controls.Composition;
 
@@ -118,7 +119,7 @@ internal sealed class SelectionHosts :
 
     void ISelectionDismissalHost.ClearSelectionForExternalInteraction() => Owners.InteractionReset.ClearSelectionForExternalInteraction();
 
-    Theming.ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => Owners.Published.Theme;
+    ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => Owners.Published.Theme;
 
     string ISelectionHandlesHost.ResolveLocalizedString(string key, string fallback)
         => Owners.Localization.Resolve(key, fallback);

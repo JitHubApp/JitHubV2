@@ -3,7 +3,6 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Windows.UI;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;

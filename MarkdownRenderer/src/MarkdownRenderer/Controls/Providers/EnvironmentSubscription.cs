@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Microsoft.UI.Xaml;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 

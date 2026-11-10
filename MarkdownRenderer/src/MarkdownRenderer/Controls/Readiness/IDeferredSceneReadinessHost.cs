@@ -1,4 +1,4 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Controls.Readiness;

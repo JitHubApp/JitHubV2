@@ -1,4 +1,4 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;

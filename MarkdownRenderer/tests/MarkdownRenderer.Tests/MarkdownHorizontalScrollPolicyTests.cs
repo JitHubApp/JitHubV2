@@ -1,5 +1,5 @@
-using MarkdownRenderer.Accessibility;
 using Xunit;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 
 namespace MarkdownRenderer.Tests;
 

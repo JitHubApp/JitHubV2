@@ -2,6 +2,7 @@ using System;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 

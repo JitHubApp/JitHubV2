@@ -5,6 +5,7 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Markdig;
 using Microsoft.UI.Xaml;
 

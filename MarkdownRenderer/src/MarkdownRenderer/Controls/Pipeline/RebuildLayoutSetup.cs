@@ -11,6 +11,8 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Theming.Internal.ResourceDictionaries;
 using Microsoft.Graphics.Canvas;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 

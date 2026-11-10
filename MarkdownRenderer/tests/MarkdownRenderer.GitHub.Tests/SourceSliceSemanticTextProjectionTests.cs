@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 using System.Threading;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Layout;
 using Xunit;
 

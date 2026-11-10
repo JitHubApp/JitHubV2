@@ -1,8 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using MarkdownRenderer.Accessibility;
 using Xunit;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

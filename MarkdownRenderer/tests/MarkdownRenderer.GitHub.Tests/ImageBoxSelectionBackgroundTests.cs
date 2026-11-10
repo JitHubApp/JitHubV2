@@ -11,6 +11,7 @@ using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

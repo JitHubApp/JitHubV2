@@ -1,6 +1,7 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Selection;

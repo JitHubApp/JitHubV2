@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

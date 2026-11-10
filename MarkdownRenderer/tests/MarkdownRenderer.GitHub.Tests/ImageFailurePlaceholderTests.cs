@@ -5,6 +5,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -228,7 +229,7 @@ public sealed class ImageFailurePlaceholderTests
             {
                 image.EnsureLoading();
                 Observation observation = await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-                Assert.Equal(MarkdownRenderer.Accessibility.MarkdownImageAccessibilityState.Error, image.AccessibilityState);
+                Assert.Equal(MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownImageAccessibilityState.Error, image.AccessibilityState);
                 return observation;
             }
             finally

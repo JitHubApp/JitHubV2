@@ -5,11 +5,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.Gfm.Internal.Renderers;
 

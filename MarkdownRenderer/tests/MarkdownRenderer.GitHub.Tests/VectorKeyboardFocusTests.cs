@@ -1,4 +1,5 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;

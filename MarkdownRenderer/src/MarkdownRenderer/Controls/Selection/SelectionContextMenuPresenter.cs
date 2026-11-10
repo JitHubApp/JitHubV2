@@ -1,5 +1,4 @@
 using System;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Document;

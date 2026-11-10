@@ -1,4 +1,4 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -7,6 +7,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;

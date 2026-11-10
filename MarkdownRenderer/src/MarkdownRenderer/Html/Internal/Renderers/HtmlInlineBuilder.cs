@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;

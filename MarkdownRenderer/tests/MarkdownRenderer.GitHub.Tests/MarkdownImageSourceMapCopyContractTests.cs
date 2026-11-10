@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
@@ -14,6 +13,8 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Theming.Internal;
 using Markdig;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

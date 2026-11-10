@@ -53,9 +53,9 @@ public sealed class SafeHtmlContentStructureTests
         Assert.Equal("echo ok\n", code.CodeText);
         Assert.Contains(outer.Content.Children, child => child is StackBox);
         Assert.Contains(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+            node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.CodeBlock);
     }
 
     [Fact]
@@ -67,10 +67,10 @@ public sealed class SafeHtmlContentStructureTests
         InlineContainerBox code = Assert.Single(
             FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
             static box => box.ElementKey == MarkdownElementKeys.CodeBlock);
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode semantic = Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode semantic = Assert.Single(
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.CodeBlock);
 
         Assert.Equal("const value = 1;\nreturn value;", string.Concat(code.Runs.Select(static run => run.Text)));
         Assert.Equal("const value = 1;\nreturn value;", snapshot.SemanticDocument.GetText(semantic));
@@ -85,8 +85,8 @@ public sealed class SafeHtmlContentStructureTests
         InlineContainerBox cell = Assert.Single(
             FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
             static box => box.ElementKey == MarkdownElementKeys.TableCell);
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode[] semantics =
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode[] semantics =
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root)
                 .ToArray();
 
@@ -95,9 +95,9 @@ public sealed class SafeHtmlContentStructureTests
         Assert.Contains("Command-line agent", rendered, StringComparison.Ordinal);
         Assert.Contains("npm i -g cline", rendered, StringComparison.Ordinal);
         Assert.Contains("Learn more", rendered, StringComparison.Ordinal);
-        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
-        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
-        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link);
+        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Heading);
+        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.CodeBlock);
+        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Link);
     }
 
     [Fact]
@@ -106,17 +106,17 @@ public sealed class SafeHtmlContentStructureTests
         const string source = "<p><a href='https://example.test'>\n  <img src='badge.svg' alt='Badge'>\n</a></p>";
 
         using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode[] links =
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode[] links =
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root)
-                .Where(static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link)
+                .Where(static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Link)
                 .ToArray();
 
         Assert.Empty(links);
         Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Image);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Image);
     }
 
     [Fact]
@@ -126,17 +126,17 @@ public sealed class SafeHtmlContentStructureTests
 
         using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
         InlineRun[] runs = FlattenRuns(snapshot).ToArray();
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Heading);
 
         Assert.Equal(3, heading.HeadingLevel);
         Assert.Equal("Agentic Task Manager", snapshot.SemanticDocument.GetText(heading));
         Assert.All(runs.Where(static run => run.Text.Trim().Length > 0),
             static run => Assert.Equal(MarkdownElementKeys.Heading3, run.SemanticHeadingKey));
         Assert.Single(heading.Children,
-            static child => child.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link);
+            static child => child.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Link);
     }
 
     [Fact]
@@ -150,10 +150,10 @@ public sealed class SafeHtmlContentStructureTests
                 .OfType<InlineContainerBox>()
                 .SelectMany(static box => box.Runs)
                 .OfType<InlineImageRun>());
-        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
-            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument
                 .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
-            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+            static node => node.Role == MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticRole.Heading);
 
         Assert.Equal(MarkdownElementKeys.Heading1, image.SemanticHeadingKey);
         Assert.Equal(1, heading.HeadingLevel);
@@ -250,7 +250,7 @@ public sealed class SafeHtmlContentStructureTests
     public void LeadingTextlessBlockDoesNotLeaveAnUnownedSeparator(string source, string firstText)
     {
         using LayoutSnapshot snapshot = BuildGitHub(source);
-        MarkdownRenderer.Accessibility.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
+        MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument semantics = snapshot.SemanticDocument;
 
         Assert.StartsWith(firstText, semantics.Text, StringComparison.Ordinal);
         Assert.True(semantics.TryGetDocumentRange(0, semantics.Text.Length, out DocumentRange range));

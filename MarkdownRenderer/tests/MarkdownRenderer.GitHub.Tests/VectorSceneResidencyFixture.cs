@@ -8,6 +8,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

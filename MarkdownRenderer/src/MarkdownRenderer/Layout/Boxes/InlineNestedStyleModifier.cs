@@ -1,6 +1,7 @@
 using System;
 using Windows.UI;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

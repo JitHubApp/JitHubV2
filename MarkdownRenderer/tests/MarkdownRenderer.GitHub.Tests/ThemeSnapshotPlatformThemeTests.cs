@@ -2,6 +2,8 @@ using Microsoft.UI.Xaml;
 using Windows.UI;
 using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ThemeSnapshotFixture;
 

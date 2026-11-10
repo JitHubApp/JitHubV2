@@ -5,6 +5,7 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -152,7 +153,7 @@ public sealed class CompletedRasterPlacementCloneTests
         clone.Measure(320f);
         clone.Arrange(0, 0, 320f);
         Assert.Equal(resolvedIntrinsic, clonedImage.Presentation.RasterIntrinsicSize);
-        Assert.Equal(MarkdownRenderer.Accessibility.MarkdownImageAccessibilityState.Loaded,
+        Assert.Equal(MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownImageAccessibilityState.Loaded,
             clonedImage.AccessibilityState);
     }
 

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Automation.Peers;

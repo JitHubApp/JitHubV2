@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Reflection;
-using MarkdownRenderer.Accessibility;
 using System.Text;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Html;

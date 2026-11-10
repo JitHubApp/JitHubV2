@@ -1,6 +1,5 @@
 using System;
 using System.Text;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Internal.Hashing;

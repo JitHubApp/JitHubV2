@@ -1,6 +1,6 @@
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -8,6 +8,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;

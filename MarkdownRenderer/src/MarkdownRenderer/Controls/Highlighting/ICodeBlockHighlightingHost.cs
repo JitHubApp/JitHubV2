@@ -5,6 +5,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 
 namespace MarkdownRenderer.Controls.Highlighting;
 

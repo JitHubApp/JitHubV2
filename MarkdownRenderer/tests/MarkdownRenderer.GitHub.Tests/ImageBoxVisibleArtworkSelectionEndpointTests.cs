@@ -9,6 +9,7 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;

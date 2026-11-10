@@ -5,7 +5,6 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Markdig;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;

@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

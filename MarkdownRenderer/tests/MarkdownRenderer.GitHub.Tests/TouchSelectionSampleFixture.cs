@@ -11,6 +11,8 @@ using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.UI;

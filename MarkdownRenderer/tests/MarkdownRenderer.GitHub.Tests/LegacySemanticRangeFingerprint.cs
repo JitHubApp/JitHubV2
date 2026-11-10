@@ -2,7 +2,8 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Security.Cryptography;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

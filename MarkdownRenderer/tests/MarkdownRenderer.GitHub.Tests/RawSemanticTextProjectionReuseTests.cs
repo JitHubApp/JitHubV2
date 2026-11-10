@@ -1,6 +1,6 @@
 using System.Reflection;
 using System.Text;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

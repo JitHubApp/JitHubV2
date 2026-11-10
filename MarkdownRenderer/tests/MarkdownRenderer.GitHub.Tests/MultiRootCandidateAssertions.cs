@@ -1,5 +1,5 @@
 ﻿using System.Reflection;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;

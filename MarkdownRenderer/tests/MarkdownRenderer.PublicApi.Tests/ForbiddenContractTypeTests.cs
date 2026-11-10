@@ -40,10 +40,10 @@ public sealed class ForbiddenContractTypeTests
 
     private static readonly HashSet<string> ForbiddenTypeNames = new(StringComparer.Ordinal)
     {
-        "MarkdownRenderer.Accessibility.MarkdownAutomationPeer",
-        "MarkdownRenderer.Accessibility.MarkdownNodePeer",
-        "MarkdownRenderer.Accessibility.MarkdownSemanticDocument",
-        "MarkdownRenderer.Accessibility.MarkdownSemanticNode",
+        "MarkdownRenderer.Accessibility.Internal.Peers.MarkdownAutomationPeer",
+        "MarkdownRenderer.Accessibility.Internal.Peers.MarkdownNodePeer",
+        "MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticDocument",
+        "MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNode",
         "MarkdownRenderer.Layout.BlockBox",
         "MarkdownRenderer.Layout.LayoutBuilder",
         "MarkdownRenderer.Layout.LayoutSnapshot",
@@ -52,7 +52,7 @@ public sealed class ForbiddenContractTypeTests
         "MarkdownRenderer.Parsing.Internal.IMarkdownNodeRendererErased",
         "MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry",
         "MarkdownRenderer.Parsing.Internal.MarkdownNodeRenderer",
-        "MarkdownRenderer.Theming.ThemeSnapshot",
+        "MarkdownRenderer.Theming.Internal.ThemeSnapshot",
     };
 
     public static IEnumerable<object[]> AssemblyNames() => ShippingAssemblies.Names();

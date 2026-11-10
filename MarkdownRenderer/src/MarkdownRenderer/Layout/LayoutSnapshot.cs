@@ -6,10 +6,11 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 
 namespace MarkdownRenderer.Layout;
 

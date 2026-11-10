@@ -1,4 +1,5 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.Gfm.Internal.Renderers;
@@ -8,6 +9,7 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Markdig;
 using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;

@@ -1,6 +1,7 @@
 using System.Threading;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 
 namespace MarkdownRenderer.Controls;

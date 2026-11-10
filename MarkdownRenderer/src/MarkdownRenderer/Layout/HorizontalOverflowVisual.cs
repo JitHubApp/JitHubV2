@@ -1,5 +1,6 @@
 using System;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;

@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.LazyLayout;

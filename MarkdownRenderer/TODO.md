@@ -21,7 +21,7 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 - ✅ **Implement `ITextProvider` / `ITextRangeProvider`**
   Narrator and other AT cannot query text by character offset, expand selection
   by word/line/paragraph, or drive Ctrl+F search. Add the UIA Text pattern to
-  `MarkdownAutomationPeer`. (`Accessibility/MarkdownAutomationPeer.cs`)
+  `MarkdownAutomationPeer`. (`Accessibility/Internal/Peers/MarkdownAutomationPeer.cs`)
 
 - ✅ **Implement `ITextProvider.RangeFromChild`**
   Child peers now map back to text ranges through WinUI peer/provider identity,
@@ -36,7 +36,7 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 
 - ✅ **Expose heading levels in `MarkdownBlockPeer`**
   Override `GetHeadingLevelCore()` so Narrator announces "Heading 2" instead of
-  treating H1–H6 identically to paragraphs. (`Accessibility/MarkdownBlockPeer.cs`)
+  treating H1–H6 identically to paragraphs. (`Accessibility/Internal/Peers/MarkdownBlockPeer.cs`)
 
 - ✅ **Implement `ITableProvider` / `ITableItemProvider` for tables**
   Table cells have no UIA table role. Screen readers cannot navigate rows/columns

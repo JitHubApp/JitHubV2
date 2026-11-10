@@ -1,6 +1,7 @@
 using System;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Accessibility;
 
 namespace MarkdownRenderer.Layout;
 

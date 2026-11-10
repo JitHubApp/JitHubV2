@@ -1,6 +1,8 @@
 using System.Reflection;
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Windows.UI;
 using Windows.UI.Text;
 using Xunit;
