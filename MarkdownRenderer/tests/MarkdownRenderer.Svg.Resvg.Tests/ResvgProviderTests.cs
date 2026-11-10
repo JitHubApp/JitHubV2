@@ -5,6 +5,7 @@ using System.Text;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Tests.TestSupport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

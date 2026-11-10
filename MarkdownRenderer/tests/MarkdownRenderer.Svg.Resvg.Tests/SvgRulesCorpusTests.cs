@@ -1,6 +1,7 @@
 using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal.Preflight;
+using MarkdownRenderer.Svg.Resvg.Tests.TestSupport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
