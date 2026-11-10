@@ -1,5 +1,12 @@
 using System;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Sample.Models.Samples;
+using MarkdownRenderer.Sample.Services.Automation;
+using MarkdownRenderer.Sample.Services.Links;
+using MarkdownRenderer.Sample.Services.Localization;
+using MarkdownRenderer.Sample.Services.Providers;
+using MarkdownRenderer.Sample.Services.Theming;
+using MarkdownRenderer.Sample.Views.Workspace;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
