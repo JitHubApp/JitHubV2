@@ -1,4 +1,4 @@
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.WinUI.Helpers;
 using JitHub.Models;
 using JitHub.Models.PRConversation;

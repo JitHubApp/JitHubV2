@@ -1,4 +1,4 @@
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.Models.LegacyGitHub;

@@ -1,4 +1,4 @@
-using JitHub.Markdown;
+using JitHub.Markdown.Git;
 
 namespace JitHub.Services.CodeViewer;
 

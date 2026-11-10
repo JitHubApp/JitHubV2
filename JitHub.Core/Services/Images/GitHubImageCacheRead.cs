@@ -1,4 +1,4 @@
-using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.Caching;
 
 namespace JitHub.Services;
 

@@ -5,7 +5,7 @@ using System.Text;
 using System.Windows.Input;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Markdown;
+using JitHub.Markdown.Documents;
 using JitHub.Models.LegacyGitHub;
 using JitHub.Models.PRConversation;
 using JitHub.Services;

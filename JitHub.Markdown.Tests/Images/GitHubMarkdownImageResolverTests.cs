@@ -1,4 +1,6 @@
 using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.Caching;
+using JitHub.Markdown.Images.RemoteContent;
 using MarkdownRenderer.Images;
 using NSubstitute;
 using Xunit;

@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using JitHub.Markdown;
+using JitHub.Markdown.Hosting;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;

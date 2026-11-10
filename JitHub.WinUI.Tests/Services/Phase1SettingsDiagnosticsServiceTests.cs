@@ -7,7 +7,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.Caching;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
