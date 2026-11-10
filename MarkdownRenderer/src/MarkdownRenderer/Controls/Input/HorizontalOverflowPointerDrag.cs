@@ -1,7 +1,8 @@
 using System;
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
 using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Input;
 

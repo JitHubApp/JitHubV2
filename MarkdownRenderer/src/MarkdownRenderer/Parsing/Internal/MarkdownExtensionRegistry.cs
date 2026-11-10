@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Markdig;
 using MarkdownRenderer.Engine.Internal;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Parsing.Internal;
@@ -375,7 +377,7 @@ internal sealed class MarkdownExtensionRegistry : IMarkdownPresentationConfigura
     private sealed class ErasedAdapter<TNode>(IMarkdownNodeRenderer<TNode> inner)
         : IMarkdownNodeRendererErased where TNode : class
     {
-        public Layout.BlockBox? BuildBlock(object node, Layout.MarkdownLayoutContext context)
+        public BlockBox? BuildBlock(object node, MarkdownLayoutContext context)
             => node is TNode typed ? inner.BuildBlock(typed, context) : null;
     }
 }

@@ -1,7 +1,9 @@
 ﻿using MarkdownRenderer.Document;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;

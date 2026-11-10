@@ -1,6 +1,7 @@
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Focus;
 

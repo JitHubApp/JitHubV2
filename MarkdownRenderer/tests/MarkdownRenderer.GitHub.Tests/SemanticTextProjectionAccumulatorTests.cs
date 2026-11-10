@@ -1,6 +1,5 @@
 using System.Threading;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Layout;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

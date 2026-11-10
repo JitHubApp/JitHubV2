@@ -1,7 +1,6 @@
 using System;
 using System.Text;
 using System.Threading;
-using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

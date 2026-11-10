@@ -1,6 +1,10 @@
 ﻿using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;

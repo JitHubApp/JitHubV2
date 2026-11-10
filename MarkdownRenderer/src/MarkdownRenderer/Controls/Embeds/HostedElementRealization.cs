@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Embeds;

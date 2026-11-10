@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Embeds;
 

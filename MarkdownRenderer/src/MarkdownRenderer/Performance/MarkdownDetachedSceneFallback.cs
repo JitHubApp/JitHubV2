@@ -2,8 +2,10 @@ using System;
 using System.Threading;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Text;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
 

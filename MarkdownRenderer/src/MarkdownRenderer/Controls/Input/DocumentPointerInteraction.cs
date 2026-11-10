@@ -1,6 +1,6 @@
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Windows.Foundation;

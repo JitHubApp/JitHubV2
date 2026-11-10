@@ -4,6 +4,7 @@ using System.Text;
 using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Theming;
 using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport);
 

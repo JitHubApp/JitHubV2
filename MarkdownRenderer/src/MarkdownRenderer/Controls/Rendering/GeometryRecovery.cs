@@ -6,7 +6,7 @@ using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Xaml;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 

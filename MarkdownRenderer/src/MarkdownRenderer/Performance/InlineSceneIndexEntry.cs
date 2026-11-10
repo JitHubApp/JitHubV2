@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
 
 namespace MarkdownRenderer.Performance;
 

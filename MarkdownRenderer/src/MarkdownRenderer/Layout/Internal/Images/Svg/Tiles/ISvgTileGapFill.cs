@@ -1,5 +1,6 @@
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 

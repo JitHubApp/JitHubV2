@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using SvgPreflight = (Windows.Foundation.Size Intrinsic, string? Title, string? Desc, string ContentHash, string SecurityPartitionHash);
 

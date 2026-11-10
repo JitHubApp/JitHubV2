@@ -1,5 +1,4 @@
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using Xunit;
 

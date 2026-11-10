@@ -1,4 +1,5 @@
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Text;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;

@@ -13,7 +13,6 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Controls.Composition;
@@ -29,6 +28,8 @@ using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Composition;
 

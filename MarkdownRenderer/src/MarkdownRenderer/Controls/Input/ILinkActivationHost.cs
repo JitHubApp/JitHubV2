@@ -1,5 +1,5 @@
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using Microsoft.UI.Dispatching;
 
 namespace MarkdownRenderer.Controls.Input;

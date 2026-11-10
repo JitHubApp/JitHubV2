@@ -1,7 +1,8 @@
 using System;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.LazyLayout;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Navigation;

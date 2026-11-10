@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg;

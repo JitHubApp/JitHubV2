@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $script:RunnerPath = Join-Path $PSScriptRoot 'Invoke-MarkdownCorrectnessUiTests.ps1'
 $script:ImageBoxPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Internal\Images\ImageBox.cs'
 $script:ImagePainterPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Internal\Images\ImagePainter.cs'
-$script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\LayoutBlockBuilder.cs'
+$script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Internal\Building\LayoutBlockBuilder.cs'
 $script:ThemeDefaultStylesPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\Internal\ThemeDefaultStyles.cs'
 $script:ElementStylePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ElementStyle.cs'
 $script:ThemeSnapshotPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\Internal\ThemeSnapshot.cs'

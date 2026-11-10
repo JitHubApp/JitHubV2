@@ -1,11 +1,11 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;

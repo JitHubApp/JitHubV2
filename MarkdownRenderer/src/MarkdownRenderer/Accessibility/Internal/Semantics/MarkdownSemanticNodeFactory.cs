@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

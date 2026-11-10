@@ -1,6 +1,6 @@
 using System;
 using Microsoft.Graphics.Canvas.Text;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.Layout.Internal.Images;
 

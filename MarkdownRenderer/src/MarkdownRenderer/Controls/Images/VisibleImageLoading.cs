@@ -1,6 +1,7 @@
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.LazyLayout;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.Controls.Images;
 

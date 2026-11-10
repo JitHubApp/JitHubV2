@@ -5,7 +5,11 @@ using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Text;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
 

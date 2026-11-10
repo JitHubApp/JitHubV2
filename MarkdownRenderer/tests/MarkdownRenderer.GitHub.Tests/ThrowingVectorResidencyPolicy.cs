@@ -1,5 +1,6 @@
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.GitHub.Tests;

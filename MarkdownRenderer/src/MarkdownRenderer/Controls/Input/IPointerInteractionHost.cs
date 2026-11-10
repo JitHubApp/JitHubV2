@@ -1,5 +1,5 @@
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Input;

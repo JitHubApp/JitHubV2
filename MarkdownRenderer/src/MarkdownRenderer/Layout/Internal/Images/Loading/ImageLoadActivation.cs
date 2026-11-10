@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Placement;

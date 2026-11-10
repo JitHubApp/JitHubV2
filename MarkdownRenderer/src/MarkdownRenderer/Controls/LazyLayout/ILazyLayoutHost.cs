@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Internal.Concurrency;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Controls.LazyLayout;

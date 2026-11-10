@@ -5,8 +5,6 @@ using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
@@ -16,6 +14,13 @@ using Xunit;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using Windows.Foundation;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Tables;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

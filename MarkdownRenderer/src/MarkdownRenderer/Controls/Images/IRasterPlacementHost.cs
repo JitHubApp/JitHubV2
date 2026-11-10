@@ -1,6 +1,7 @@
 using System.Threading;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Images;

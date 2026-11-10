@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Images;

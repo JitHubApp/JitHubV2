@@ -1,5 +1,5 @@
 using System;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Theming;
 using Xunit;
 

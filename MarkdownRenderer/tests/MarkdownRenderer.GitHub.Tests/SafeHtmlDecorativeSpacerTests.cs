@@ -1,7 +1,10 @@
 ﻿using MarkdownRenderer.Document;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.PrivatePlacement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Windows.Foundation;
 using Xunit;

@@ -1,9 +1,14 @@
 using System;
 using Windows.Foundation;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Tables;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Controls.Selection;
 
@@ -36,7 +41,7 @@ internal static class ContextMenuTargets
 
         switch (box)
         {
-            case Layout.Boxes.CodeBlockBox code:
+            case CodeBlockBox code:
                 target.CodeText = code.CodeText;
                 target.CodeLanguage = code.CodeLanguage;
                 target.CodeSourceRange = GetSourceRange(code);
@@ -46,7 +51,7 @@ internal static class ContextMenuTargets
                 target.ImageSourceRange = GetSourceRange(image);
                 target.SetImageBitmapLease(image.AcquireBitmapLease());
                 return true;
-            case Layout.Boxes.VectorSceneBox vector:
+            case VectorSceneBox vector:
                 if (vector.TryGetLinkAt(point, out var vectorLink) && vectorLink is not null)
                 {
                     var semantic = vector.GetSemanticItem(vectorLink.SemanticIndex);
@@ -54,10 +59,10 @@ internal static class ContextMenuTargets
                     target.LinkSourceRange = semantic?.SourceSpan ?? vector.SourceRange;
                 }
                 return true;
-            case Layout.Boxes.InlineContainerBox inline:
+            case InlineContainerBox inline:
                 PopulateInlineContextMenuTarget(inline, point, target);
                 return true;
-            case Layout.Boxes.TableBox table:
+            case TableBox table:
                 target.TableSourceRange = GetSourceRange(table);
                 target.TableSnapshot = SelectionClipboard.BuildTableClipboardSnapshot(table);
                 foreach (var cell in table.GetCellBoxes())
@@ -66,12 +71,12 @@ internal static class ContextMenuTargets
                         break;
                 }
                 return true;
-            case Layout.Boxes.ListItemBox listItem:
+            case ListItemBox listItem:
                 if (PopulateContextMenuTarget(listItem.Marker, point, target))
                     return true;
                 PopulateContextMenuTarget(listItem.Content, point, target);
                 return true;
-            case Layout.Boxes.StackBox stack:
+            case StackBox stack:
                 foreach (BlockBox child in stack.Children)
                 {
                     if (PopulateContextMenuTarget(child, point, target))
@@ -84,7 +89,7 @@ internal static class ContextMenuTargets
     }
 
     internal static void PopulateInlineContextMenuTarget(
-        Layout.Boxes.InlineContainerBox inline,
+        InlineContainerBox inline,
         Point point,
         ContextMenuTarget target)
     {
@@ -117,27 +122,27 @@ internal static class ContextMenuTargets
     {
         switch (box)
         {
-            case Layout.Boxes.InlineContainerBox inline:
+            case InlineContainerBox inline:
                 foreach (InlineRun run in inline.Runs)
                     IncludeSourceSpan(run.SourceSpan, ref start, ref end);
                 return;
-            case Layout.Boxes.CodeBlockBox code:
+            case CodeBlockBox code:
                 foreach (var chunk in code.Chunks)
                     CollectSourceRange(chunk, ref start, ref end);
                 return;
-            case Layout.Boxes.TableBox table:
+            case TableBox table:
                 foreach (var cell in table.GetCellBoxes())
                     CollectSourceRange(cell, ref start, ref end);
                 return;
-            case Layout.Boxes.ListItemBox listItem:
+            case ListItemBox listItem:
                 CollectSourceRange(listItem.Marker, ref start, ref end);
                 CollectSourceRange(listItem.Content, ref start, ref end);
                 return;
-            case Layout.Boxes.StackBox stack:
+            case StackBox stack:
                 foreach (BlockBox child in stack.Children)
                     CollectSourceRange(child, ref start, ref end);
                 return;
-            case Layout.Boxes.VectorSceneBox vector:
+            case VectorSceneBox vector:
                 IncludeSourceSpan(vector.SourceRange, ref start, ref end);
                 return;
         }

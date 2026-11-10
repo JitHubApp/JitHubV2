@@ -17,7 +17,9 @@ using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
@@ -598,7 +600,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded) => _parts.DocumentInputs.SetDisclosureExpanded(run, expanded);
 
-    internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _parts.CodeBlockClipboard.CopyFromAutomation(box);
+    internal void CopyCodeBlockFromAutomation(CodeBlockBox box) => _parts.CodeBlockClipboard.CopyFromAutomation(box);
 
     internal VisibleImageReadiness ImageReadiness => _parts.ImageReadiness;
 

@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Windows.Storage.Streams;
 using Windows.ApplicationModel.DataTransfer;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Tables;
 
 namespace MarkdownRenderer.Controls.Selection;
 
@@ -105,7 +107,7 @@ internal static class SelectionClipboard
     }
 
     internal static MarkdownTableClipboardSnapshot BuildTableClipboardSnapshot(
-        Layout.Boxes.TableBox table)
+        TableBox table)
     {
         var rows = new string[table.RowCount][];
         for (int row = 0; row < rows.Length; row++)
@@ -121,7 +123,7 @@ internal static class SelectionClipboard
         return new MarkdownTableClipboardSnapshot(rows, table.HeaderRowCount);
     }
 
-    internal static string GetInlineClipboardText(Layout.Boxes.InlineContainerBox box)
+    internal static string GetInlineClipboardText(InlineContainerBox box)
     {
         var text = new StringBuilder();
         foreach (InlineRun run in box.Runs)

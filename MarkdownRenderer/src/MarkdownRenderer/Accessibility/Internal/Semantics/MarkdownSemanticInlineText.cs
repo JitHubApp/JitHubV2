@@ -1,7 +1,8 @@
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

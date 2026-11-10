@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 

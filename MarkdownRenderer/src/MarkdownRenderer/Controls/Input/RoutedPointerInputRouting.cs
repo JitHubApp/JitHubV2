@@ -1,7 +1,7 @@
 using System;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Input;
 using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;

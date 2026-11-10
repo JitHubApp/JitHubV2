@@ -1,6 +1,7 @@
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;

@@ -6,8 +6,11 @@ using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.PrivatePlacement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Images;
@@ -124,8 +127,8 @@ internal sealed class RasterPlacementPublisher
         if (!TryPrepareCodeBlockActionPublication(plan, out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans))
             return false;
 
-        Layout.FocusableItem? focusedIdentity = _focus.Current;
-        Layout.FocusableItem? resumeFocusIdentity =
+        FocusableItem? focusedIdentity = _focus.Current;
+        FocusableItem? resumeFocusIdentity =
             _focus.Items is { } currentItems &&
             _focus.ResumeIndex >= 0 && _focus.ResumeIndex < currentItems.Count
                 ? currentItems[_focus.ResumeIndex]
@@ -217,8 +220,8 @@ internal sealed class RasterPlacementPublisher
         SingleRasterLayoutCandidate owner,
         LayoutSnapshot candidate,
         long generation,
-        Layout.FocusableItem? focusedIdentity,
-        Layout.FocusableItem? resumeFocusIdentity)
+        FocusableItem? focusedIdentity,
+        FocusableItem? resumeFocusIdentity)
     {
         _imageSubscriptions.Replace(plan.Subscriptions!);
         _imagePlans.Adopt(plan.Images!, plan.Publication!.Index);

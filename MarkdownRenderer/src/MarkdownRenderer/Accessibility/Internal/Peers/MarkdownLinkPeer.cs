@@ -4,8 +4,9 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Automation;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
 

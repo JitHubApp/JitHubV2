@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

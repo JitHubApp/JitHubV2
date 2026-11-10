@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
+using MarkdownRenderer.Layout.Internal.Context;
 
 namespace MarkdownRenderer.Controls.Pipeline;
 

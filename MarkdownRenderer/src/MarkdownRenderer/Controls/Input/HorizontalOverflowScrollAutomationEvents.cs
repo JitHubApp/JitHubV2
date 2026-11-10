@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Accessibility.Internal.Peers;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Automation.Peers;
 

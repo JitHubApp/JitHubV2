@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Internal.Images.Raster;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;

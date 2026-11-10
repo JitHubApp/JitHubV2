@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Selection;
 

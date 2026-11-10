@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Performance.ProgressiveScenes;
 

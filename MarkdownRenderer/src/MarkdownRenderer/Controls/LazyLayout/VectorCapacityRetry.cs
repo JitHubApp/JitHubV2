@@ -1,6 +1,8 @@
 using System;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Performance;
 using Microsoft.UI.Dispatching;
 

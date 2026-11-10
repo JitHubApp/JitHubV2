@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Raster;
 

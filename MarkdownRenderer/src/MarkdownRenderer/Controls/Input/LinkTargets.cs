@@ -2,7 +2,12 @@ using System;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Controls.Input;
 
@@ -47,27 +52,27 @@ internal static class LinkTargets
     internal static bool TryGetVectorLinkAtPointInBlock(
         BlockBox box,
         Point point,
-        out Layout.Boxes.VectorSceneBox vector,
+        out VectorSceneBox vector,
         out MarkdownVectorLinkAction link)
     {
         switch (box)
         {
-            case Layout.Boxes.VectorSceneBox candidate
+            case VectorSceneBox candidate
                 when candidate.TryGetLinkAt(point, out var candidateLink) && candidateLink is not null:
                 vector = candidate;
                 link = candidateLink;
                 return true;
-            case Layout.Boxes.ListItemBox listItem:
+            case ListItemBox listItem:
                 return TryGetVectorLinkAtPointInBlock(listItem.Marker, point, out vector, out link) ||
                        TryGetVectorLinkAtPointInBlock(listItem.Content, point, out vector, out link);
-            case Layout.Boxes.TableBox table:
-                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
+            case TableBox table:
+                foreach (InlineContainerBox cell in table.GetCellBoxes())
                 {
                     if (TryGetVectorLinkAtPointInBlock(cell, point, out vector, out link))
                         return true;
                 }
                 break;
-            case Layout.Boxes.StackBox stack:
+            case StackBox stack:
                 foreach (BlockBox child in stack.Children)
                 {
                     if (TryGetVectorLinkAtPointInBlock(child, point, out vector, out link))
@@ -93,7 +98,7 @@ internal static class LinkTargets
     {
         switch (box)
         {
-            case Layout.Boxes.VectorSceneBox vector when vector.BlockIndex == pos.BlockIndex && point is { } vectorPoint:
+            case VectorSceneBox vector when vector.BlockIndex == pos.BlockIndex && point is { } vectorPoint:
                 if (vector.TryGetLinkAt(vectorPoint, out var vectorLink) && vectorLink is not null)
                 {
                     var semantic = vector.GetSemanticItem(vectorLink.SemanticIndex);
@@ -106,7 +111,7 @@ internal static class LinkTargets
                         vectorLink.External);
                 }
                 return null;
-            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == pos.BlockIndex:
+            case InlineContainerBox icb when icb.BlockIndex == pos.BlockIndex:
                 foreach (var r in icb.Runs)
                 {
                     if (r.InlineIndex != pos.InlineIndex)
@@ -120,16 +125,16 @@ internal static class LinkTargets
                         : null;
                 }
                 return null;
-            case Layout.Boxes.ListItemBox lib:
+            case ListItemBox lib:
                 if (FindLinkTargetInBlock(lib.Marker, pos, point) is { } lm) return lm;
                 return FindLinkTargetInBlock(lib.Content, pos, point);
-            case Layout.Boxes.TableBox tb:
+            case TableBox tb:
                 foreach (var cell in tb.GetCellBoxes())
                 {
                     if (FindLinkTargetInBlock(cell, pos, point) is { } tf) return tf;
                 }
                 return null;
-            case Layout.Boxes.StackBox sb:
+            case StackBox sb:
                 foreach (var c in sb.Children)
                 {
                     if (FindLinkTargetInBlock(c, pos, point) is { } f) return f;

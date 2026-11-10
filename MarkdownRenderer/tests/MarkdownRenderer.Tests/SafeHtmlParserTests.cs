@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.SafeHtml;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 

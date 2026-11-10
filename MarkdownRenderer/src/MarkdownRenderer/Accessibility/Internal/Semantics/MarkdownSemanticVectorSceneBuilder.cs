@@ -3,8 +3,8 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Document.Internal;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using static MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNodeFactory;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;

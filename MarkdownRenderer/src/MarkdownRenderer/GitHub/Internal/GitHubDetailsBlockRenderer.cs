@@ -5,12 +5,16 @@ using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.SourceProjection;
 using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.GitHub.Internal;

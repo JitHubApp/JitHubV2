@@ -10,7 +10,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

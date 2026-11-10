@@ -1,7 +1,7 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;

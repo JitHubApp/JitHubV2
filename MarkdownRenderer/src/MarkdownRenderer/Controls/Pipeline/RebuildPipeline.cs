@@ -4,7 +4,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 

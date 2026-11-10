@@ -1,6 +1,4 @@
-using MarkdownRenderer.Layout;
 using System.Diagnostics.Tracing;
-using MarkdownRenderer.Layout.Boxes;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.Graphics.DirectX;
@@ -10,6 +8,7 @@ using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

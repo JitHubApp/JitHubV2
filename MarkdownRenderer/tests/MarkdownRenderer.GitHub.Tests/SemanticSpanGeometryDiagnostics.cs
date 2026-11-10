@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 using Xunit;
 

@@ -1,7 +1,8 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using Microsoft.UI.Xaml.Automation;

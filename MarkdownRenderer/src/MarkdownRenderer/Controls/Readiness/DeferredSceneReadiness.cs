@@ -1,8 +1,9 @@
 using System.Threading;
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Performance;
 using Windows.Foundation;
 

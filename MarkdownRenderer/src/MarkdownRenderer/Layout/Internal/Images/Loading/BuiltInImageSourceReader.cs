@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Windows.Storage.Streams;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.Context;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Loading;
 

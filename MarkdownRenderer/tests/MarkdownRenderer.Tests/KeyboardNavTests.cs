@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Layout.Internal.Focus;
 using Windows.Foundation;
 using Windows.System;
 using Xunit;

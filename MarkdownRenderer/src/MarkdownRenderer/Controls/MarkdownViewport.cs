@@ -1,7 +1,7 @@
 using System;
 using Microsoft.UI.Xaml;
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
 
 namespace MarkdownRenderer.Controls;
 

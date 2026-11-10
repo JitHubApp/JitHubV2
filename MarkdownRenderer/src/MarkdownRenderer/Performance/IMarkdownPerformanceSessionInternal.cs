@@ -6,9 +6,13 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;

@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Images.Internal.Raster;
-using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Images;
 

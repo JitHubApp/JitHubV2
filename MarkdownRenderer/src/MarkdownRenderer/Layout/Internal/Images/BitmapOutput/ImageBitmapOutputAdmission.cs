@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Performance;
 using Microsoft.Graphics.Canvas;

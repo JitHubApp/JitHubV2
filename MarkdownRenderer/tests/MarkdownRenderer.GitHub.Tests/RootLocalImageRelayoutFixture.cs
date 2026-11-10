@@ -1,11 +1,14 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Placement;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Relayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.Graphics.DirectX;

@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 
 namespace MarkdownRenderer.Controls.LazyLayout;
 

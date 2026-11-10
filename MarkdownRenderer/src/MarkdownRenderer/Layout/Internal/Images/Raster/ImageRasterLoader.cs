@@ -10,6 +10,7 @@ using Windows.Storage.Streams;
 using Windows.UI;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;

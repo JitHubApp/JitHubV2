@@ -1,14 +1,13 @@
-using MarkdownRenderer.Layout;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using MarkdownRenderer.Layout.Boxes;
 using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
 using Windows.Foundation;
 using Xunit;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

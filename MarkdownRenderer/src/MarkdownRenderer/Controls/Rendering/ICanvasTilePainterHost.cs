@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Rendering;
 

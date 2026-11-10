@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Performance;
 

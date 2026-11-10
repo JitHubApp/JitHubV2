@@ -7,7 +7,7 @@ using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.Selection;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 

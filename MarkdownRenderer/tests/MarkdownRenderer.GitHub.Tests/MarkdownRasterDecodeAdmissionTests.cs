@@ -1,4 +1,3 @@
-using MarkdownRenderer.Layout;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -6,6 +5,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using Xunit;
 using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

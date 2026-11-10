@@ -1,6 +1,5 @@
 using System.Globalization;
 using MarkdownRenderer.Images.Internal.Raster;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 

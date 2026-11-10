@@ -1,7 +1,7 @@
 using System;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace MarkdownRenderer.Controls.Embeds;

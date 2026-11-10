@@ -332,15 +332,15 @@ public sealed class EnginePresentationConfigurationTests
 
     private sealed class CustomTableRenderer : MarkdownNodeRenderer<Table>
     {
-        public override MarkdownRenderer.Layout.BlockBox? BuildBlock(
+        public override MarkdownRenderer.Layout.Internal.Boxes.BlockBox? BuildBlock(
             Table node,
-            MarkdownRenderer.Layout.MarkdownLayoutContext context) => null;
+            MarkdownRenderer.Layout.Internal.Context.MarkdownLayoutContext context) => null;
     }
 
     private sealed class CustomHtmlRenderer : MarkdownNodeRenderer<HtmlBlock>
     {
-        public override MarkdownRenderer.Layout.BlockBox? BuildBlock(
+        public override MarkdownRenderer.Layout.Internal.Boxes.BlockBox? BuildBlock(
             HtmlBlock node,
-            MarkdownRenderer.Layout.MarkdownLayoutContext context) => null;
+            MarkdownRenderer.Layout.Internal.Context.MarkdownLayoutContext context) => null;
     }
 }

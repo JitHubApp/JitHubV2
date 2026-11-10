@@ -4,7 +4,7 @@ using System.Text;
 using Markdig.Parsers;
 using Markdig.Syntax;
 using MarkdownRenderer.Gfm.Internal.Compatibility;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.SourceProjection;
 
 namespace MarkdownRenderer.GitHub.Internal;
 

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using MarkdownRenderer.Controls.Input;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 using Windows.System;
 

@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.Html.Internal.Renderers;

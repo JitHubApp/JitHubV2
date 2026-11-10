@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Selection.Internal;

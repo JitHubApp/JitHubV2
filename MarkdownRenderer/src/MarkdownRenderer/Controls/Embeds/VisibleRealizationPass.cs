@@ -1,4 +1,5 @@
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Embeds;
 

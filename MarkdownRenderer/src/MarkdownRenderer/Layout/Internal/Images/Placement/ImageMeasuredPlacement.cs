@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Placement;

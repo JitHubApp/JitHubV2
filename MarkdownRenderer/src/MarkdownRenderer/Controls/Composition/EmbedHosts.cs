@@ -10,8 +10,6 @@ using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Controls.Composition;
@@ -28,6 +26,8 @@ using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Theming.Internal;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Composition;
 

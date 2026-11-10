@@ -1,5 +1,5 @@
 using MarkdownRenderer.Controls.Embeds;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Focus;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 

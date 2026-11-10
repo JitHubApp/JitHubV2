@@ -1,5 +1,4 @@
 using System.Diagnostics.Tracing;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Performance;
 

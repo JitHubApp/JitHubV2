@@ -1,8 +1,12 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Geometry;
 using System.Globalization;

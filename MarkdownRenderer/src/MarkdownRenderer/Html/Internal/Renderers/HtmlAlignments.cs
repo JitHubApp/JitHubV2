@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Microsoft.Graphics.Canvas.Text;
 

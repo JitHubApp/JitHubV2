@@ -1,5 +1,5 @@
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using Xunit;
 
 namespace MarkdownRenderer.Pixel.Tests;

@@ -1,6 +1,6 @@
 using System;
 using Microsoft.UI.Xaml.Automation.Text;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Text;
 
 namespace MarkdownRenderer.Accessibility.Internal.TextRanges;
 

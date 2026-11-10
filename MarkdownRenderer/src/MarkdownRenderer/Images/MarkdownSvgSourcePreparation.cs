@@ -1,6 +1,5 @@
 using System;
 using MarkdownRenderer.Images.Internal.Svg;
-using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Images;
 

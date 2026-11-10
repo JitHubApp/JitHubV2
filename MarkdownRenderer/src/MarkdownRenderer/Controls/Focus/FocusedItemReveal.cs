@@ -1,6 +1,8 @@
 using System;
 using MarkdownRenderer.Controls.Input;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Dispatching;
 using Windows.Foundation;
 
@@ -160,7 +162,7 @@ internal sealed class FocusedItemReveal
         LayoutSnapshot snapshot,
         long generation,
         long revision,
-        Layout.FocusableItem item,
+        FocusableItem item,
         ref Rect? capturedRect,
         Rect rect,
         out double oldHorizontalOffset,
@@ -201,7 +203,7 @@ internal sealed class FocusedItemReveal
         LayoutSnapshot snapshot,
         long snapshotGeneration,
         long layoutRevision,
-        Layout.FocusableItem item,
+        FocusableItem item,
         Rect rect)
     {
         var weakSnapshot = new WeakReference<LayoutSnapshot>(snapshot);
@@ -220,7 +222,7 @@ internal sealed class FocusedItemReveal
         WeakReference<LayoutSnapshot> weakSnapshot,
         long snapshotGeneration,
         long layoutRevision,
-        Layout.FocusableItem item,
+        FocusableItem item,
         Rect rect)
     {
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||

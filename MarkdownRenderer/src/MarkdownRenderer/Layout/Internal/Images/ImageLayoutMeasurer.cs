@@ -4,8 +4,11 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Text;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 

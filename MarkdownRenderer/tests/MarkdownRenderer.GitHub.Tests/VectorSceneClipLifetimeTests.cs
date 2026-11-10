@@ -1,6 +1,8 @@
 using System.Numerics;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
 using Windows.Foundation;

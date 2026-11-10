@@ -3,7 +3,8 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

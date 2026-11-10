@@ -1,9 +1,9 @@
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Layout.Internal.Building;
 using Markdig.Syntax;
 using Xunit;
 

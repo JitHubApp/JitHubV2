@@ -1,6 +1,7 @@
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Input;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Input;
 

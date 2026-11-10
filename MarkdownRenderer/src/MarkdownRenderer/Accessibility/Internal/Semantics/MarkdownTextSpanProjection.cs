@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

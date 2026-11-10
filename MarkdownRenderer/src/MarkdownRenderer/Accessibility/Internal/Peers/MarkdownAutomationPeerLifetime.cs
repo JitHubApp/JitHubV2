@@ -2,7 +2,7 @@ using System;
 using Microsoft.UI.Xaml.Automation;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
 

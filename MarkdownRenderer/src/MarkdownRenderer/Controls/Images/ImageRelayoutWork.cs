@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Internal.Concurrency;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.PrivatePlacement;
+using MarkdownRenderer.Layout.Internal.Relayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Controls.Images;

@@ -3,11 +3,13 @@ using System.Threading;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Raster;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Microsoft.Graphics.Canvas;
 
 namespace MarkdownRenderer.Layout.Internal.Images;

@@ -1,7 +1,7 @@
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Selection;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 using Xunit;
 

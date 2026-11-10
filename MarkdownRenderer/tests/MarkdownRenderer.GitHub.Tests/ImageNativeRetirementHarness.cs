@@ -1,6 +1,7 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;

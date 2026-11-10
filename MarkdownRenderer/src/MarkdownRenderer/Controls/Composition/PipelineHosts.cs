@@ -10,7 +10,6 @@ using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Controls.Composition;
 using MarkdownRenderer.Controls.Embeds;
@@ -24,6 +23,7 @@ using MarkdownRenderer.Controls.Providers;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 
 namespace MarkdownRenderer.Controls.Composition;
 

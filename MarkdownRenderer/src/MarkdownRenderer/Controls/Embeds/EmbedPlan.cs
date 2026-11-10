@@ -1,9 +1,8 @@
 using System;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Focus;
 
 namespace MarkdownRenderer.Controls.Embeds;
 

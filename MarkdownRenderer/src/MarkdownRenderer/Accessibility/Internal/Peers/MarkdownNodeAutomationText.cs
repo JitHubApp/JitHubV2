@@ -2,8 +2,9 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
@@ -46,7 +47,7 @@ internal static class MarkdownNodeAutomationText
             return GetImageName(owner, text, node.ImageBox?.AccessibilityState);
 
         if (!string.IsNullOrWhiteSpace(text) &&
-            !string.Equals(text, MarkdownRenderer.Layout.InlineEmbedRun.PlaceholderChar, System.StringComparison.Ordinal))
+            !string.Equals(text, MarkdownRenderer.Layout.Internal.Inlines.Runs.InlineEmbedRun.PlaceholderChar, System.StringComparison.Ordinal))
             return text;
         return node.Role switch
         {
@@ -94,7 +95,7 @@ internal static class MarkdownNodeAutomationText
         MarkdownAutomationPeer root,
         MarkdownSemanticNode node)
     {
-        if (node.Box is Layout.Boxes.VectorSceneBox { GraphRebindFailed: true })
+        if (node.Box is VectorSceneBox { GraphRebindFailed: true })
             return owner.Localization.Resolve(MarkdownStringKeys.EmbeddedContentUnavailable,
                 MarkdownLocalizedStrings.EmbeddedContentUnavailable);
         if (node.Role == MarkdownSemanticRole.Image &&

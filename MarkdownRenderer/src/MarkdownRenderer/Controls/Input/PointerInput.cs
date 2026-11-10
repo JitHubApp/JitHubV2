@@ -1,9 +1,9 @@
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Input;
 

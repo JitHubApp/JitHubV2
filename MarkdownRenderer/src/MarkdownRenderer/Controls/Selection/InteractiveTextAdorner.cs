@@ -2,7 +2,10 @@ using System.Collections.Generic;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Rendering;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Microsoft.Graphics.Canvas;
@@ -99,10 +102,10 @@ internal sealed class InteractiveTextAdorner
     internal bool ShouldRefreshForScroll()
     {
         bool hasHoveredLink = _hover.HasLink;
-        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focus.Items;
+        IReadOnlyList<FocusableItem>? focusableItems = _focus.Items;
         bool hasFocusedLink = focusableItems is not null &&
             (uint)_focus.FocusedIndex < (uint)focusableItems.Count &&
-            focusableItems[_focus.FocusedIndex].Kind == Layout.FocusableItemKind.Link;
+            focusableItems[_focus.FocusedIndex].Kind == FocusableItemKind.Link;
         bool hasVisibleAdorner = _adorner.IsVisible;
         bool hasRetainedRectangles = _adorner.Rectangles.Count > 0;
         bool hasPendingRefresh = _adorner.HasPendingRefresh;

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Xaml;

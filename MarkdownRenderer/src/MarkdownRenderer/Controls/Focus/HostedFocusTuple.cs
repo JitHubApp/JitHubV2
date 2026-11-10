@@ -1,4 +1,5 @@
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Focus;
 
@@ -7,11 +8,11 @@ internal readonly struct HostedFocusTuple(
     long SnapshotGeneration,
     long LayoutRevision,
     long PlanEpoch,
-    System.Collections.Generic.IReadOnlyList<Layout.FocusableItem> Items)
+    System.Collections.Generic.IReadOnlyList<FocusableItem> Items)
 {
     public readonly LayoutSnapshot Snapshot = Snapshot;
     public readonly long SnapshotGeneration = SnapshotGeneration;
     public readonly long LayoutRevision = LayoutRevision;
     public readonly long PlanEpoch = PlanEpoch;
-    public readonly System.Collections.Generic.IReadOnlyList<Layout.FocusableItem> Items = Items;
+    public readonly System.Collections.Generic.IReadOnlyList<FocusableItem> Items = Items;
 }

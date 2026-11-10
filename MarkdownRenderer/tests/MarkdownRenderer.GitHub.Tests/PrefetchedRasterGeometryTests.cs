@@ -1,9 +1,9 @@
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Windows.Foundation;
 using Xunit;
 

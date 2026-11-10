@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Pipeline;
 

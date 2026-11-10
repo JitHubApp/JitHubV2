@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;

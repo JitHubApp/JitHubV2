@@ -5,6 +5,7 @@ using System.Threading;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Raster;
 

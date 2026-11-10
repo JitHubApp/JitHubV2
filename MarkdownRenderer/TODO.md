@@ -189,7 +189,7 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 - ✅ **Lazy / viewport-relative layout for large documents**
   All block bounds are computed before first paint. For large documents (10K+
   lines) add a streaming measure path that only arranges blocks near the viewport
-  and extends on scroll. (`Layout/LayoutBuilder.cs:24–42`)
+  and extends on scroll. (`Layout/Internal/Building/LayoutBuilder.cs:24–42`)
 
 - ✅ **Document and guard `IMarkdownEmbedFactory` thread safety**
   `CanCreate()` and `MeasureHeight()` run on the layout thread. Calling WinUI APIs

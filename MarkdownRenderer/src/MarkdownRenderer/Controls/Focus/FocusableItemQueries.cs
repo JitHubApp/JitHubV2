@@ -1,10 +1,18 @@
 using System;
 using System.Collections.Generic;
 using Windows.Foundation;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Extensions.Internal;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
+using MarkdownRenderer.Layout.Internal.Vectors;
 
 namespace MarkdownRenderer.Controls.Focus;
 
@@ -14,7 +22,7 @@ namespace MarkdownRenderer.Controls.Focus;
 /// </summary>
 internal static class FocusableItemQueries
 {
-    internal static bool SameFocusableIdentity(Layout.FocusableItem left, Layout.FocusableItem right) =>
+    internal static bool SameFocusableIdentity(FocusableItem left, FocusableItem right) =>
         left.BlockIndex == right.BlockIndex &&
         left.InlineIndex == right.InlineIndex &&
         left.Kind == right.Kind;
@@ -33,15 +41,15 @@ internal static class FocusableItemQueries
     }
 
     internal static int FindFocusableItemIndex(
-        System.Collections.Generic.IReadOnlyList<Layout.FocusableItem>? items,
-        Layout.FocusableItem target)
+        System.Collections.Generic.IReadOnlyList<FocusableItem>? items,
+        FocusableItem target)
     {
         if (items is null)
             return -1;
 
         for (int index = 0; index < items.Count; index++)
         {
-            Layout.FocusableItem candidate = items[index];
+            FocusableItem candidate = items[index];
             if (candidate.BlockIndex == target.BlockIndex &&
                 candidate.InlineIndex == target.InlineIndex &&
                 candidate.Kind == target.Kind)
@@ -53,7 +61,7 @@ internal static class FocusableItemQueries
         return -1;
     }
 
-    internal static Rect? GetFocusableItemRectFromBlock(BlockBox box, Layout.FocusableItem item)
+    internal static Rect? GetFocusableItemRectFromBlock(BlockBox box, FocusableItem item)
     {
         if (item.IsHorizontalOverflow &&
             box.BlockIndex == item.BlockIndex &&
@@ -62,7 +70,7 @@ internal static class FocusableItemQueries
             return overflow.HorizontalViewportBounds;
         }
 
-        if (box is Layout.Boxes.DeclarativeHostedElementBox hosted &&
+        if (box is DeclarativeHostedElementBox hosted &&
             item.IsDeclarativeHostedElement &&
             hosted.BlockIndex == item.BlockIndex)
         {
@@ -72,7 +80,7 @@ internal static class FocusableItemQueries
                 Math.Max(0, hosted.Bounds.Width - hosted.Margin.Left - hosted.Margin.Right),
                 Math.Max(0, hosted.Bounds.Height - hosted.Margin.Top - hosted.Margin.Bottom));
         }
-        if (box is Layout.Boxes.EmbedBox eb && eb.BlockIndex == item.BlockIndex)
+        if (box is EmbedBox eb && eb.BlockIndex == item.BlockIndex)
         {
             return new Rect(
                 eb.Bounds.X + eb.Margin.Left,
@@ -80,25 +88,25 @@ internal static class FocusableItemQueries
                 eb.Bounds.Width - eb.Margin.Left - eb.Margin.Right,
                 eb.Bounds.Height - eb.Margin.Top - eb.Margin.Bottom);
         }
-        if (box is Layout.Boxes.CodeBlockBox codeBlock && codeBlock.BlockIndex == item.BlockIndex)
+        if (box is CodeBlockBox codeBlock && codeBlock.BlockIndex == item.BlockIndex)
         {
             if (item.IsCodeBlockCopy)
                 return codeBlock.CopyButtonBounds;
         }
-        if (box is Layout.Boxes.VectorSceneBox vector &&
+        if (box is VectorSceneBox vector &&
             item.IsVectorSemantic &&
             vector.BlockIndex == item.BlockIndex)
         {
             return vector.GetSemanticBounds(item.InlineIndex);
         }
-        if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
+        if (box is InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
             return icb.GetRunRect(item.InlineIndex);
-        if (box is Layout.Boxes.ListItemBox lib)
+        if (box is ListItemBox lib)
         {
             return GetFocusableItemRectFromBlock(lib.Marker, item)
                 ?? GetFocusableItemRectFromBlock(lib.Content, item);
         }
-        if (box is Layout.Boxes.StackBox sb)
+        if (box is StackBox sb)
         {
             foreach (var c in sb.Children)
             {
@@ -106,7 +114,7 @@ internal static class FocusableItemQueries
                 if (r is not null) return r;
             }
         }
-        if (box is Layout.Boxes.TableBox tb)
+        if (box is TableBox tb)
         {
             foreach (var cell in tb.GetCellBoxes())
             {
@@ -126,15 +134,15 @@ internal static class FocusableItemQueries
         SameFocusableIdentity(left.Item, right.Item);
 
     internal static bool IsFocusedIdentity(
-        System.Collections.Generic.IReadOnlyList<Layout.FocusableItem> items,
+        System.Collections.Generic.IReadOnlyList<FocusableItem> items,
         int focusedIndex,
-        Layout.FocusableItem item) =>
+        FocusableItem item) =>
         (uint)focusedIndex < (uint)items.Count &&
         SameFocusableIdentity(items[focusedIndex], item);
 
     internal static bool TryFindHorizontalOverflowFocusableIndex(
         LayoutSnapshot snapshot,
-        IReadOnlyList<Layout.FocusableItem> items,
+        IReadOnlyList<FocusableItem> items,
         IHorizontalOverflowBox overflow,
         out int index)
     {
@@ -161,8 +169,8 @@ internal static class FocusableItemQueries
 
     internal static bool TryGetLinkedAtomicForFocusable(
         LayoutSnapshot snapshot,
-        Layout.FocusableItem item,
-        out Layout.Boxes.InlineContainerBox inline,
+        FocusableItem item,
+        out InlineContainerBox inline,
         out InlineRun run)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -182,8 +190,8 @@ internal static class FocusableItemQueries
 
     internal static bool TryGetLinkedAtomicForFocusable(
         BlockBox box,
-        Layout.FocusableItem item,
-        out Layout.Boxes.InlineContainerBox inline,
+        FocusableItem item,
+        out InlineContainerBox inline,
         out InlineRun run)
     {
         inline = null!;
@@ -191,7 +199,7 @@ internal static class FocusableItemQueries
 
         switch (box)
         {
-            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == item.BlockIndex:
+            case InlineContainerBox icb when icb.BlockIndex == item.BlockIndex:
                 foreach (InlineRun candidate in icb.Runs)
                 {
                     if (candidate.InlineIndex == item.InlineIndex && LinkTargets.IsLinkedRun(candidate))
@@ -202,17 +210,17 @@ internal static class FocusableItemQueries
                     }
                 }
                 return false;
-            case Layout.Boxes.ListItemBox lib:
+            case ListItemBox lib:
                 return TryGetLinkedAtomicForFocusable(lib.Marker, item, out inline, out run)
                        || TryGetLinkedAtomicForFocusable(lib.Content, item, out inline, out run);
-            case Layout.Boxes.TableBox tb:
+            case TableBox tb:
                 foreach (var cell in tb.GetCellBoxes())
                 {
                     if (TryGetLinkedAtomicForFocusable(cell, item, out inline, out run))
                         return true;
                 }
                 return false;
-            case Layout.Boxes.StackBox sb:
+            case StackBox sb:
                 foreach (var c in sb.Children)
                 {
                     if (TryGetLinkedAtomicForFocusable(c, item, out inline, out run))
@@ -230,32 +238,32 @@ internal static class FocusableItemQueries
     /// </summary>
     internal static bool TryGetVectorSemanticForFocusable(
         BlockBox box,
-        Layout.FocusableItem item,
-        out Layout.Boxes.VectorSceneBox vector,
+        FocusableItem item,
+        out VectorSceneBox vector,
         out int semanticIndex)
     {
         vector = null!;
         semanticIndex = -1;
         switch (box)
         {
-            case Layout.Boxes.VectorSceneBox candidate
+            case VectorSceneBox candidate
                 when candidate.BlockIndex == item.BlockIndex &&
                      candidate.GetSemanticItem(item.InlineIndex) is { } semantic &&
                      MarkdownVectorSemanticPolicy.IsKeyboardFocusable(semantic.Flags):
                 vector = candidate;
                 semanticIndex = item.InlineIndex;
                 return true;
-            case Layout.Boxes.ListItemBox listItem:
+            case ListItemBox listItem:
                 return TryGetVectorSemanticForFocusable(listItem.Marker, item, out vector, out semanticIndex) ||
                        TryGetVectorSemanticForFocusable(listItem.Content, item, out vector, out semanticIndex);
-            case Layout.Boxes.TableBox table:
-                foreach (Layout.Boxes.InlineContainerBox cell in table.GetCellBoxes())
+            case TableBox table:
+                foreach (InlineContainerBox cell in table.GetCellBoxes())
                 {
                     if (TryGetVectorSemanticForFocusable(cell, item, out vector, out semanticIndex))
                         return true;
                 }
                 return false;
-            case Layout.Boxes.StackBox stack:
+            case StackBox stack:
                 foreach (BlockBox child in stack.Children)
                 {
                     if (TryGetVectorSemanticForFocusable(child, item, out vector, out semanticIndex))
@@ -274,7 +282,7 @@ internal static class FocusableItemQueries
     /// </summary>
     internal static Rect? GetLogicalRectUnderPaint(
         LayoutSnapshot snapshot,
-        Layout.FocusableItem item)
+        FocusableItem item)
     {
         Rect? physicalRect = null;
         if (item.IsHorizontalOverflow &&
@@ -289,7 +297,7 @@ internal static class FocusableItemQueries
             {
                 using LayoutPlacementTransformContext.Scope placementScope =
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(block);
-                if (block is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
+                if (block is InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
                 {
                     physicalRect = icb.GetRunRect(item.InlineIndex);
                     break;

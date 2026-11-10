@@ -16,7 +16,7 @@ public sealed class MarkdownEngineBuilder
     private MarkdownParseLimits _parseLimits = MarkdownParseLimits.Default;
     private MarkdownProfile _profile = MarkdownProfiles.CommonMark;
     private IMarkdownPresentationConfiguration? _presentationConfiguration;
-    private readonly MarkdownRenderer.Layout.MarkdownRenderResources? _renderResources;
+    private readonly MarkdownRenderer.Layout.Internal.RenderResources.MarkdownRenderResources? _renderResources;
 
     /// <summary>Creates a builder with the default CommonMark configuration.</summary>
     public MarkdownEngineBuilder()

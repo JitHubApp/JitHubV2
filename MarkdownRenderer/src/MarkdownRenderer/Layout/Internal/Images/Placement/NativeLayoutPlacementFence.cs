@@ -1,4 +1,5 @@
 using Microsoft.Graphics.Canvas.Text;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Placement;
 

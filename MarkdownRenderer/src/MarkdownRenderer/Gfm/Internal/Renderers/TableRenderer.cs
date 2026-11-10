@@ -1,8 +1,11 @@
 using System.Collections.Generic;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 

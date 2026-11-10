@@ -4,7 +4,8 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Controls.LazyLayout;

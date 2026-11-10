@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
 
 namespace MarkdownRenderer.Controls.Pipeline;
 

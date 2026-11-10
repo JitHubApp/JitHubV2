@@ -1,7 +1,9 @@
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Microsoft.Graphics.Canvas;

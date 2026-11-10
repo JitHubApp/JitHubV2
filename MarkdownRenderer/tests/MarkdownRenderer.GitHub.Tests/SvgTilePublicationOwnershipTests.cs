@@ -1,4 +1,3 @@
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;

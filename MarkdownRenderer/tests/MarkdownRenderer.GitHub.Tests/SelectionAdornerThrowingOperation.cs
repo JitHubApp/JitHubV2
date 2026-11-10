@@ -1,5 +1,5 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

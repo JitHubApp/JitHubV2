@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Focus;
 
@@ -114,7 +115,7 @@ internal sealed class FocusableItemsPublication
                 snapshot,
                 revisionBefore,
                 out bool collectedSuccessfully,
-                out IReadOnlyList<Layout.FocusableItem> collected,
+                out IReadOnlyList<FocusableItem> collected,
                 out long revisionUnderLease,
                 out Exception? captureFailure))
         {
@@ -178,11 +179,11 @@ internal sealed class FocusableItemsPublication
         LayoutSnapshot snapshot,
         long revisionBefore,
         out bool collectedSuccessfully,
-        out IReadOnlyList<Layout.FocusableItem> collected,
+        out IReadOnlyList<FocusableItem> collected,
         out long revisionUnderLease,
         out Exception? captureFailure)
     {
-        collected = Array.Empty<Layout.FocusableItem>();
+        collected = Array.Empty<FocusableItem>();
         revisionUnderLease = -1;
         collectedSuccessfully = false;
         captureFailure = null;

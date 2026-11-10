@@ -5,7 +5,9 @@ using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using MarkdownRenderer.Theming;
@@ -172,7 +174,7 @@ internal sealed class RendererAutomation : IMarkdownAutomationHost
         ReferenceEquals(focusedRun, run);
 
     bool IMarkdownAutomationHost.IsKeyboardFocusOnVectorSemantic(
-        Layout.Boxes.VectorSceneBox box,
+        VectorSceneBox box,
         int semanticIndex) =>
         _control.FocusState != FocusState.Unfocused &&
         _focus.TryGetFocusedVectorSemantic(out var focusedBox, out var focusedSemanticIndex) &&
@@ -202,7 +204,7 @@ internal sealed class RendererAutomation : IMarkdownAutomationHost
     }
 
     bool IMarkdownAutomationHost.FocusVectorSemantic(
-        Layout.Boxes.VectorSceneBox box,
+        VectorSceneBox box,
         int semanticIndex)
     {
         if (!_focus.TryGetIndexForVectorSemantic(box, semanticIndex, out int index))
@@ -235,7 +237,7 @@ internal sealed class RendererAutomation : IMarkdownAutomationHost
 
     /// <summary>Activates a host-approved vector-scene link/action from UI Automation.</summary>
     void IMarkdownAutomationHost.ActivateVectorSceneLink(
-        Layout.Boxes.VectorSceneBox box,
+        VectorSceneBox box,
         int semanticIndex)
     {
         if (box is null || !box.TryGetLink(semanticIndex, out var link) || link is null)

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;

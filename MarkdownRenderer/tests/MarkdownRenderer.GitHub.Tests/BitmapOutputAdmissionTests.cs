@@ -1,11 +1,10 @@
-using MarkdownRenderer.Layout;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
-using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

@@ -3,7 +3,10 @@ using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Automation.Peers;
 

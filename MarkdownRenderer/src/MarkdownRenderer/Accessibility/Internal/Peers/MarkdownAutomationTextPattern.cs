@@ -5,7 +5,7 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Accessibility.Internal.TextRanges;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
 

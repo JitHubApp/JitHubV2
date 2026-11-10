@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

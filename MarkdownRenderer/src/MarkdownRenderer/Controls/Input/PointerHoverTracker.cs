@@ -1,6 +1,8 @@
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Input;
 

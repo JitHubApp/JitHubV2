@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.CodeBlocks.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
 using Windows.Foundation;

@@ -4,7 +4,10 @@ using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.Input;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Focus;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Pipeline;
@@ -189,8 +192,8 @@ internal sealed class LayoutCommitPublisher
         long hostedFocusPlanEpoch = -1;
         long hostedFocusPlanRevision = -1;
         long focusRequestVersion = _focusRefresh.Pending.RequestVersion;
-        IReadOnlyList<Layout.FocusableItem> collectedFocusableItems =
-            Array.Empty<Layout.FocusableItem>();
+        IReadOnlyList<FocusableItem> collectedFocusableItems =
+            Array.Empty<FocusableItem>();
         ImagePlanPublication? imagePlanPublication = null;
         EmbedPlan[] oldPlans = Array.Empty<EmbedPlan>();
         CodeBlockActionPlan[] oldActionPlans = Array.Empty<CodeBlockActionPlan>();

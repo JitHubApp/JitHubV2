@@ -2,7 +2,8 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.TaskMarkers;
 
 namespace MarkdownRenderer.Gfm.Internal.Renderers;
 

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Raster;
 

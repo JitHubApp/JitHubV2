@@ -1,9 +1,9 @@
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

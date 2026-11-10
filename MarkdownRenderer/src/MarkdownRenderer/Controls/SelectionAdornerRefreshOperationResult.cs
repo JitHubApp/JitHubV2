@@ -1,4 +1,3 @@
-using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Controls;
 

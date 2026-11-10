@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Microsoft.UI.Dispatching;
@@ -421,9 +424,9 @@ internal sealed class HorizontalOverflowScrollVisuals
 
     private static bool Contains(
         IHorizontalOverflowBox target,
-        Layout.Boxes.InlineContainerBox box)
+        InlineContainerBox box)
     {
-        if (target is Layout.Boxes.CodeBlockBox code)
+        if (target is CodeBlockBox code)
         {
             foreach (var chunk in code.Chunks)
             {
@@ -433,7 +436,7 @@ internal sealed class HorizontalOverflowScrollVisuals
             return false;
         }
 
-        if (target is Layout.Boxes.TableBox table)
+        if (target is TableBox table)
         {
             foreach (var cell in table.GetCellBoxes())
             {

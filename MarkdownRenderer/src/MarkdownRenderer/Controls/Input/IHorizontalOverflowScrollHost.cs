@@ -1,5 +1,5 @@
 using MarkdownRenderer.Accessibility.Internal.Peers;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Input;
 

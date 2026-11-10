@@ -4,7 +4,9 @@ using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Selection.Internal;
 

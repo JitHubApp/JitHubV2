@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Performance.ProgressiveScenes;
 

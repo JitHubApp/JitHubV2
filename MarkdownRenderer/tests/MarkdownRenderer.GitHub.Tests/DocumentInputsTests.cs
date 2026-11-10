@@ -3,7 +3,7 @@ using MarkdownRenderer.Controls;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using Xunit;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 

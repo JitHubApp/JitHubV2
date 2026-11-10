@@ -9,9 +9,13 @@ using MarkdownRenderer.Accessibility.Internal.TextRanges;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;

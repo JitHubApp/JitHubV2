@@ -1,6 +1,9 @@
 using System;
 using Microsoft.Graphics.Canvas.Text;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Text;
 
 namespace MarkdownRenderer.Layout.Internal.Images;
 

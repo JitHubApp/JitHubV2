@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using Windows.System;
+using MarkdownRenderer.Layout.Internal.Focus;
 
 namespace MarkdownRenderer.Controls;
 

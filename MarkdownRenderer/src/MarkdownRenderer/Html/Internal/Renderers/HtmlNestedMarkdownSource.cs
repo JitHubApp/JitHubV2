@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using Markdig.Syntax;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.SourceProjection;
 
 namespace MarkdownRenderer.Html.Internal.Renderers;
 

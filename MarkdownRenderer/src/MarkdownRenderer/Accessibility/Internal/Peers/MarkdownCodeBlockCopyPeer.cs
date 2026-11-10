@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;

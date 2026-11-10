@@ -12,7 +12,6 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;

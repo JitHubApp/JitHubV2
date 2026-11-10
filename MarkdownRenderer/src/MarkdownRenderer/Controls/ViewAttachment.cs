@@ -13,7 +13,6 @@ using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Controls.Composition;

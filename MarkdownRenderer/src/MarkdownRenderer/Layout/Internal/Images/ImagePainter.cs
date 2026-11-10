@@ -6,7 +6,10 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Internal.Images;

@@ -1,7 +1,8 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Vectors;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 
 namespace MarkdownRenderer.Performance;
 

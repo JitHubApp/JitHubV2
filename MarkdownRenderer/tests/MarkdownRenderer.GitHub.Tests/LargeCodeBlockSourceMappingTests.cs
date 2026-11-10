@@ -6,8 +6,13 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.GitHub.Internal;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Theming.Internal;
@@ -135,7 +140,7 @@ public sealed class LargeCodeBlockSourceMappingTests
         Assert.Equal(new SourceSpan(authoredLineBreak, newline.Length), summaryMappedLineBreak);
 
         using LayoutSnapshot snapshot = BuildGitHubReadmeLayout(engine, source, document);
-        Assert.Contains(snapshot.Blocks, static block => block is MarkdownRenderer.Layout.Boxes.TableBox);
+        Assert.Contains(snapshot.Blocks, static block => block is MarkdownRenderer.Layout.Internal.Tables.TableBox);
         CodeBlockBox code = Assert.Single(snapshot.Blocks.SelectMany(EnumerateCodeBlocks));
         Assert.Equal(firstLine + "\n" + secondLine, code.CodeText);
 
@@ -193,7 +198,7 @@ public sealed class LargeCodeBlockSourceMappingTests
 
         using LayoutSnapshot snapshot = new LayoutBuilder(context, semanticDocument: document)
             .Build(document.ParsedDocument!, availableWidth: 640f);
-        Assert.Contains(snapshot.Blocks, static block => block is MarkdownRenderer.Layout.Boxes.TableBox);
+        Assert.Contains(snapshot.Blocks, static block => block is MarkdownRenderer.Layout.Internal.Tables.TableBox);
         CodeBlockBox code = Assert.Single(snapshot.Blocks.OfType<CodeBlockBox>());
         Assert.Equal(codeLine, code.CodeText);
 
@@ -248,7 +253,7 @@ public sealed class LargeCodeBlockSourceMappingTests
 
         using MarkdownEngine engine = new MarkdownEngineBuilder().UseGitHubReadme().Build();
         using LayoutSnapshot snapshot = await BuildGitHubReadmeLayoutAsync(engine, source);
-        Assert.Contains(snapshot.Blocks, static block => block is MarkdownRenderer.Layout.Boxes.TableBox);
+        Assert.Contains(snapshot.Blocks, static block => block is MarkdownRenderer.Layout.Internal.Tables.TableBox);
         CodeBlockBox code = Assert.Single(snapshot.Blocks.SelectMany(EnumerateCodeBlocks));
         Assert.Equal(preformattedBody, code.CodeText);
 
@@ -287,7 +292,7 @@ public sealed class LargeCodeBlockSourceMappingTests
 
         using MarkdownEngine engine = new MarkdownEngineBuilder().UseGitHubReadme().Build();
         using LayoutSnapshot snapshot = await BuildGitHubReadmeLayoutAsync(engine, source);
-        Assert.Single(snapshot.Blocks.OfType<MarkdownRenderer.Layout.Boxes.TableBox>());
+        Assert.Single(snapshot.Blocks.OfType<MarkdownRenderer.Layout.Internal.Tables.TableBox>());
         CodeBlockBox[] codeBlocks = snapshot.Blocks.SelectMany(EnumerateCodeBlocks).ToArray();
         Assert.Equal(2, codeBlocks.Length);
         Assert.Equal(expectedInsertedCode, codeBlocks[0].CodeText);

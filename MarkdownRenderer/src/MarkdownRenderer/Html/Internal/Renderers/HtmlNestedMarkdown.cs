@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Markdig;
 using Markdig.Syntax;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.SourceProjection;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Html.Internal.Renderers;

@@ -11,7 +11,6 @@ using Windows.Foundation;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
@@ -26,6 +25,9 @@ using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Composition;
 

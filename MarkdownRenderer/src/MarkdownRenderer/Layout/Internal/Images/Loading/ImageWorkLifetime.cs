@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Layout.Internal.Context;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Loading;
 

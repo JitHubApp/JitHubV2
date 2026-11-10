@@ -5,7 +5,7 @@ using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;

@@ -1,5 +1,5 @@
 using MarkdownRenderer.Controls.Selection;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 

@@ -12,7 +12,9 @@ using Windows.UI;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Raster;

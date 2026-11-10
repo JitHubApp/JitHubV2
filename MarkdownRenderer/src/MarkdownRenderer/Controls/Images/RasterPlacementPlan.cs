@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Controls.Embeds;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Focus;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.PrivatePlacement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Images;
@@ -30,7 +33,7 @@ internal sealed class RasterPlacementPlan : IDisposable
     internal List<int>? ActiveCodeActionOrdinals;
     internal bool HasMeasuredCodeBlocks;
     internal List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>? CodeActionAdoptions;
-    internal Layout.FocusableItem? ResumeFocusIdentity;
+    internal FocusableItem? ResumeFocusIdentity;
     internal readonly double? AnchorOffset;
     internal readonly double? CapturedScrollOffset;
 

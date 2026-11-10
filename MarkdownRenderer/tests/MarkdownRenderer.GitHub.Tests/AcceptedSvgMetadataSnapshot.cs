@@ -1,4 +1,3 @@
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using Windows.Foundation;
 using Xunit;

@@ -13,7 +13,8 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Images.Internal.Svg;
 using MarkdownRenderer.Internal.Concurrency;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
@@ -22,6 +23,8 @@ using MarkdownRenderer.Layout.Internal.Images.Svg;
 using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
 using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
+using MarkdownRenderer.Layout.Internal.Inlines.SpeculativeMeasurement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Performance;
 

@@ -7,8 +7,10 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Internal.Concurrency;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
 
 namespace MarkdownRenderer.Performance.ProgressiveScenes;
 

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.SourceProjection;
 
 namespace MarkdownRenderer.Html.Internal.Renderers;
 

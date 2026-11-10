@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
-using MarkdownRenderer.Layout.Boxes;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Text;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

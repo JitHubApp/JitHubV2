@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
 
 namespace MarkdownRenderer.Performance;
 

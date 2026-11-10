@@ -4,9 +4,14 @@ using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Building;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Text;
 using static MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownTextSpanProjection;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;

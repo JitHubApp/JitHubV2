@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.Loading;
 using MarkdownRenderer.Layout.Internal.Images.Svg;

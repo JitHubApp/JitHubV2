@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Layout.Internal.Images.Loading;

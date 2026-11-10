@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.SafeHtml;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Performance;

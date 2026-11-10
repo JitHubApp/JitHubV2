@@ -1,6 +1,7 @@
 using Windows.Foundation;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Images;
 

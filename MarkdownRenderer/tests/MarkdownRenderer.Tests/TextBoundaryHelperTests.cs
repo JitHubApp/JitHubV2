@@ -1,6 +1,6 @@
-using MarkdownRenderer.Layout;
 using System.Globalization;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Text;
 
 namespace MarkdownRenderer.Tests;
 

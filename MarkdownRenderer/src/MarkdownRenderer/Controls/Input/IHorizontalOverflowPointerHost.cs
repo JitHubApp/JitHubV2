@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Boxes;
 
 namespace MarkdownRenderer.Controls.Input;
 

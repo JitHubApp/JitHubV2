@@ -1,5 +1,6 @@
 ﻿using Markdig;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Parsing.Internal;

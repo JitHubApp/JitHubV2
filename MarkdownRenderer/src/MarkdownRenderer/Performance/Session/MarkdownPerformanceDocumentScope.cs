@@ -6,7 +6,6 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Internal.Concurrency;
-using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Performance;
 

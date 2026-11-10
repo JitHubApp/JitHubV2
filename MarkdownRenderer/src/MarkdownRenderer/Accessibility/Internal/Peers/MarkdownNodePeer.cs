@@ -7,8 +7,9 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
 

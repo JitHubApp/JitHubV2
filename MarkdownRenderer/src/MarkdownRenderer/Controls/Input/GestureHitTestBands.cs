@@ -1,6 +1,6 @@
 using System;
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Input;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
 
 namespace MarkdownRenderer.Controls.Input;
 

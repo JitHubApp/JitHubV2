@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout.Internal.Context;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 

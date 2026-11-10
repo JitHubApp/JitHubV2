@@ -1,5 +1,5 @@
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

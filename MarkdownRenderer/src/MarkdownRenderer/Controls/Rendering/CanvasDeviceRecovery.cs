@@ -1,7 +1,7 @@
 using System;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Diagnostics.Internal;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Dispatching;
 

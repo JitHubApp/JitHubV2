@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Controls.Images;

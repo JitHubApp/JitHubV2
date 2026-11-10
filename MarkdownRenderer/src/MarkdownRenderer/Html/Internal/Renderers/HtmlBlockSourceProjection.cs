@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using Markdig.Helpers;
 using Markdig.Syntax;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.SourceProjection;
 
 namespace MarkdownRenderer.Html.Internal.Renderers;
 

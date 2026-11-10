@@ -1,10 +1,9 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Performance;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ImageBoxSvgRendererFixture;

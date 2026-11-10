@@ -1,6 +1,6 @@
 using System.Threading;
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Context;
 
 namespace MarkdownRenderer.Tests;
 

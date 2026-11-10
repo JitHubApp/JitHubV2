@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Layout.Internal.Focus;
 
 namespace MarkdownRenderer.Controls.Focus;
 
@@ -53,7 +54,7 @@ internal sealed class FocusRingPresenter
     /// Queues the ring to surround <paramref name="rect"/> for
     /// <paramref name="item"/>, or to hide when either is null.
     /// </summary>
-    internal void Publish(long snapshotGeneration, Layout.FocusableItem? item, Rect? rect)
+    internal void Publish(long snapshotGeneration, FocusableItem? item, Rect? rect)
     {
         long ticket = ++_publicationTicket;
         bool queued = false;
@@ -144,7 +145,7 @@ internal sealed class FocusRingPresenter
     private void Apply(
         long ticket,
         long snapshotGeneration,
-        Layout.FocusableItem? item,
+        FocusableItem? item,
         Rect? rect)
     {
         if (ticket != _publicationTicket ||

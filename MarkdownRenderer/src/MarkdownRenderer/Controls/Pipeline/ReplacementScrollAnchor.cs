@@ -1,6 +1,6 @@
 using System;
-using MarkdownRenderer.Layout;
 using Microsoft.UI.Xaml.Controls;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.Controls.Pipeline;
 
