@@ -352,6 +352,9 @@ jobs:
           $deadlineSensitiveTests = [ordered]@{
             hostedCancellation = @{ Suite = 'core'; Name = 'MarkdownRenderer.Tests.HostedElementLifecycleContractTests.ThrowingCancellationCallbackCannotEscapeCleanup' }
             authoredSvgDoctype = @{ Suite = 'svg'; Name = 'MarkdownRenderer.Svg.Resvg.Tests.Internal.Preparation.SvgResourceBudgetTests.Validate_RejectsExternalDoctypeInTheAuthoredRootDocument' }
+            # Opens a 576-image sponsor-grid SVG within the production worker deadline;
+            # sharing the svg testhost's parallel load made it miss that deadline.
+            sponsorGridDeadline = @{ Suite = 'svg'; Name = 'MarkdownRenderer.Svg.Resvg.Tests.EmbeddedRasterFixtureTests.SponsorShapedFixture_Opens576EmbeddedImagesUnderTheHardDeadline' }
           }
           $exclusionTerms = @{}
           foreach ($suite in @('core', 'svg')) {
