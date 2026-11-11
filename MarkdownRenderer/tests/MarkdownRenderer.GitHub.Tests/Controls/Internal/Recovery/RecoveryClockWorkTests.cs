@@ -151,7 +151,12 @@ public sealed class RecoveryClockWorkTests
         RecoveryClockWork work = CreateWork(fixture, host, focusRefresh);
         fixture.Clock.Start();
         if (pending == "image relayout")
+        {
+            // A replacement build holds the relayout, so the tick cannot start
+            // and finish its worker before the clock decides whether to stop.
+            fixture.Host.Defers = true;
             fixture.Relayout.Queue(2);
+        }
 
         work.ProcessTick();
 
