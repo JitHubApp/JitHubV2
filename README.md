@@ -42,7 +42,7 @@
 
 ## Tech Stack
 
-- `.NET 10` with `global.json` pinning SDK `10.0.202`
+- `.NET 10`, with `global.json` pinning one exact SDK version (see [Pinned .NET SDK](docs/native-aot.md#pinned-net-sdk))
 - Windows App SDK and WinUI 3 for the packaged desktop app
 - Self-contained Native AOT Release and Store builds for x86, x64, and ARM64
 - React/Vite build-time rendering for the public static website, published through GitHub Pages
@@ -73,7 +73,7 @@ Use the latest Visual Studio 2022 with these workloads:
 - .NET desktop development
 - Windows application development
 
-You also need the .NET 10 SDK.
+You also need the exact .NET SDK version named in `global.json`. See [Pinned .NET SDK](docs/native-aot.md#pinned-net-sdk) for how to install it and how to move the pin.
 
 Check optional local Windows CLI helpers with:
 
