@@ -753,3 +753,72 @@ fn stylesheet_font_and_anchor_are_not_discarded_as_non_paint_properties() {
         .0;
     assert!((result[0].1[0] - (150.0 - width / 2.0)).abs() < 0.01);
 }
+
+#[test]
+fn zero_length_line_draws_its_marker_with_suffix_selector_paint() {
+    // Mermaid's autonumber badge: a zero-length line whose marker-start
+    // circle sits under the white step number. The circle's fill comes from
+    // an `[id$=...]` rule and its size from the line's CSS stroke width.
+    let bytes = scene(
+        r##"<svg id="seq" viewBox="0 0 200 100"><style>
+        #seq [id$="-sequencenumber"]{fill:#333;}
+        #seq line{stroke:#9370DB;stroke-width:2px;}
+        #seq .sequenceNumber{fill:white;}
+        </style><defs>
+        <marker id="seq-sequencenumber" refX="15" refY="15" markerWidth="60" markerHeight="40" orient="auto">
+          <circle cx="15" cy="15" r="6"/></marker></defs>
+        <line x1="75" y1="117" x2="75" y2="117" stroke-width="0" marker-start="url(#seq-sequencenumber)"/>
+        </svg>"##,
+    );
+    let geometry = section(&bytes, 4);
+    let styles = section(&bytes, 3);
+    let badge = section(&bytes, 5)
+        .chunks_exact(32)
+        .find(|command| u16::from_le_bytes(command[0..2].try_into().unwrap()) == 9)
+        .expect("the marker circle is painted on a zero-length line");
+    let start = read_u32(badge, 16) * 4;
+    let bounds = geometry[start..start + 16]
+        .chunks_exact(4)
+        .map(|value| f32::from_le_bytes(value.try_into().unwrap()))
+        .collect::<Vec<_>>();
+    // r = 6 scaled by the 2px stroke width, centred on the line's point.
+    assert_eq!(bounds, vec![63.0, 105.0, 24.0, 24.0]);
+    let style = &styles[read_u32(badge, 4) * 32..][..32];
+    assert_eq!(read_u32(style, 4), rgba(0x33, 0x33, 0x33, 255) as usize);
+}
+
+#[test]
+fn attribute_selector_operators_match_like_css() {
+    let fills = |selector: &str| {
+        let bytes = scene(&format!(
+            r##"<svg viewBox="0 0 10 10"><style>{selector}{{fill:#123456;}}</style>
+            <rect id="Diagram-Arrow-Head" class="edge thick" lang="en-US" width="5" height="5"/>
+            </svg>"##
+        ));
+        let styles = section(&bytes, 3);
+        let rectangle = section(&bytes, 5).chunks_exact(32).next().unwrap();
+        read_u32(&styles[read_u32(rectangle, 4) * 32..], 4) == rgba(0x12, 0x34, 0x56, 255) as usize
+    };
+    for matching in [
+        r#"[id="diagram-arrow-head"]"#,
+        r#"[id^="diagram-"]"#,
+        r#"[id$="-head"]"#,
+        r#"[id*="arrow"]"#,
+        r#"[class~="thick"]"#,
+        r#"[lang|="en"]"#,
+        "[id]",
+    ] {
+        assert!(fills(matching), "{matching} should match");
+    }
+    for rejected in [
+        r#"[id="arrow"]"#,
+        r#"[id^="arrow"]"#,
+        r#"[id$="arrow"]"#,
+        r#"[id*=""]"#,
+        r#"[class~="edge thick"]"#,
+        r#"[lang|="e"]"#,
+        "[title]",
+    ] {
+        assert!(!fills(rejected), "{rejected} should not match");
+    }
+}

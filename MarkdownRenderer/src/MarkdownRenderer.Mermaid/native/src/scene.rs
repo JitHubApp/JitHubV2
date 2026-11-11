@@ -7,9 +7,17 @@ use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
 use svgtypes::{SimplePathSegment, SimplifyingPathParser};
 
+#[path = "css_attribute_operator.rs"]
+mod css_attribute_operator;
+#[path = "paint_server.rs"]
+mod paint_server;
+
 #[cfg(test)]
 #[path = "scene_tests.rs"]
 mod tests;
+
+use css_attribute_operator::AttributeOperator;
+use paint_server::PaintServers;
 
 const MMIR_MAGIC: u32 = 0x5249_4d4d;
 const MMIR_MAJOR: u16 = 1;
@@ -200,7 +208,7 @@ struct SimpleSelector {
     tag: Option<String>,
     id: Option<String>,
     classes: Vec<String>,
-    attributes: Vec<(String, Option<String>)>,
+    attributes: Vec<(String, Option<(AttributeOperator, String)>)>,
     root: bool,
 }
 
@@ -382,6 +390,7 @@ struct SceneBuilder<'a, 'doc, 'input> {
     css_rules: Vec<CssRule>,
     measurer: &'a DirectWriteMeasurer,
     markers: HashMap<String, Node<'doc, 'input>>,
+    paint_servers: PaintServers,
     default_paint: PaintState,
     budget: SceneBudget<'a>,
 }
@@ -483,6 +492,7 @@ pub fn svg_to_mmir(
             markers.insert(id.to_owned(), node);
         }
     }
+    let paint_servers = PaintServers::collect(root, PaintState::defaults(dark).color, &mut budget)?;
     let mut builder = SceneBuilder {
         source,
         limits,
@@ -500,6 +510,7 @@ pub fn svg_to_mmir(
         css_rules,
         measurer,
         markers,
+        paint_servers,
         default_paint: PaintState::defaults(dark),
         budget,
     };
@@ -611,6 +622,9 @@ impl SceneBuilder<'_, '_, '_> {
             node.tag_name().name(),
             "defs"
                 | "marker"
+                | "linearGradient"
+                | "radialGradient"
+                | "pattern"
                 | "symbol"
                 | "clipPath"
                 | "mask"
@@ -855,18 +869,16 @@ impl SceneBuilder<'_, '_, '_> {
             let Some(marker) = self.markers.get(id).copied() else {
                 return Err(Status::InvalidScene);
             };
+            // A zero-length path still draws its markers, oriented along the
+            // positive x-axis (atan2(0, 0) = 0). Mermaid's autonumber badges
+            // are marker-start circles on zero-length lines.
             let (x, y, dx, dy) = if start {
                 let next = points
                     .chunks_exact(2)
                     .skip(1)
                     .find(|p| p[0] != points[0] || p[1] != points[1]);
-                let Some(next) = next else { continue };
-                (
-                    points[0],
-                    points[1],
-                    next[0] - points[0],
-                    next[1] - points[1],
-                )
+                let (dx, dy) = next.map_or((0.0, 0.0), |p| (p[0] - points[0], p[1] - points[1]));
+                (points[0], points[1], dx, dy)
             } else {
                 let end = &points[points.len() - 2..];
                 let previous = points
@@ -874,8 +886,8 @@ impl SceneBuilder<'_, '_, '_> {
                     .rev()
                     .skip(1)
                     .find(|p| p[0] != end[0] || p[1] != end[1]);
-                let Some(previous) = previous else { continue };
-                (end[0], end[1], end[0] - previous[0], end[1] - previous[1])
+                let (dx, dy) = previous.map_or((0.0, 0.0), |p| (end[0] - p[0], end[1] - p[1]));
+                (end[0], end[1], dx, dy)
             };
             let orient = marker.attribute("orient").unwrap_or("0");
             let angle = if orient == "auto" || orient == "auto-start-reverse" {
@@ -1329,7 +1341,7 @@ impl SceneBuilder<'_, '_, '_> {
             "opacity",
         ] {
             if let Some(value) = node.attribute(attr) {
-                apply_style_value(&mut paint, &mut ranks, attr, value, 1);
+                apply_style_value(&mut paint, &mut ranks, &self.paint_servers, attr, value, 1);
             }
         }
         for rule in &self.css_rules {
@@ -1343,6 +1355,7 @@ impl SceneBuilder<'_, '_, '_> {
                 apply_style_value(
                     &mut paint,
                     &mut ranks,
+                    &self.paint_servers,
                     &declaration.property,
                     &declaration.value,
                     rank,
@@ -1354,7 +1367,14 @@ impl SceneBuilder<'_, '_, '_> {
                 if let Some((key, value)) = declaration.split_once(':') {
                     let (value, important) = strip_important(value);
                     let origin = if important { 5u64 } else { 4u64 };
-                    apply_style_value(&mut paint, &mut ranks, key.trim(), value, origin << 60);
+                    apply_style_value(
+                        &mut paint,
+                        &mut ranks,
+                        &self.paint_servers,
+                        key.trim(),
+                        value,
+                        origin << 60,
+                    );
                 }
             }
         }
@@ -2483,14 +2503,49 @@ fn split_css_selectors(input: &str) -> Vec<&str> {
 
 impl CssSelector {
     fn parse(input: &str) -> Option<Self> {
-        if input.is_empty() || input.contains('+') || input.contains('~') {
+        // Split compounds on descendant/child combinators outside `[...]`, so
+        // `[class~="a b"]` stays one compound. Sibling combinators (`+`, `~`)
+        // are unsupported and reject the selector.
+        let mut parts = Vec::new();
+        let mut start = 0usize;
+        let mut in_brackets = false;
+        let mut quote = None;
+        for (index, character) in input.char_indices() {
+            let combinator = match character {
+                _ if quote == Some(character) => {
+                    quote = None;
+                    false
+                }
+                _ if quote.is_some() => false,
+                '"' | '\'' if in_brackets => {
+                    quote = Some(character);
+                    false
+                }
+                '[' => {
+                    in_brackets = true;
+                    false
+                }
+                ']' => {
+                    in_brackets = false;
+                    false
+                }
+                _ if in_brackets => false,
+                '+' | '~' => return None,
+                _ => character == '>' || character.is_ascii_whitespace(),
+            };
+            if combinator {
+                if start < index {
+                    parts.push(SimpleSelector::parse(&input[start..index])?);
+                }
+                start = index + character.len_utf8();
+            }
+        }
+        if in_brackets || quote.is_some() {
             return None;
         }
-        let normalized = input.replace('>', " ");
-        let parts = normalized
-            .split_ascii_whitespace()
-            .map(SimpleSelector::parse)
-            .collect::<Option<Vec<_>>>()?;
+        if start < input.len() {
+            parts.push(SimpleSelector::parse(&input[start..])?);
+        }
         (!parts.is_empty()).then_some(Self { parts })
     }
 
@@ -2560,9 +2615,13 @@ impl SimpleSelector {
                     let close = cursor + 1 + relative_close;
                     let body = input[cursor + 1..close].trim();
                     let (name, value) = if let Some((name, value)) = body.split_once('=') {
+                        let (name, operator) = AttributeOperator::split(name.trim());
                         (
                             name.trim().to_ascii_lowercase(),
-                            Some(value.trim().trim_matches(['\'', '"']).to_ascii_lowercase()),
+                            Some((
+                                operator,
+                                value.trim().trim_matches(['\'', '"']).to_ascii_lowercase(),
+                            )),
                         )
                     } else {
                         (body.to_ascii_lowercase(), None)
@@ -2632,8 +2691,8 @@ impl SimpleSelector {
                 .find(|attribute| attribute.name().eq_ignore_ascii_case(name))
                 .is_some_and(|attribute| {
                     expected
-                        .as_deref()
-                        .is_none_or(|value| attribute.value().eq_ignore_ascii_case(value))
+                        .as_ref()
+                        .is_none_or(|(operator, value)| operator.matches(attribute.value(), value))
                 })
         })
     }
@@ -2698,6 +2757,7 @@ fn strip_important(value: &str) -> (&str, bool) {
 fn apply_style_value(
     paint: &mut PaintState,
     ranks: &mut PaintRanks,
+    paint_servers: &PaintServers,
     key: &str,
     value: &str,
     rank: u64,
@@ -2705,14 +2765,14 @@ fn apply_style_value(
     let key = key.trim().to_ascii_lowercase();
     match key.as_str() {
         "stroke" if rank >= ranks.stroke => {
-            if let Some(color) = parse_color(value, paint.color) {
+            if let Some(color) = paint_servers.resolve(value, paint.color) {
                 paint.stroke_color = color;
                 paint.style.stroke = with_opacity(color, paint.stroke_opacity);
                 ranks.stroke = rank;
             }
         }
         "fill" if rank >= ranks.fill => {
-            if let Some(color) = parse_color(value, paint.color) {
+            if let Some(color) = paint_servers.resolve(value, paint.color) {
                 paint.fill_color = color;
                 paint.style.fill = with_opacity(color, paint.fill_opacity);
                 ranks.fill = rank;

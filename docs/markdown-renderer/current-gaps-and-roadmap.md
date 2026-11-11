@@ -48,6 +48,12 @@ correctness.
 ## Open correctness items
 
 - Mermaid and resvg worker execution on ARM64 needs ARM64 hardware.
+- Mermaid gradient paint is drawn as the gradient's mean solid colour, because
+  MMIR and the vector-scene paint style carry one colour per fill and stroke.
+  Sankey links are the visible case: Mermaid fades each link from its source
+  node's colour to its target's, and MarkdownRenderer paints the blend of the
+  two. Mermaid's `mix-blend-mode: multiply` on overlapping links is not
+  applied either. Gradient brushes need a vector-scene contract change.
 - Native touch cancellation, touch capture loss, and clipboard isolation are
   tooling limits in the live runner. Offline tests cover them instead.
 - The browser-parity SVG pixel suite needs a working Edge oracle. It is not a
