@@ -367,3 +367,52 @@ the native unit tests and the 259 Mermaid.Tests cases pass.
 | win-x64 | 16,772,608 | `1c49398444f12f6920a12f5b05297832ce3d83bc514a21d8d76b49fd22942045` | `0x8664` |
 | win-x86 | 12,197,376 | `a90dd9e531882c180e43bf6d6f7242eddc1287bd85e462f41f35189961f15f1d` | `0x014c` |
 | win-arm64 | 13,550,592 | `9f3d77ce0f16ab7bfab14a8996d8e841d9f37a4c78f263debb7c0236a4a38eb8` | `0xaa64` |
+
+## 2026-11-11 — paint-server references and zero-length markers (adapter only)
+
+The Merman source and patch set are unchanged. Two Mermaid fidelity gaps on the
+Sample's Mermaid page came from the SVG-to-MMIR adapter, not from Merman, the
+MMIR contract or the WinUI painter:
+
+- Sankey links. Merman strokes each link with `url(#linearGradient-N)`, which
+  the adapter's colour parser rejected, leaving the stroke transparent. The new
+  `native/src/paint_server.rs` resolves `fill`/`stroke` paint-server references
+  with SVG fallback rules. `linearGradient`/`radialGradient` (with `href` stop
+  inheritance) resolve to their mean colour across the gradient vector,
+  integrated in premultiplied RGBA. A missing, cyclic, stopless or pattern
+  reference uses its fallback colour, or `none` when it has none. Gradients and
+  patterns are no longer walked as paintable content. MMIR keeps one solid
+  colour per fill and stroke, so gradient brushes remain a documented gap.
+- Sequence `autonumber`. Merman draws each step's badge as a `marker-start`
+  circle on a zero-length `<line>`, and fills it through
+  `[id$="-sequencenumber"]`. The adapter skipped markers when a path had no
+  direction and did not parse `$=`, so the white step numbers sat on the white
+  canvas. Zero-length paths now orient markers along the positive x-axis, and
+  `native/src/css_attribute_operator.rs` adds the `~=`, `|=`, `^=`, `$=` and
+  `*=` operators. Selector compounds now split only outside `[...]`, so
+  bracketed values containing spaces or `~` parse.
+
+Native unit tests cover paint resolution, the Sankey link stroke, the badge
+marker and the selector operators. Mutating each fix back makes its test
+fail. `NativeRuntime/MermaidNativePaintFidelityTests` renders the Sample's
+Sankey and autonumber diagrams through the shipped DLL: both fail against the
+2026-10-26 payload and pass against this one. The upstream revision,
+dependencies, license boundary, C ABI and MMIR version are unchanged.
+
+The three DLLs were rebuilt with `native/Build-Native.ps1` using Rust 1.96.0.
+
+Adapter source hashes (SHA-256, UTF-8 with LF line endings):
+
+| File under `native/src/` | SHA-256 |
+| --- | --- |
+| `scene.rs` | `1e3f69d69d46fd16272ced5e8980f602dbfcd4a1db6eb41a5aa7ca79273b08e3` |
+| `scene_tests.rs` | `93551ea35e4730355c6668644da1c7cbd70742c37dca27d200ea3d51201affcd` |
+| `paint_server.rs` | `28fb5c61e91a58524ae59d8a7dfdf8e1adcbb368e31b8024569610434a853db8` |
+| `paint_server_tests.rs` | `1b51fc64fb8a5a0c2918cb54496831c97663c6aa97636629f4e1e4c60bc55dfb` |
+| `css_attribute_operator.rs` | `e7300fc5104d709ae3fdd3c63d7ad90facae7ac920a81d9a62608157f443e5bf` |
+
+| RID | Bytes | SHA-256 | PE machine |
+| --- | ---: | --- | --- |
+| win-x64 | 16,791,040 | `e17b7c3f1deb77fd14c95fe73bd5d3fc00839d7ae061d5fd50f16541545709e6` | `0x8664` |
+| win-x86 | 12,202,496 | `599a1e039a6decbc6e726f3d7f829325663dbe9a4b82be48e349719209c0018d` | `0x014c` |
+| win-arm64 | 13,558,272 | `6035a77ebc20f8fb6b21db81e7aa6734b665adc64228488a91d7b6dac350b021` | `0xaa64` |
