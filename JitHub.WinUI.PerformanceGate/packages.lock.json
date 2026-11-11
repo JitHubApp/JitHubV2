@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "dependencies": {
     "net10.0-windows10.0.19041": {
       "FlaUI.Core": {
@@ -61,14 +61,6 @@
           "System.Configuration.ConfigurationManager": "8.0.1"
         }
       },
-      "System.Drawing.Common": {
-        "type": "Transitive",
-        "resolved": "8.0.10",
-        "contentHash": "MdajRp3P+FOlThgY6FBjAqnmLiVl5t2yWEC/2AsDMqx1zYbJG3G5TnscFBQ4obqcaGqvN5UnhQHSFaJFG2HftQ==",
-        "dependencies": {
-          "Microsoft.Win32.SystemEvents": "8.0.0"
-        }
-      },
       "System.Management": {
         "type": "Transitive",
         "resolved": "8.0.0",
@@ -97,6 +89,15 @@
       },
       "jithub.performance": {
         "type": "Project"
+      },
+      "System.Drawing.Common": {
+        "type": "CentralTransitive",
+        "requested": "[9.0.0, )",
+        "resolved": "8.0.10",
+        "contentHash": "MdajRp3P+FOlThgY6FBjAqnmLiVl5t2yWEC/2AsDMqx1zYbJG3G5TnscFBQ4obqcaGqvN5UnhQHSFaJFG2HftQ==",
+        "dependencies": {
+          "Microsoft.Win32.SystemEvents": "8.0.0"
+        }
       }
     }
   }

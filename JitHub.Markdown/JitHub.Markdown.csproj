@@ -37,8 +37,8 @@
   <!-- The public surface is tracked in PublicAPI.Shipped.txt and
        PublicAPI.Unshipped.txt; undeclared or stale entries are build errors. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
     <GlobalAnalyzerConfigFiles Include="PublicApiAnalyzers.globalconfig" />
   </ItemGroup>

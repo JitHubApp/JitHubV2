@@ -1,0 +1,54 @@
+<Project>
+  <!-- One version per package for every project in the repository: the JitHub
+       app and its libraries, and the renderer. Transitive pinning is
+       deliberately off: these pins apply to direct references only. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="CommunityToolkit.Common" Version="8.2.1" />
+    <PackageVersion Include="CommunityToolkit.Labs.WinUI.TransitionHelper" Version="0.1.251217-build.2433" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Animations" Version="8.2.251219" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.2.251219" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <PackageVersion Include="FlaUI.Core" Version="5.0.0" />
+    <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageVersion Include="Markdig" Version="0.42.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageVersion Include="Microsoft.Services.Store.Engagement" Version="10.2307.3001" />
+    <PackageVersion Include="Microsoft.Windows.CsWinRT" Version="2.3.1" />
+    <!-- Shared with the JitHub app through the repository Directory.Build.props. -->
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools.WinUIAnalyzer" Version="0.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.260710003" />
+    <PackageVersion Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageVersion Include="System.Drawing.Common" Version="9.0.0" />
+    <!-- Exact: the offline compliance gate needs this precise archive and
+         license (see eng/ComplianceDependencyRestore). -->
+    <PackageVersion Include="System.Memory" Version="[4.6.0]" />
+    <PackageVersion Include="TextMateSharp" Version="2.0.3" />
+    <PackageVersion Include="TextMateSharp.Grammars" Version="2.0.3" />
+    <PackageVersion Include="WinUIEdit" Version="0.0.5-prerelease" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.4.13" />
+  </ItemGroup>
+</Project>

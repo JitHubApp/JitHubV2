@@ -62,13 +62,17 @@ public sealed class NativeAotSourceContractTests
     {
         string root = FindRepositoryRoot();
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
+        string packages = File.ReadAllText(Path.Combine(root, "Directory.Packages.props"));
         string ledger = File.ReadAllText(Path.Combine(root, "eng", "native-aot-dependencies.json"));
-        string graph = project + Environment.NewLine + ledger;
+        string graph = project + Environment.NewLine + packages + Environment.NewLine + ledger;
 
         // Resvg replaces Svg.Skia; the app's reference to it is checked on the
-        // evaluated project by AppRendererPackagingTests.
-        Assert.Contains("WinUIEdit" + "\" Version=\"0.0.5-prerelease", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Microsoft.Services.Store.Engagement\" Version=\"10.2307.3001", project, StringComparison.OrdinalIgnoreCase);
+        // evaluated project by AppRendererPackagingTests. The app references
+        // these packages and Directory.Packages.props pins the reviewed versions.
+        Assert.Contains("<PackageReference Include=\"WinUIEdit\"", project, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<PackageReference Include=\"Microsoft.Services.Store.Engagement\"", project, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"WinUIEdit" + "\" Version=\"0.0.5-prerelease", packages, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"Microsoft.Services.Store.Engagement\" Version=\"10.2307.3001", packages, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("'$(RuntimeIdentifier)' == 'win-arm64'", project, StringComparison.Ordinal);
 
         foreach (string removedPackage in new[]

@@ -34,8 +34,8 @@ public sealed class SolutionConfigurationContractTests
             [],
             ["PackageReference", "PackageVersion"]);
 
-        // The renderer pins package versions centrally; the reference itself
-        // must not carry a competing version.
+        // Package versions are pinned centrally; the reference itself must
+        // not carry a competing version.
         MsBuildItem reference = Assert.Single(host.GetItems("PackageReference"), IsBuildTools);
         Assert.Empty(reference.GetMetadata("Version"));
         Assert.Empty(reference.GetMetadata("VersionOverride"));
@@ -51,10 +51,13 @@ public sealed class SolutionConfigurationContractTests
         // The app and the renderer subtree must build with the same tools, so
         // the version is one repository value that neither scope can drift from.
         string root = FindRepositoryRoot();
-        MsBuildEvaluation app = EvaluateApp(root, ["PackageReference"]);
+        MsBuildEvaluation app = EvaluateApp(root, ["PackageReference", "PackageVersion"]);
         string version = app.GetProperty(BuildToolsVersionProperty);
         Assert.Matches(@"^\d+\.\d+\.\d+\.\d+$", version);
-        Assert.Equal(version, Assert.Single(app.GetItems("PackageReference"), IsBuildTools).GetMetadata("Version"));
+        MsBuildItem appReference = Assert.Single(app.GetItems("PackageReference"), IsBuildTools);
+        Assert.Empty(appReference.GetMetadata("Version"));
+        Assert.Empty(appReference.GetMetadata("VersionOverride"));
+        Assert.Equal(version, Assert.Single(app.GetItems("PackageVersion"), IsBuildTools).GetMetadata("Version"));
 
         MsBuildEvaluation renderer = MsBuild.Evaluate(
             ProjectPath(root, "MarkdownRenderer/src/MarkdownRenderer/MarkdownRenderer.csproj"),

@@ -13,6 +13,7 @@ using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Models.Settings;
 using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;

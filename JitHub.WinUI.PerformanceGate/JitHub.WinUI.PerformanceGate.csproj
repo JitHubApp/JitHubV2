@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
-    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
   </ItemGroup>
 </Project>

@@ -8,6 +8,7 @@ using JitHub.Core.ViewModels.Search;
 using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Shell;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
