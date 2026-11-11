@@ -4,6 +4,7 @@ using JitHub.Core.Services.Notifications;
 using JitHub.Core.ViewModels.Notifications;
 using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

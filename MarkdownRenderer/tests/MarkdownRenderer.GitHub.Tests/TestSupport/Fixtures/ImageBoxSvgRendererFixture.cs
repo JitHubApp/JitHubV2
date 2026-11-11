@@ -30,7 +30,7 @@ internal static class ImageBoxSvgRendererFixture
         try
         {
             image.EnsureLoading();
-            await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await completion.Task.WaitAsync(AsyncTestWait.HangGuard);
         }
         finally
         {
@@ -38,18 +38,14 @@ internal static class ImageBoxSvgRendererFixture
         }
     }
 
-    internal static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (!condition())
-            await Task.Delay(10, timeout.Token);
-    }
+    internal static Task WaitUntilAsync(Func<bool> condition) =>
+        AsyncTestWait.UntilAsync(condition);
 
     internal static async Task ObserveTaskForCleanupAsync(Task operation)
     {
         try
         {
-            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            await operation.WaitAsync(AsyncTestWait.HangGuard);
         }
         catch
         {

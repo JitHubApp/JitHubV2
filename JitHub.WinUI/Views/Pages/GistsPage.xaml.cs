@@ -14,6 +14,7 @@ using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Scrolling;
 using JitHub.WinUI.Views.Dialogs;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

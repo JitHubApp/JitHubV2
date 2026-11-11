@@ -16,6 +16,7 @@ using JitHub.WinUI.Performance;
 using JitHub.WinUI.Services.Dialogs;
 using JitHub.WinUI.ViewModels.Dashboard;
 using JitHub.WinUI.Views.Controls.App;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;

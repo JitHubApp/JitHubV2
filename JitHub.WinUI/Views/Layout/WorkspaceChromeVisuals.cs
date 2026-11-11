@@ -1,7 +1,8 @@
+using JitHub.Core.Services.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-namespace JitHub.Core.Services.Layout;
+namespace JitHub.WinUI.Views.Layout;
 
 public static class WorkspaceChromeVisuals
 {

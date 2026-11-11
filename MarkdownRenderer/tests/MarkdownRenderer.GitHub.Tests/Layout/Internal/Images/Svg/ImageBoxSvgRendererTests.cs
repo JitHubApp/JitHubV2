@@ -1,5 +1,6 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.GitHub.Tests.Performance;
+using MarkdownRenderer.GitHub.Tests.TestSupport;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fakes;
 using MarkdownRenderer.GitHub.Tests.TestSupport.Fixtures;
 using MarkdownRenderer.Images;
@@ -124,7 +125,7 @@ public sealed class ImageBoxSvgRendererTests
             second.Dispose();
             repeat.Dispose();
             await Task.WhenAll(first.RetirementTask, second.RetirementTask, repeat.RetirementTask)
-                .WaitAsync(TimeSpan.FromSeconds(10));
+                .WaitAsync(AsyncTestWait.HangGuard);
         }
     }
 
@@ -173,7 +174,7 @@ public sealed class ImageBoxSvgRendererTests
         finally
         {
             image.Dispose();
-            await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+            await image.RetirementTask.WaitAsync(AsyncTestWait.HangGuard);
         }
     }
 
@@ -228,7 +229,7 @@ public sealed class ImageBoxSvgRendererTests
         finally
         {
             image.Dispose();
-            await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+            await image.RetirementTask.WaitAsync(AsyncTestWait.HangGuard);
         }
     }
 
@@ -255,7 +256,7 @@ public sealed class ImageBoxSvgRendererTests
             finally
             {
                 previous.Dispose();
-                await previous.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+                await previous.RetirementTask.WaitAsync(AsyncTestWait.HangGuard);
             }
         }
 
@@ -290,7 +291,7 @@ public sealed class ImageBoxSvgRendererTests
             }
 
             PaintVisible();
-            await renderer.SecondVisibleTileStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await renderer.SecondVisibleTileStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
             await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 0, 0));
             Assert.False(SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 1, 0));
             Color[] partial = PaintVisible();
@@ -309,7 +310,7 @@ public sealed class ImageBoxSvgRendererTests
         {
             renderer.ReleaseSecondVisibleTile.TrySetResult();
             image.Dispose();
-            await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+            await image.RetirementTask.WaitAsync(AsyncTestWait.HangGuard);
         }
     }
 
@@ -406,7 +407,7 @@ public sealed class ImageBoxSvgRendererTests
         finally
         {
             image.Dispose();
-            await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+            await image.RetirementTask.WaitAsync(AsyncTestWait.HangGuard);
         }
     }
 }

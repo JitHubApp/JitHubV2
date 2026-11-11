@@ -11,6 +11,7 @@ using JitHub.Core.Services.Localization;
 using JitHub.Core.Services.Stars;
 using JitHub.WinUI.Models.Navigation;
 using JitHub.WinUI.ViewModels.Profile;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;

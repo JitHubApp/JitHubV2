@@ -65,6 +65,10 @@ $evidenceMarkdownRoot = Join-Path $evidenceRepositoryRoot 'MarkdownRenderer'
     (Join-Path $evidenceRepositoryRoot 'Directory.Build.props'),
     $true)
 [IO.File]::Copy(
+    (Join-Path $repositoryRoot 'Directory.Packages.props'),
+    (Join-Path $evidenceRepositoryRoot 'Directory.Packages.props'),
+    $true)
+[IO.File]::Copy(
     (Join-Path $repositoryRoot 'NuGet.Config'),
     (Join-Path $evidenceRepositoryRoot 'NuGet.Config'),
     $true)
@@ -72,12 +76,11 @@ $evidenceMarkdownRoot = Join-Path $evidenceRepositoryRoot 'MarkdownRenderer'
     (Join-Path $repositoryRoot 'LICENSE'),
     (Join-Path $evidenceRepositoryRoot 'LICENSE'),
     $true)
-# The staged projects need the renderer's build settings, central package
-# versions and package assets exactly as the repository build sees them.
+# The staged projects need the renderer's build settings and package assets
+# exactly as the repository build sees them.
 foreach ($relativePath in @(
     'Directory.Build.props',
     'Directory.Build.targets',
-    'Directory.Packages.props',
     'src\Directory.Build.props',
     'tests\Directory.Build.props',
     'assets\package-icon.png',

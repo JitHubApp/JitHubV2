@@ -12,6 +12,7 @@ using JitHub.Core.Services.Localization;
 using JitHub.Core.Services.Storage;
 using JitHub.WinUI.ViewModels.Repositories;
 using JitHub.WinUI.Views.Controls.Scrolling;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
