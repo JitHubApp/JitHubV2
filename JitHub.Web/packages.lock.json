@@ -1,12 +1,12 @@
 {
-  "version": 2,
+  "version": 1,
   "dependencies": {
     "net10.0": {
       "Microsoft.AspNetCore.App.Internal.Assets": {
         "type": "Direct",
-        "requested": "[10.0.15, )",
-        "resolved": "10.0.15",
-        "contentHash": "cineG7aU2cpo+CC5rDORY4bFRya0mlaULDpzQ+ncfG0tMyZlWATyVAo2P29i0hH40EElK5O204pjT4XEYALb6g=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "T1IOYbID1msKjQEh684HebnN+Xnq/pocMXDukOMZtzzPTf9c4/30+/JndM/1txrqwuSYqWvLiAQWzu4U93cshw=="
       },
       "Microsoft.Extensions.Caching.StackExchangeRedis": {
         "type": "Direct",
@@ -29,9 +29,6 @@
         "dependencies": {
           "Pipelines.Sockets.Unofficial": "2.2.8"
         }
-      },
-      "jithub.shared": {
-        "type": "Project"
       }
     }
   }
