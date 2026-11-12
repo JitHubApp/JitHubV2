@@ -53,12 +53,13 @@ public sealed partial class RepoPullRequestPage : Page
     private int? _pendingPointerHydrationNumber;
     private readonly Dictionary<ScrollViewer, long> _sectionScrollViewers = [];
     private readonly TransitionHelper _headerTransition;
+    private readonly ShyHeaderScrollTracker _scrollHeader = new(
+        ShyHeaderStartOffset,
+        ShyHeaderRestoreOffset,
+        ShyHeaderRevealTravel,
+        ShyHeaderRehideTravel,
+        ScrollDirectionEpsilon);
     private ScrollViewer? _activeShyHeaderScrollViewer;
-    private double _lastShyHeaderScrollOffset;
-    private double _upwardRevealTravel;
-    private double _downwardRehideTravel;
-    private bool _headerRevealedByUpwardScroll;
-    private bool _isScrollHeaderShy;
     private bool _isDetailHeaderShy;
     private bool _synchronizingSectionSelection;
     private int _headerTransitionGeneration;
@@ -350,14 +351,11 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         _activeShyHeaderScrollViewer = scrollViewer;
-        _lastShyHeaderScrollOffset = scrollViewer.VerticalOffset;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        _headerRevealedByUpwardScroll = false;
-        _isScrollHeaderShy =
-            scrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
-            CanHideScrollHeader(scrollViewer);
-        SetDetailHeaderShy(IsCompactWorkspace || _isScrollHeaderShy, animate: false);
+        _scrollHeader.Reset(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            isShy: scrollViewer.VerticalOffset >= ShyHeaderStartOffset && CanHideScrollHeader(scrollViewer));
+        SetDetailHeaderShy(IsCompactWorkspace || _scrollHeader.IsShy, animate: false);
     }
 
     private void UpdateDetailHeaderForScrollViewer(ScrollViewer scrollViewer)
@@ -373,80 +371,14 @@ public sealed partial class RepoPullRequestPage : Page
             return;
         }
 
-        double offset = scrollViewer.VerticalOffset;
-        double delta = offset - _lastShyHeaderScrollOffset;
-        _lastShyHeaderScrollOffset = offset;
-
-        if (_isScrollHeaderShy)
+        ShyHeaderScrollAction action = _scrollHeader.Observe(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            CanHideScrollHeader(scrollViewer));
+        if (action != ShyHeaderScrollAction.None)
         {
-            if (offset <= ShyHeaderRestoreOffset)
-            {
-                RevealScrollHeader(revealedByUpwardScroll: false);
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _upwardRevealTravel += -delta;
-                if (_upwardRevealTravel >= ShyHeaderRevealTravel)
-                {
-                    RevealScrollHeader(revealedByUpwardScroll: true);
-                }
-            }
-            else if (delta > ScrollDirectionEpsilon)
-            {
-                _upwardRevealTravel = 0;
-            }
-
-            return;
+            SetDetailHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
         }
-
-        if (offset <= ShyHeaderRestoreOffset)
-        {
-            _headerRevealedByUpwardScroll = false;
-            _downwardRehideTravel = 0;
-        }
-        else if (_headerRevealedByUpwardScroll)
-        {
-            if (delta > ScrollDirectionEpsilon)
-            {
-                _downwardRehideTravel += delta;
-                if (_downwardRehideTravel >= ShyHeaderRehideTravel)
-                {
-                    HideScrollHeader();
-                }
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _downwardRehideTravel = 0;
-            }
-        }
-        else if (offset >= ShyHeaderStartOffset)
-        {
-            HideScrollHeader();
-        }
-    }
-
-    private void RevealScrollHeader(bool revealedByUpwardScroll)
-    {
-        _isScrollHeaderShy = false;
-        _headerRevealedByUpwardScroll = revealedByUpwardScroll;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        SetDetailHeaderShy(IsCompactWorkspace, animate: true);
-    }
-
-    private void HideScrollHeader()
-    {
-        if (!CanHideScrollHeader(_activeShyHeaderScrollViewer))
-        {
-            _downwardRehideTravel = 0;
-            return;
-        }
-
-        _isScrollHeaderShy = true;
-        _headerRevealedByUpwardScroll = false;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        SetDetailHeaderShy(true, animate: true);
     }
 
     private bool CanHideScrollHeader(ScrollViewer? scrollViewer)
@@ -888,7 +820,7 @@ public sealed partial class RepoPullRequestPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        SetDetailHeaderShy(IsCompactWorkspace || _isScrollHeaderShy, animate: false);
+        SetDetailHeaderShy(IsCompactWorkspace || _scrollHeader.IsShy, animate: false);
         Thickness sectionPadding = IsCompactWorkspace
             ? new Thickness(12, CompactShyHeaderContentInset, 12, 12)
             : new Thickness(18);
@@ -1160,11 +1092,7 @@ public sealed partial class RepoPullRequestPage : Page
 
         ViewModel.SetSection(PullRequestSectionSelectionPolicy.FromIndex(selectedIndex));
         _activeShyHeaderScrollViewer = null;
-        _lastShyHeaderScrollOffset = 0;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        _headerRevealedByUpwardScroll = false;
-        _isScrollHeaderShy = false;
+        _scrollHeader.Reset(0, 0, isShy: false);
         SetDetailHeaderShy(IsCompactWorkspace, animate: false);
         _ = DispatcherQueue.TryEnqueue(
             DispatcherQueuePriority.Low,
