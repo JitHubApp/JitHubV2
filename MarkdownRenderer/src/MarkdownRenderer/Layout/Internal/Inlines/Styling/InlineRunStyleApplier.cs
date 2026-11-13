@@ -17,7 +17,7 @@ internal static class InlineRunStyleApplier
     internal static void ApplyRunStyles(InlineContainerBox box, CanvasTextLayout layout, bool applyColors, bool observeCancellation = true)
     {
         var containerStyle = box.GetContainerStyle();
-        string containerFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
+        string containerFontFamily = CanvasFontFamilyReference.ForCanvas(
             containerStyle.FontFamily);
         List<InlineCodePaddingRange>? inlineCodePaddingRanges = null;
         int cumulative = 0;
@@ -93,7 +93,7 @@ internal static class InlineRunStyleApplier
         // style, so a nested value equal to the paragraph but
         // different from the link still replaces the link formatting.
         ElementStyle linkStyle = appliedRunStyle ?? box.GetRunStyle(styledLink);
-        string linkFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
+        string linkFontFamily = CanvasFontFamilyReference.ForCanvas(
             linkStyle.FontFamily);
         ElementStyle[] spanStyles = box.GetLinkInlineSpanStyles(styledLink);
         for (int spanIndex = 0; spanIndex < inlineStyleMap.Count; spanIndex++)
@@ -134,7 +134,7 @@ internal static class InlineRunStyleApplier
         string containerFontFamily,
         bool applyColors)
     {
-        string fontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(style.FontFamily);
+        string fontFamily = CanvasFontFamilyReference.ForCanvas(style.FontFamily);
         if (!string.Equals(fontFamily, containerFontFamily, StringComparison.Ordinal))
             layout.SetFontFamily(start, length, fontFamily);
         if (style.FontWeight.Weight != containerStyle.FontWeight.Weight)

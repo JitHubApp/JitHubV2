@@ -62,7 +62,7 @@ internal static class VectorScenePaintResolver
                !string.IsNullOrWhiteSpace(hostFontFamily)
             ? hostFontFamily.Trim()
             : style.FontFamily;
-        return SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(selected);
+        return CanvasFontFamilyReference.ForCanvas(selected);
     }
 
     internal static (float Width, float Height) ResolveTextLayoutSize(

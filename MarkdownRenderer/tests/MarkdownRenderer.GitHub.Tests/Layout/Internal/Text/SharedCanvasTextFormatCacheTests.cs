@@ -403,8 +403,10 @@ public sealed class SharedCanvasTextFormatCacheTests
     }
 
     [Fact]
-    public void PackagedFontUri_DropsXamlFamilyFragmentForCanvas()
+    public void PackagedFontUri_UsesTheFaceNameInThisUnpackagedTestHost()
     {
+        // Win2D cannot read ms-appx files without package identity; a packaged
+        // app keeps the whole reference (CanvasFontFamilyReferenceTests).
         const string xamlFontFamily =
             "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf#JetBrains Mono";
         var style = new ElementStyle
@@ -420,11 +422,6 @@ public sealed class SharedCanvasTextFormatCacheTests
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
 
-        Assert.Equal(
-            "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf",
-            lease.Format.FontFamily);
-        Assert.Equal(
-            "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf",
-            SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(xamlFontFamily));
+        Assert.Equal("JetBrains Mono", lease.Format.FontFamily);
     }
 }

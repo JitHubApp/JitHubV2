@@ -17,24 +17,6 @@ internal static class SharedCanvasTextFormatCache
     internal const long DefaultBudgetBytes = 512L * 1024;
     internal const string NativeCleanupFailureDataKey = "MarkdownRenderer.NativeCleanupFailure";
 
-    /// <summary>
-    /// Converts a WinUI packaged-font reference to the form accepted by Win2D.
-    /// XAML needs the fragment to select a family from the font file, whereas
-    /// <see cref="CanvasTextFormat"/> accepts the app-package font URI itself.
-    /// </summary>
-    internal static string NormalizeFontFamilyForCanvas(string fontFamily)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(fontFamily);
-        string candidate = fontFamily.Trim();
-        int fragmentIndex = candidate.LastIndexOf('#');
-        if (fragmentIndex <= 0 ||
-            !Uri.TryCreate(candidate[..fragmentIndex], UriKind.Absolute, out Uri? packageFontUri) ||
-            !string.Equals(packageFontUri.Scheme, "ms-appx", StringComparison.OrdinalIgnoreCase))
-            return candidate;
-
-        return candidate[..fragmentIndex];
-    }
-
     internal sealed class Lease : IDisposable
     {
         private SharedCanvasTextFormatEntry? _entry;

@@ -159,8 +159,10 @@ public sealed class VectorAccessibilityContractTests
         Assert.Equal(
             "Authored Face",
             VectorScenePaintResolver.ResolveFontFamily(authoredText, "Host Diagram Face"));
+        // This test host has no package identity, so the face name stands in
+        // for the packaged font file (CanvasFontFamilyReferenceTests).
         Assert.Equal(
-            "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf",
+            "JetBrains Mono",
             VectorScenePaintResolver.ResolveFontFamily(
                 hostText,
                 "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf#JetBrains Mono"));

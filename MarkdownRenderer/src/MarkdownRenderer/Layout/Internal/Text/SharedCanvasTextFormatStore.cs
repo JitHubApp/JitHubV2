@@ -78,7 +78,7 @@ internal sealed class SharedCanvasTextFormatStore
                 : 0f;
         }
         var key = new TextFormatKey(
-            SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(style.FontFamily),
+            CanvasFontFamilyReference.ForCanvas(style.FontFamily),
             style.FontSize,
             style.FontWeight,
             style.FontStyle,
