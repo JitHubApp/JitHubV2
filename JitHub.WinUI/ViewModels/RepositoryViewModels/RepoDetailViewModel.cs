@@ -862,7 +862,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                     if (pageBranches.Length > 0)
                     {
                         ApplyBranchSnapshot(pageBranches, removeMissing: false);
-                        SelectedBranch ??= ResolveSelectedBranchForCurrentModel();
+                        SelectedBranch = ReconcileSelectedBranch();
                     }
 
                     if (RepositoryQueryRefreshPolicy.ShouldPromote(result))
@@ -877,7 +877,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                         _repositoryLoadCoordinator.ThrowIfStale(generation, cancellationToken);
                         pageBranches = refreshed.Value ?? [];
                         ApplyBranchSnapshot(pageBranches, removeMissing: false);
-                        SelectedBranch ??= ResolveSelectedBranchForCurrentModel();
+                        SelectedBranch = ReconcileSelectedBranch();
                     }
 
                     foreach (GitHubBranch branch in pageBranches)
@@ -1244,10 +1244,28 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         }
 
         private Branch? ResolveSelectedBranchForCurrentModel() =>
-            Branches.FirstOrDefault(branch => string.Equals(branch.Name, Model.DefaultBranch, StringComparison.Ordinal))
-            ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "main", StringComparison.Ordinal))
-            ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "master", StringComparison.Ordinal))
-            ?? Branches.FirstOrDefault();
+            ToSelectableBranch(RepositoryBranchSelectionPolicy.Resolve(
+                LoadedBranchNames(),
+                Model.DefaultBranch,
+                StringComparer.Ordinal,
+                Model.DefaultBranch));
+
+        // A selection made before its branch page arrived is swapped for the
+        // loaded branch of the same name, so the picker shows it as selected.
+        private Branch? ReconcileSelectedBranch() =>
+            SelectedBranch is { } selected
+                ? Branches.FirstOrDefault(branch => string.Equals(branch.Name, selected.Name, StringComparison.Ordinal))
+                    ?? selected
+                : ResolveSelectedBranchForCurrentModel();
+
+        private string[] LoadedBranchNames() => Branches.Select(branch => branch.Name).ToArray();
+
+        // A known branch that isn't loaded yet is selected by name until its page arrives.
+        private Branch? ToSelectableBranch(string? name) =>
+            name is null
+                ? null
+                : Branches.FirstOrDefault(branch => string.Equals(branch.Name, name, StringComparison.Ordinal))
+                    ?? new Branch { Name = name };
 
         private static bool IsSameRepository(RepoDetailPageArgs args, Repository? current)
         {
@@ -1406,13 +1424,17 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         {
             string? requestedBranch = GetRequestedCodeBranch(args);
             string? fallbackDefaultBranch = args.Repo?.DefaultBranch;
+            string? defaultBranch = string.IsNullOrWhiteSpace(Model.DefaultBranch)
+                ? fallbackDefaultBranch
+                : Model.DefaultBranch;
 
-            return Branches.FirstOrDefault(branch => string.Equals(branch.Name, requestedBranch, StringComparison.Ordinal))
-                ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, Model.DefaultBranch, StringComparison.Ordinal))
-                ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, fallbackDefaultBranch, StringComparison.Ordinal))
-                ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "master", StringComparison.Ordinal))
-                ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "main", StringComparison.Ordinal))
-                ?? Branches.FirstOrDefault();
+            return ToSelectableBranch(RepositoryBranchSelectionPolicy.Resolve(
+                LoadedBranchNames(),
+                defaultBranch,
+                StringComparer.Ordinal,
+                requestedBranch,
+                Model.DefaultBranch,
+                fallbackDefaultBranch));
         }
 
         private void EnsureCodePageBranchAlignment(RepoDetailPageArgs args)
