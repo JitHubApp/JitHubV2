@@ -66,6 +66,7 @@
     <Compile Include="..\JitHub.WinUI\Services\DeveloperRoutePolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\SettingsKeys.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\RepositoryForkReadinessPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\RepositoryBranchSelectionPolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\RepositoryForkOperation.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\RepositoryForkOwnershipStore.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IGitHubClientService.cs" Link="Services\%(Filename)%(Extension)" />
