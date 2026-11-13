@@ -23,12 +23,13 @@ public sealed partial class RepoIssueDetailPane : UserControl
     private const double CompactShyHeaderContentInset = 74;
     private static readonly TimeSpan ShyHeaderDuration = AppMotionTokens.MediumDuration;
     private readonly TransitionHelper _headerTransition;
+    private readonly ShyHeaderScrollTracker _scrollHeader = new(
+        ShyHeaderStartOffset,
+        ShyHeaderRestoreOffset,
+        ShyHeaderRevealTravel,
+        ShyHeaderRehideTravel,
+        ScrollDirectionEpsilon);
     private AdaptiveWorkspaceState? _responsiveState;
-    private double _lastScrollOffset;
-    private double _upwardRevealTravel;
-    private double _downwardRehideTravel;
-    private bool _headerRevealedByUpwardScroll;
-    private bool _isScrollHeaderShy;
     private bool _isDetailHeaderShy;
     private int _headerTransitionGeneration;
 
@@ -100,14 +101,15 @@ public sealed partial class RepoIssueDetailPane : UserControl
         RepoIssuesOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
         RepoIssuesCompactOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
         RepoIssuesShyOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
-        _isScrollHeaderShy =
-            IssueConversationScrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
-            CanHideScrollHeader();
-        _lastScrollOffset = IssueConversationScrollViewer.VerticalOffset;
+        double offset = IssueConversationScrollViewer.VerticalOffset;
+        _scrollHeader.Reset(
+            offset,
+            IssueConversationScrollViewer.ScrollableHeight,
+            isShy: offset >= ShyHeaderStartOffset && CanHideScrollHeader());
         IssueConversationScrollViewer.Padding = IsCompactWorkspace
             ? new Thickness(18, CompactShyHeaderContentInset, 18, 18)
             : new Thickness(18);
-        SetDetailHeaderShy(IsCompactWorkspace || _isScrollHeaderShy, animate: false);
+        SetDetailHeaderShy(IsCompactWorkspace || _scrollHeader.IsShy, animate: false);
     }
 
     public bool IsIssueApplied(GitHubIssue issue) =>
@@ -153,80 +155,14 @@ public sealed partial class RepoIssueDetailPane : UserControl
             return;
         }
 
-        double offset = IssueConversationScrollViewer.VerticalOffset;
-        double delta = offset - _lastScrollOffset;
-        _lastScrollOffset = offset;
-
-        if (_isScrollHeaderShy)
+        ShyHeaderScrollAction action = _scrollHeader.Observe(
+            IssueConversationScrollViewer.VerticalOffset,
+            IssueConversationScrollViewer.ScrollableHeight,
+            CanHideScrollHeader());
+        if (action != ShyHeaderScrollAction.None)
         {
-            if (offset <= ShyHeaderRestoreOffset)
-            {
-                RevealScrollHeader(revealedByUpwardScroll: false);
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _upwardRevealTravel += -delta;
-                if (_upwardRevealTravel >= ShyHeaderRevealTravel)
-                {
-                    RevealScrollHeader(revealedByUpwardScroll: true);
-                }
-            }
-            else if (delta > ScrollDirectionEpsilon)
-            {
-                _upwardRevealTravel = 0;
-            }
-
-            return;
+            SetDetailHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
         }
-
-        if (offset <= ShyHeaderRestoreOffset)
-        {
-            _headerRevealedByUpwardScroll = false;
-            _downwardRehideTravel = 0;
-        }
-        else if (_headerRevealedByUpwardScroll)
-        {
-            if (delta > ScrollDirectionEpsilon)
-            {
-                _downwardRehideTravel += delta;
-                if (_downwardRehideTravel >= ShyHeaderRehideTravel)
-                {
-                    HideScrollHeader();
-                }
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _downwardRehideTravel = 0;
-            }
-        }
-        else if (offset >= ShyHeaderStartOffset)
-        {
-            HideScrollHeader();
-        }
-    }
-
-    private void RevealScrollHeader(bool revealedByUpwardScroll)
-    {
-        _isScrollHeaderShy = false;
-        _headerRevealedByUpwardScroll = revealedByUpwardScroll;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        SetDetailHeaderShy(IsCompactWorkspace, animate: true);
-    }
-
-    private void HideScrollHeader()
-    {
-        if (!CanHideScrollHeader())
-        {
-            _downwardRehideTravel = 0;
-            return;
-        }
-
-        _isScrollHeaderShy = true;
-        _headerRevealedByUpwardScroll = false;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        SetDetailHeaderShy(true, animate: true);
     }
 
     private bool CanHideScrollHeader()

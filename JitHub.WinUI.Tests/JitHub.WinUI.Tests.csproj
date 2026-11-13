@@ -35,6 +35,7 @@
     <Compile Include="..\JitHub.WinUI\Helpers\HandledFailureReporter.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\UserFacingError.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\ShyHeaderScrollPolicy.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\ShyHeaderScrollTracker.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\AppMaterialPolicy.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\ISettingService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IThemeService.cs" Link="Services\%(Filename)%(Extension)" />
