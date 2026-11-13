@@ -23,6 +23,7 @@ using JitHub.Core.Services.GitHub.Transport;
 using JitHub.Core.Services.Lifecycle;
 using JitHub.Core.Services.Me;
 using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.Repositories;
 using JitHub.Core.Services.Telemetry;
 using JitHub.Markdown.Documents;
 using JitHub.WinUI.Models.Navigation;
@@ -937,15 +938,19 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 static branch => branch.Name,
                 result.State.Completeness);
             ReplaceCollectionByKey(Branches, branchProjection, static branch => branch.Name);
+            // The commits come from the query's ref. When that branch isn't in the
+            // loaded pages, leave the picker empty rather than select, and so
+            // query, whichever branch happened to load first.
+            string? branchName = RepositoryBranchSelectionPolicy.Resolve(
+                Branches.Select(branch => branch.Name).ToArray(),
+                _commitQuery.GitRef,
+                StringComparer.OrdinalIgnoreCase,
+                selectedBranchName,
+                _commitQuery.GitRef);
             SelectedBranch = Branches.FirstOrDefault(branch => string.Equals(
-                    branch.Name,
-                    selectedBranchName,
-                    StringComparison.OrdinalIgnoreCase))
-                ?? Branches.FirstOrDefault(branch => string.Equals(
-                    branch.Name,
-                    _commitQuery.GitRef,
-                    StringComparison.OrdinalIgnoreCase))
-                ?? Branches.FirstOrDefault();
+                branch.Name,
+                branchName,
+                StringComparison.OrdinalIgnoreCase));
         }
         catch (GitHubAuthenticationException authError)
         {
