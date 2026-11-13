@@ -13,17 +13,20 @@ public sealed class ProductPerformanceCiContractTests
         string script = File.ReadAllText(Path.Combine(root, "eng", "Invoke-ProductPerformanceGate.ps1"));
 
         Assert.Contains("Invoke-ProductPerformanceGate.ps1", workflow);
+        Assert.Contains("-PlanOnly", workflow);
         Assert.Contains("FullyQualifiedName~ProductPerformance", workflow);
-        Assert.Contains("product-performance-report.json", workflow);
         Assert.Contains("JitHub.WinUI.Automation\\JitHub.WinUI.Automation.csproj", workflow);
         Assert.True(File.Exists(Path.Combine(root, "JitHub.WinUI.Automation", "Performance", "ProductPerformanceReport.cs")));
-        Assert.Contains("cold, warm, offline, and large-account", workflow);
-        Assert.Contains("jithub-interactive", workflow);
+        Assert.Contains("runs-on: windows-latest", workflow);
         Assert.Matches("(?m)^on:\n(?:  #.*\n)*  push:\n    branches: \\[main\\]$", workflow);
         Assert.Matches("(?m)^  pull_request:\n    branches: \\[main\\]$", workflow);
         Assert.DoesNotContain("paths:", workflow);
         Assert.DoesNotContain("github.event_name == 'schedule'", workflow);
         Assert.DoesNotContain("inputs.run_live", workflow);
+        // The live benchmark needs an interactive desktop and runs locally;
+        // a job waiting for a self-hosted runner never runs and is cancelled.
+        Assert.DoesNotContain("self-hosted", workflow);
+        Assert.DoesNotContain("product-performance-report", workflow);
         Assert.Contains("[Environment]::UserInteractive", script);
         Assert.Contains("bin\\x64\\$Configuration", script);
         Assert.Contains("exit $LASTEXITCODE", script);
