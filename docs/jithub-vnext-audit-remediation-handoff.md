@@ -758,6 +758,12 @@ dotnet publish JitHub.WinUI\JitHub.WinUI.csproj -c Release -r win-x64 `
 The gate intentionally requires at least 10 iterations. Do not bypass that
 validation or loosen the checked-in budgets.
 
+CI does not run this live benchmark. It launches the app and needs an
+interactive Windows desktop, which GitHub-hosted runners do not provide, and
+the project has no self-hosted runner. The `Product performance gate` workflow
+only validates the budgets and materializes the benchmark plan (`-PlanOnly`).
+Run the command above on a signed-in desktop before a Store release.
+
 ### 7. Future Change Discipline
 
 - Rerun focused tests for every behavioral change and the affected native probe.
