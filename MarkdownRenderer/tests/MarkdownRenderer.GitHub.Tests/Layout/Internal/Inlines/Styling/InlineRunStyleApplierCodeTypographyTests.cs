@@ -3,8 +3,6 @@ using MarkdownRenderer.Layout.Internal.Boxes;
 using MarkdownRenderer.Layout.Internal.CodeBlocks;
 using MarkdownRenderer.Layout.Internal.Inlines;
 using MarkdownRenderer.Layout.Internal.Snapshots;
-using MarkdownRenderer.SyntaxHighlighting.TextMate;
-using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.UI;
@@ -92,29 +90,27 @@ public sealed class InlineRunStyleApplierCodeTypographyTests
     }
 
     [Fact]
-    public async Task SyntaxHighlightedCodeBlockKeepsLigaturesOffUnderTokenColors()
+    public void SyntaxHighlightedCodeBlockKeepsLigaturesOffUnderTokenColors()
     {
+        // Token colours are applied to an already-styled layout by
+        // SetForegroundSpans, the same call the highlighter's result feeds.
+        // Fixed spans keep this deterministic: a real tokenizer can exceed
+        // its per-line time budget under parallel load and return no spans.
         const string code = "Deno.serve((_req: Request) => {\n  return new Response(\"Hello\");\n});";
         using LayoutSnapshot snapshot = BuildParsedSnapshot("```ts\n" + code + "\n```", MarkdownStyleSheet.Empty);
         InlineContainerBox chunk = SingleCodeChunk(snapshot);
         CanvasTextLayout layout = Measured(chunk);
-        // The parallel suite can exceed the default per-line tokenizer budget
-        // while the TypeScript grammar first loads; use the widest budget.
-        using var highlighter = new TextMateCodeBlockSyntaxHighlighter(
-            new CommonTextMateGrammarProvider(),
-            new TextMateHighlighterOptions(maximumLineProcessingTime: TimeSpan.FromSeconds(1)),
-            ownsProvider: true);
-        CodeBlockHighlightResult? highlight = await highlighter.HighlightAsync(
-            new CodeBlockHighlightRequest("ts", chunk.LayoutBuffer, MarkdownThemeVariant.Dark),
-            CancellationToken.None);
+        int arrow = IndexOf(chunk, "=>");
+        CodeBlockHighlightSpan[] spans =
+        [
+            new(0, arrow, Color.FromArgb(255, 121, 192, 255)),
+            new(arrow, "=>".Length, Color.FromArgb(255, 255, 123, 114)),
+            new(arrow + "=>".Length, chunk.LayoutBuffer.Length - arrow - "=>".Length, Color.FromArgb(255, 165, 214, 255)),
+        ];
 
-        Assert.NotNull(highlight);
-        Assert.NotEmpty(highlight!.Spans);
-        chunk.SetForegroundSpans(highlight.Spans);
+        chunk.SetForegroundSpans(spans);
 
         AssertLigaturesOff(layout, 0, chunk.LayoutBuffer.Length);
-        int arrow = IndexOf(chunk, "=>");
-        Assert.Contains(highlight.Spans, span => span.Start <= arrow && arrow < span.Start + span.Length);
     }
 
     [Fact]
