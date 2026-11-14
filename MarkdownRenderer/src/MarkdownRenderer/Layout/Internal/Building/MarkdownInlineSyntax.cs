@@ -48,17 +48,26 @@ internal static class MarkdownInlineSyntax
         return linked;
     }
 
-    internal static bool ContainsMarkdownLink(ContainerInline container)
+    /// <summary>
+    /// Whether emphasis must build its children as separate runs instead of
+    /// flattening them into one run of its own role. A run carries a single
+    /// style, so flattening drops a nested link (an autolink is a link too)
+    /// and the typeface and chip of nested inline code.
+    /// </summary>
+    internal static bool ContainsLinkOrInlineCode(ContainerInline container)
     {
-        foreach (Inline child in container)
+        var pending = new Stack<ContainerInline>();
+        pending.Push(container);
+        while (pending.Count > 0)
         {
-            // An autolink inside emphasis is a link too; flattening the
-            // emphasis would drop it.
-            if (child is LinkInline or AutolinkInline)
-                return true;
+            foreach (Inline child in pending.Pop())
+            {
+                if (child is LinkInline or AutolinkInline or CodeInline)
+                    return true;
 
-            if (child is ContainerInline nested && ContainsMarkdownLink(nested))
-                return true;
+                if (child is ContainerInline nested)
+                    pending.Push(nested);
+            }
         }
 
         return false;

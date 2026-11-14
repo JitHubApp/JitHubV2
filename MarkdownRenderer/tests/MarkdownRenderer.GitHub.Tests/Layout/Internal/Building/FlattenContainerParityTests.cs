@@ -39,10 +39,13 @@ public sealed class FlattenContainerParityTests
                 "  \nhard break and soft\ncontinuation",
                 false,
             ];
+            // Inline code is flattened here inside image alt text. Emphasis
+            // that contains code is no longer a flattened wrapper: it keeps
+            // the code as its own run (InlineRunBuilderEmphasisCodeTests).
             yield return
             [
-                "~~strike with `code`~~ and ==marked *nested*== " +
-                "![emoji :rocket: and &amp;](https://example.test/emoji.png)",
+                "~~strike with *nested*~~ and ==marked *nested*== " +
+                "![emoji :rocket: with `code` and &amp;](https://example.test/emoji.png)",
                 true,
             ];
         }

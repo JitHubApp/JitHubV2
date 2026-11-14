@@ -137,7 +137,7 @@ internal static class GfmChildInlineBuilder
         using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
         int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
         if (i is EmphasisInline emphasis &&
-            (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsMarkdownLink(emphasis)))
+            (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsLinkOrInlineCode(emphasis)))
         {
             box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
             string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
@@ -158,6 +158,7 @@ internal static class GfmChildInlineBuilder
             box,
             i,
             htmlState,
+            effectiveAliasStart,
             containingLinkUrl,
             containingLinkTitle,
             out LinkInline? mixedLink);
@@ -201,6 +202,7 @@ internal static class GfmChildInlineBuilder
         InlineContainerBox box,
         Inline i,
         SafeHtmlInlineState htmlState,
+        int linkStyleAliasStart,
         string? containingLinkUrl,
         string? containingLinkTitle,
         out LinkInline? mixedLink)
@@ -243,7 +245,7 @@ internal static class GfmChildInlineBuilder
                 containedImage.Span.Start,
                 containedImage.Span.Length);
         }
-        InlineRun? run = htmlState.Apply(BuildInline(i, box.Context));
+        InlineRun? run = htmlState.Apply(BuildInline(i, box.Context, linkStyleAliasStart));
         return ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
     }
 
@@ -311,7 +313,10 @@ internal static class GfmChildInlineBuilder
         return linked;
     }
 
-    private static InlineRun? BuildInline(Inline inline, MarkdownLayoutContext context) => inline switch
+    private static InlineRun? BuildInline(
+        Inline inline,
+        MarkdownLayoutContext context,
+        int linkStyleAliasStart) => inline switch
     {
         LiteralInline lit => new TextRun(lit.Content.ToString())
         {
@@ -323,7 +328,7 @@ internal static class GfmChildInlineBuilder
             SourceSpan = new MarkdownRenderer.SourceSpan(ci.Span.Start, ci.Span.Length)
         },
         EmphasisInline emph => BuildEmphasis(emph),
-        LinkInline link => BuildLink(link, context),
+        LinkInline link => BuildLink(link, context, linkStyleAliasStart),
         AbbreviationInline abbreviation => new AbbreviationRun(
             abbreviation.Abbreviation?.Label ?? string.Empty,
             abbreviation.Abbreviation?.Text.ToString() ?? string.Empty)
@@ -376,7 +381,10 @@ internal static class GfmChildInlineBuilder
         };
     }
 
-    private static InlineRun BuildLink(LinkInline link, MarkdownLayoutContext context)
+    private static InlineRun BuildLink(
+        LinkInline link,
+        MarkdownLayoutContext context,
+        int inlineStyleAliasStart)
     {
         if (link.IsImage)
         {
@@ -388,9 +396,17 @@ internal static class GfmChildInlineBuilder
             return BuildImageRun(imageLink, context, link.Url, link.Title, link.Span.Start, link.Span.Length);
         }
 
+        // As in the main inline builder, nested code, emphasis and
+        // abbreviations stay styled spans of the one link run.
         var text = new StringBuilder();
-        FlattenInlines(link, text);
-        return new LinkRun(text.ToString(), link.Url ?? string.Empty, link.Title)
+        LinkInlineStyleMapBuilder? inlineStyles = null;
+        new InlineContainerFlattener(context).FlattenContainer(
+            link,
+            text,
+            ref inlineStyles,
+            path: null,
+            inlineStyleAliasStart);
+        return new LinkRun(text.ToString(), link.Url ?? string.Empty, link.Title, inlineStyles?.Build())
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(link.Span.Start, link.Span.Length)
         };
