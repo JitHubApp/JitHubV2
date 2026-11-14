@@ -5,14 +5,71 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using JitHub.Models;
-using JitHub.Models.NavArgs;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.Services.Markdown;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.Theming;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.Configuration;
+using JitHub.Core.Services.Dashboard;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Gists;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Images;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Issues;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Navigation;
+using JitHub.Core.Services.Notifications;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Settings;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Storage;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.Services.Theming;
+using JitHub.Core.ViewModels.Authentication;
+using JitHub.Core.ViewModels.CodeViewer;
+using JitHub.Core.ViewModels.Gists;
+using JitHub.Core.ViewModels.Notifications;
+using JitHub.Core.ViewModels.Search;
+using JitHub.Core.ViewModels.Settings;
+using JitHub.Markdown.Images;
+using JitHub.Markdown.Images.RemoteContent;
+using JitHub.Markdown.Images.Repository;
+using JitHub.Markdown.Lifetime;
+using JitHub.Markdown.Links;
+using JitHub.Markdown.Runtime;
+using JitHub.Shared.Theming;
 using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.CodeViewer;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Models.Navigation;
+using JitHub.WinUI.Services.Accounts;
+using JitHub.WinUI.Services.Configuration;
+using JitHub.WinUI.Services.Dialogs;
+using JitHub.WinUI.Services.GitHub;
+using JitHub.WinUI.Services.Markdown;
+using JitHub.WinUI.Services.Navigation;
+using JitHub.WinUI.Services.Notifications;
+using JitHub.WinUI.Services.Settings;
+using JitHub.WinUI.Services.Telemetry;
+using JitHub.WinUI.Services.Theming;
+using JitHub.WinUI.ViewModels;
+using JitHub.WinUI.ViewModels.Commits;
+using JitHub.WinUI.ViewModels.Dashboard;
+using JitHub.WinUI.ViewModels.Issues;
+using JitHub.WinUI.ViewModels.Me;
+using JitHub.WinUI.ViewModels.Profile;
+using JitHub.WinUI.ViewModels.PullRequests;
+using JitHub.WinUI.ViewModels.Repositories;
+using JitHub.WinUI.ViewModels.Shell;
+using JitHub.WinUI.ViewModels.Stars;
 using JitHub.WinUI.Views.Pages;
 using JitHub.WinUI.Views.Pages.Design;
 using Microsoft.Extensions.DependencyInjection;
@@ -166,16 +223,6 @@ public partial class App : Application
         Program.LogStartupPhase("activation.core.navigation-targets-ready");
         mainWindow.ProcessActivation();
         Program.LogStartupPhase("activation.core.window-activated");
-        MarkdownLifecycleAutomationBridge.SignalAppReady();
-        if (MarkdownLifecycleAutomationBridge.IsResourceMapForcedAbsent)
-        {
-            const string fallback = "Resource map fallback active";
-            string value = LocalizedResourceText.GetString("Automation.ResourceMapAbsentProbe", fallback);
-            if (string.Equals(value, fallback, StringComparison.Ordinal))
-            {
-                MarkdownLifecycleAutomationBridge.SignalResourceMapFallback(value);
-            }
-        }
 
         if (_accountRemovalRecoveryIncomplete)
         {
@@ -198,13 +245,16 @@ public partial class App : Application
     private IServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
+        services.AddSingleton(Program.CurrentLaunchOptions);
         services.AddSingleton(new NavigationService(_mainWindow!.ContentFrameHost));
+        services.AddSingleton<IUnauthorizedNavigator>(
+            static provider => provider.GetRequiredService<NavigationService>());
         services.AddSingleton<DialogPresentationCoordinator>();
         services.AddSingleton<ModalService>();
         services.AddSingleton<INotificationService, NotificationService>();
         services.AddSingleton<IAppStoragePathProvider, AppStoragePathProvider>();
         services.AddSingleton<ILocalDiagnosticsStore, LocalDiagnosticsStore>();
-        services.AddSingleton<IStoreTelemetrySink, StoreTelemetrySink>();
+        services.AddSingleton<IStoreTelemetrySink>(static _ => StoreEngagementTelemetrySinkFactory.Create());
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IAccountWorkQuiescence, AccountWorkQuiescence>();
         services.AddSingleton<IApplicationTaskCoordinator, ApplicationTaskCoordinator>();
@@ -233,7 +283,7 @@ public partial class App : Application
         services.AddSingleton<IGitHubPullRequestQueryService, GitHubPullRequestQueryService>();
         services.AddSingleton<IGitHubIssueQueryService, GitHubIssueQueryService>();
         services.AddSingleton<IGitHubCommitQueryService, GitHubCommitQueryService>();
-        services.AddSingleton<JitHub.Services.CodeViewer.IGitHubRepoCodeQueryService, JitHub.Services.CodeViewer.GitHubRepoCodeQueryService>();
+        services.AddSingleton<JitHub.Core.Services.CodeViewer.IGitHubRepoCodeQueryService, JitHub.Core.Services.CodeViewer.GitHubRepoCodeQueryService>();
         services.AddSingleton<IGitHubProfileQueryService, GitHubProfileQueryService>();
         services.AddSingleton<IStarLibraryStore, SqliteStarLibraryStore>();
         services.AddSingleton<IStarLibraryRecoveryStore, StarLibraryRecoveryStore>();
@@ -245,8 +295,30 @@ public partial class App : Application
         services.AddSingleton<IDashboardWidgetLayoutService, DashboardWidgetLayoutService>();
         services.AddSingleton<ISettingsDiagnosticsService, SettingsDiagnosticsService>();
         services.AddSingleton<ISettingsSourceNavigationService, SettingsSourceNavigationService>();
-        services.AddSingleton<IGitHubService, GitHubService>();
-        services.AddSingleton<IAuthService, AuthService>();
+        services.AddSingleton(static provider =>
+        {
+            IGitHubClientService client = provider.GetRequiredService<IGitHubClientService>();
+            return new GitHubMarkdownImageResolver(
+                new GitHubMarkdownContentClient(client),
+                client as IGitHubRepositoryImageClient,
+                provider.GetRequiredService<IGitHubImageService>(),
+                provider.GetRequiredService<IMarkdownRemoteImagePolicy>(),
+                HandledFailureReporter.Report);
+        });
+        services.AddSingleton<IGitHubMarkdownImageResolverProvider>(
+            static provider => provider.GetRequiredService<GitHubMarkdownImageResolver>());
+        services.AddSingleton<IGitHubService>(static provider => new GitHubService(
+            provider.GetRequiredService<IGitHubClientService>(),
+            provider.GetRequiredService<GitHubMarkdownImageResolver>()));
+        services.AddSingleton<IGitHubAccessTokenSink>(
+            static provider => provider.GetRequiredService<IGitHubService>());
+        RegisterMarkdownHostBoundaries(services);
+        services.AddSingleton<IAuthService>(provider =>
+        {
+            AuthService authService = ActivatorUtilities.CreateInstance<AuthService>(provider);
+            authService.AuthenticationCleared += MarkdownRuntime.ResetPerformanceSession;
+            return authService;
+        });
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<ISettingsPreferencesService, SettingsPreferencesService>();
         services.AddSingleton<LocalizationService>();
@@ -255,7 +327,7 @@ public partial class App : Application
         services.AddSingleton<IAccountDataRemovalCoordinator, AccountDataRemovalCoordinator>();
         services.AddSingleton<ILanguageIdResolver, LanguageIdResolver>();
         services.AddSingleton<IFilePreviewResolver, FilePreviewResolver>();
-        services.AddSingleton<JitHub.Services.CodeViewer.IRepoTreeService, JitHub.Services.CodeViewer.RepoTreeService>();
+        services.AddSingleton<JitHub.Core.Services.CodeViewer.IRepoTreeService, JitHub.Core.Services.CodeViewer.RepoTreeService>();
         services.AddSingleton<RepoCodeNavigationPreparationCache>();
         services.AddSingleton<RepositoryRoutePrefetchCoordinator>();
         services.AddSingleton<GlobalViewModel>();
@@ -273,7 +345,15 @@ public partial class App : Application
         services.AddSingleton<StarLibrarySessionState>();
         services.AddTransient<StarLibraryPageViewModel>();
         services.AddTransient<GistsPageViewModel>();
-        services.AddTransient<NotificationsPageViewModel>();
+        services.AddTransient(static provider => new NotificationsPageViewModel(
+            provider.GetRequiredService<IGitHubNotificationQueryService>(),
+            provider.GetRequiredService<IAuthService>(),
+            provider.GetRequiredService<IAccountService>(),
+            provider.GetRequiredService<ITelemetryService>(),
+            provider.GetRequiredService<NotificationInboxState>(),
+            provider.GetRequiredService<ShellPageViewModel>().OpenNotification,
+            provider.GetRequiredService<IApplicationTaskCoordinator>(),
+            provider.GetRequiredService<ShellPageViewModel>().PrefetchNotificationAsync));
         services.AddSingleton<ShellPageViewModel>();
         services.AddTransient<RepoCodePageViewModel>();
 
@@ -282,6 +362,11 @@ public partial class App : Application
             RecordBackgroundTaskFailure(serviceProvider, failure);
         Ioc.Default.ConfigureServices(serviceProvider);
         return serviceProvider;
+    }
+
+    private void RegisterMarkdownHostBoundaries(ServiceCollection services)
+    {
+        services.AddSingleton<IMarkdownRouteNavigator>(static provider => new ShellMarkdownRouteNavigator(provider));
     }
 
     private void RegisterAuthBoundaries(ServiceCollection services)
@@ -652,6 +737,24 @@ public partial class App : Application
 
     internal MainWindow CurrentMainWindow => GetOrCreateMainWindow();
 
+    /// <summary>
+    /// Gets the app-scoped ledger of Markdown renderers that borrow the shared
+    /// Markdown providers. It outlives the service provider so the window close
+    /// path can drain every renderer before those providers shut down.
+    /// </summary>
+    internal MarkdownRendererLifetimeRegistry MarkdownRenderers { get; } = new();
+
+    /// <summary>
+    /// Gets the Markdown engine, syntax highlighter, SVG worker and preparation
+    /// session shared by every Markdown surface. Like <see cref="MarkdownRenderers"/>
+    /// it outlives the service provider; the window close path shuts it down after
+    /// every renderer has drained.
+    /// </summary>
+    internal JitHubMarkdownRuntime MarkdownRuntime { get; } = new();
+
+    /// <summary>Gets the best-effort Windows runtime event helper shared by Markdown hosts.</summary>
+    internal RuntimeEventSubscription MarkdownRuntimeEvents { get; } = new(HandledFailureReporter.Report);
+
     private static string FormatActivationError(Exception ex)
     {
         return UserFacingError.For(ex, UserFacingErrorKind.Activation, "activation");
@@ -763,7 +866,7 @@ public partial class App : Application
             LogUnhandledException(exception, "diagnostics-shutdown");
         }
 
-        MarkdownRenderer.MarkdownRendererRuntime.Shutdown(TimeSpan.FromSeconds(1));
+        MarkdownRuntime.ShutdownForProcessExit();
     }
 
     internal Task<DiagnosticsShutdownResult> ShutdownDiagnosticsAsync(

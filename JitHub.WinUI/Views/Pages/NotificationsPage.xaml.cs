@@ -1,8 +1,10 @@
 using System;
-using JitHub.Services;
-using JitHub.Services.Layout;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Notifications;
+using JitHub.Core.ViewModels.Notifications;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Views.Layout;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -227,7 +229,7 @@ public sealed partial class NotificationsPage : Page
     {
         // The destination owns its authoritative post-frame load. Cancel a pending
         // incidental-hover prediction; a prediction that already crossed the dwell
-        // threshold is intentionally allowed to finish in the Phase 0 cache.
+        // threshold is intentionally allowed to finish in the GitHub query cache.
         ViewModel.CancelDestinationPrefetch();
         string expectedDestinationRoute = item.Thread.Subject.Type switch
         {

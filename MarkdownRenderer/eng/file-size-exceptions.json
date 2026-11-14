@@ -1,0 +1,35 @@
+{
+  "$comment": "Files over 1,000 lines that eng/Test-ProjectStructure.ps1 allows (MRS0008). Each cap is the file's current length: a listed file may not grow (MRS0009), and an entry must be lowered or removed as the file shrinks (MRS0010). Do not add entries; split the file instead.",
+  "files": [
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/CSharpMath.Core/Atom/LaTeXSettings.cs",
+      "lines": 1160,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/CSharpMath.Core/Display/Typesetter.cs",
+      "lines": 1003,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.AdvancedLayout/MathTable.cs",
+      "lines": 1367,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/CFF.cs",
+      "lines": 1783,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/CffEvaluationEngine.cs",
+      "lines": 1431,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    },
+    {
+      "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/Type2CharStringParser.cs",
+      "lines": 1253,
+      "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
+    }
+  ]
+}

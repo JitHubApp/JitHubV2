@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-using JitHub.Services;
+using JitHub.Core.Services.Commits;
 using JitHub.WinUI.Views.Controls.App;
 
 [assembly: WinRT.GeneratedWinRTExposedExternalType(typeof(ObservableCollection<CommitDiffRow>))]

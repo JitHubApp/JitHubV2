@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
-using JitHub.Services;
+using JitHub.Core.Services.Storage;
+using JitHub.Performance.Observation;
+using JitHub.Performance.Readiness;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

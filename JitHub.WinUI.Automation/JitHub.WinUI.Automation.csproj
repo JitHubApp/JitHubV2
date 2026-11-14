@@ -8,12 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
-    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\JitHub.WinUI\Services\Performance\ProductPerformanceBudget.cs"
-             Link="Services\Performance\ProductPerformanceBudget.cs" />
+    <ProjectReference Include="..\JitHub.Performance\JitHub.Performance.csproj" />
   </ItemGroup>
 </Project>

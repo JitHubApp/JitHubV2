@@ -116,7 +116,7 @@ public sealed class InlineAlignmentContractTests
 
                 string[] typography = textBlocks.Select(GetTypographySignature).Distinct(StringComparer.Ordinal).ToArray();
                 bool isReactionChip = path.EndsWith(
-                    Path.Combine("Controls", "Common", "CommentInteractionBar.xaml"),
+                    Path.Combine("Controls", "Comments", "CommentInteractionBar.xaml"),
                     StringComparison.OrdinalIgnoreCase);
                 if (typography.Length > 1 && !isReactionChip)
                 {
@@ -239,6 +239,35 @@ public sealed class InlineAlignmentContractTests
             binding => Assert.Contains(metadata.Descendants(), run =>
                 run.Name.LocalName == "Run" &&
                 run.Attribute("Text")?.Value.Contains(binding, StringComparison.Ordinal) == true));
+    }
+
+    [Fact]
+    public void MarkdownTaskMarkersUseCenteredScaleAwareSlots()
+    {
+        string rendererSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Gfm",
+            "Internal",
+            "Renderers",
+            "TaskListItemRenderer.cs"));
+        string factorySource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Layout",
+            "Internal",
+            "TaskMarkers",
+            "TaskMarkerControlFactory.cs"));
+
+        Assert.Contains("GetTaskMarkerSize(context.ThemeSnapshot, editableRequested)", rendererSource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.MinimumInteractiveSize", factorySource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.TextScaleFactor", factorySource, StringComparison.Ordinal);
+        Assert.Contains("VerticalAlignment = VerticalAlignment.Center", factorySource, StringComparison.Ordinal);
+        Assert.DoesNotContain("new InlineEmbedRun(20f", rendererSource, StringComparison.Ordinal);
     }
 
     [Theory]

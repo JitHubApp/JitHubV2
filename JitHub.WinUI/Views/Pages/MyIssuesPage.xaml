@@ -5,12 +5,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:app="using:JitHub.WinUI.Views.Controls.App"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:github="using:JitHub.Core.Models.GitHub"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Me"
+    xmlns:me="using:JitHub.Core.ViewModels.Me"
     x:DataType="viewmodels:MyIssuesPageViewModel"
     Background="{ThemeResource AppTransparentBrush}"
     mc:Ignorable="d">
@@ -60,7 +62,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="CommentTemplate" x:DataType="viewmodels:MeIssueCommentViewItem">
+        <DataTemplate x:Key="CommentTemplate" x:DataType="me:MeIssueCommentViewItem">
             <Border
                 Margin="{ThemeResource AppMargin0_0_0_12}"
                 Padding="{ThemeResource AppPadding14}"
@@ -79,7 +81,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <common:Avatar
+                        <images:Avatar
                             VerticalAlignment="Center"
                             AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                             Login="{x:Bind AuthenticatedLogin, Mode=OneWay}"
@@ -101,7 +103,7 @@
                             Style="{StaticResource SectionSecondaryTextBlockStyle}"
                             Text="{x:Bind CreatedText, Mode=OneWay}" />
                     </Grid>
-                    <common:MarkdownViewer
+                    <markdown:MarkdownViewer
                         HostKind="Comment"
                         AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
                         Grid.Row="1"
@@ -145,7 +147,7 @@
                     <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <common:Avatar
+                <images:Avatar
                     VerticalAlignment="Center"
                     AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                     Login="{x:Bind AuthenticatedLogin, Mode=OneWay}"
@@ -523,7 +525,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <common:Avatar
+                                            <images:Avatar
                                                 VerticalAlignment="Center"
                                                 AutomationInstanceId="{x:Bind ViewModel.SelectedIssueAuthorAutomationId, Mode=OneWay}"
                                                 Login="{x:Bind ViewModel.SelectedIssueAuthorLogin, Mode=OneWay}"
@@ -547,7 +549,7 @@
                                                 Text="Author" />
                                         </Grid>
                                         <Grid Grid.Row="1">
-                                            <common:MarkdownViewer
+                                            <markdown:MarkdownViewer
                                                 x:Name="MyIssuesBodyMarkdown"
                                                 x:Load="{x:Bind ViewModel.IsDetailBodyMarkdownVisible, Mode=OneWay}"
                                                 HostKind="Conversation"

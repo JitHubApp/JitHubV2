@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.EmptyStateView"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Border
+        MaxWidth="{ThemeResource AppDimension520}"
+        HorizontalAlignment="Left"
+        Padding="{ThemeResource AppPadding0}"
+    Background="{ThemeResource AppTransparentBrush}"
+        BorderThickness="{ThemeResource AppZeroThickness}"
+        CornerRadius="{ThemeResource AppRadiusNone}">
+        <StackPanel
+            Style="{StaticResource AppInlineEmptyStatePanelStyle}">
+            <TextBlock
+                HorizontalAlignment="Left"
+                Style="{StaticResource SectionTitleTextBlockStyle}"
+                Text="{Binding Title, ElementName=Root}" />
+            <TextBlock
+                HorizontalAlignment="Left"
+                TextAlignment="Left"
+                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                Text="{Binding Description, ElementName=Root}" />
+        </StackPanel>
+    </Border>
+</UserControl>
+
+

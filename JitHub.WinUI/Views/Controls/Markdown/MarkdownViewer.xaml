@@ -1,0 +1,99 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Markdown.MarkdownViewer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="300"
+    d:DesignWidth="400"
+    mc:Ignorable="d">
+
+    <Grid
+        x:Name="RootGrid"
+        Background="{ThemeResource AppTransparentBrush}"
+        SizeChanged="RootGrid_SizeChanged">
+        <!--
+            One cell: the reading region keeps its size while notices open and
+            close. A notice that appears mid-read (an image failing below the
+            fold) must not shrink or shift the document, so the notice layer is
+            drawn over the top of the reading region instead of taking a layout
+            row. It is declared first so keyboard and UI Automation reach the
+            notice before the document, and ZIndex keeps it on top. Each notice
+            sits on an opaque surface because InfoBar severity fills are
+            translucent and the document text must not show through.
+        -->
+        <StackPanel
+            x:Name="NoticeLayer"
+            Canvas.ZIndex="1"
+            VerticalAlignment="Top"
+            Spacing="{ThemeResource AppSpace3}">
+            <Border
+                x:Name="RemoteImageNoticeSurface"
+                Margin="{ThemeResource AppMarkdownBodyMargin}"
+                Background="{ThemeResource AppSurfaceBrush}"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <InfoBar
+                    x:Name="RemoteImageInfoBar"
+                    x:Uid="ControlsCommonMarkdownViewerMarkdownRemoteImageInfoBar"
+                    AutomationProperties.AutomationId="MarkdownRemoteImageInfoBar"
+                    Closed="RemoteImageInfoBar_Closed"
+                    IsClosable="True"
+                    IsOpen="False"
+                    Severity="Informational"
+                    Style="{StaticResource AppStatusInfoBarStyle}"
+                    Title="Remote images are protected">
+                    <InfoBar.ActionButton>
+                        <Button
+                            x:Name="LoadRemoteImagesButton"
+                            x:Uid="ControlsCommonMarkdownViewerMarkdownLoadRemoteImagesButt"
+                            AutomationProperties.AutomationId="MarkdownLoadRemoteImagesButton"
+                            AutomationProperties.Name="Load remote images for this document"
+                            Click="LoadRemoteImagesButton_Click"
+                            Content="Load images"
+                            Style="{StaticResource AppQuietButtonStyle}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </Border>
+
+            <Border
+                x:Name="RenderErrorNoticeSurface"
+                Margin="{ThemeResource AppMarkdownBodyMargin}"
+                Background="{ThemeResource AppSurfaceBrush}"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <InfoBar
+                    x:Name="RenderErrorInfoBar"
+                    x:Uid="ControlsCommonMarkdownViewerMarkdownRenderErrorInfoBar"
+                    AutomationProperties.AutomationId="MarkdownRenderErrorInfoBar"
+                    IsClosable="False"
+                    IsOpen="False"
+                    Message="Try again. The rest of the page is still available."
+                    Severity="Error"
+                    Style="{StaticResource AppErrorInfoBarStyle}"
+                    Title="Markdown could not be displayed">
+                    <InfoBar.ActionButton>
+                        <Button
+                            x:Name="RetryRenderButton"
+                            x:Uid="ControlsCommonMarkdownViewerMarkdownRetryRenderButton"
+                            AutomationProperties.AutomationId="MarkdownRetryRenderButton"
+                            AutomationProperties.Name="Try rendering Markdown again"
+                            Click="RetryRenderButton_Click"
+                            Content="Try again"
+                            Style="{StaticResource AppQuietButtonStyle}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </Border>
+        </StackPanel>
+
+        <Border
+            x:Name="ReadingRegion"
+            Padding="{x:Bind ContentPadding, Mode=OneWay}"
+            Background="{ThemeResource AppTransparentBrush}"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+            <Grid
+                x:Name="RendererHost"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch" />
+        </Border>
+    </Grid>
+</UserControl>

@@ -2,12 +2,13 @@
     x:Class="JitHub.WinUI.Views.Pages.ProfilePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:JitHub.WinUI.Views.Pages"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:profile="using:JitHub.WinUI.Views.Controls.Profile"
-    xmlns:vm="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:vm="using:JitHub.WinUI.ViewModels.Profile"
     x:Name="PageRoot"
     Background="{ThemeResource AppTransparentBrush}"
     SizeChanged="Page_SizeChanged"
@@ -144,7 +145,7 @@
                         <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <common:CachedImage
+                    <images:CachedImage
                         Width="{ThemeResource AppDimension28}"
                         Height="{ThemeResource AppDimension28}"
                         SourceUrl="{x:Bind AvatarUrl, Mode=OneWay}"
@@ -257,7 +258,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <common:Avatar
+                <images:Avatar
                     AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                     Size="SMALL"
                     IsProfileNavigationEnabled="True"
@@ -316,7 +317,7 @@
                     <ColumnDefinition Width="{ThemeResource AppGridLength40}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <common:Avatar
+                <images:Avatar
                     AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                     Size="SMALL"
                     IsProfileNavigationEnabled="True"
@@ -422,7 +423,7 @@
                             Height="{ThemeResource AppDimension72}"
                             CornerRadius="{ThemeResource AppRadiusCircle}"
                             AutomationProperties.AccessibilityView="Raw">
-                            <common:CachedImage
+                            <images:CachedImage
                                 SourceUrl="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
                                 Stretch="UniformToFill" />
                         </Border>
@@ -614,7 +615,7 @@
                         Height="{ThemeResource AppDimension48}"
                         CornerRadius="{ThemeResource AppRadiusCircle}"
                         AutomationProperties.AccessibilityView="Raw">
-                        <common:CachedImage
+                        <images:CachedImage
                             SourceUrl="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
                             Stretch="UniformToFill" />
                     </Border>
@@ -968,7 +969,7 @@
                             BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                             CornerRadius="{ThemeResource AppRadiusSmall}">
                             <Grid>
-                                <common:MarkdownViewer
+                                <markdown:MarkdownViewer
                                     x:Name="ProfileReadmeViewer"
                                     x:Load="{x:Bind ViewModel.IsReadmeMode, Mode=OneWay}"
                                     AutomationProperties.AutomationId="ProfileReadme"

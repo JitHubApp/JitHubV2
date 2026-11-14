@@ -1,0 +1,15 @@
+<Project>
+  <!-- The renderer-wide targets apply to src projects too. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- A project that ships an assembly declares its public API (see
+       Directory.Build.props). PublicApiAnalyzers reports RS0048 when one of
+       the two files is missing but skips the project silently when both are,
+       so require them here. -->
+  <Target Name="MarkdownRendererRequirePublicApiFiles"
+          BeforeTargets="CoreCompile"
+          Condition="'$(IncludeBuildOutput)' != 'false'">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)\PublicAPI.Shipped.txt') or !Exists('$(MSBuildProjectDirectory)\PublicAPI.Unshipped.txt')"
+           Text="$(MSBuildProjectName) ships an assembly but lacks PublicAPI.Shipped.txt or PublicAPI.Unshipped.txt next to its project file. Create both, each starting with '#nullable enable', then add the entries with the RS0016 code fix (docs/markdown-renderer/public-api.md)." />
+  </Target>
+</Project>

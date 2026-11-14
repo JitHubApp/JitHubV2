@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JitHub.Models.Filter
+namespace JitHub.WinUI.Models.Filter
 {
     [WinRT.GeneratedBindableCustomProperty]
     public partial class TextFilter : FilterUnit

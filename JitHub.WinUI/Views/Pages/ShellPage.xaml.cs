@@ -10,14 +10,23 @@ using System.Threading.Tasks;
 using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Controls;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.Services.Markdown;
+using JitHub.Performance.Readiness;
 using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Pages;
-using JitHub.Services.Layout;
 using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;
+using JitHub.WinUI.Performance;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Shell;
+using JitHub.WinUI.Services.Dialogs;
+using JitHub.WinUI.Services.Notifications;
+using JitHub.WinUI.ViewModels.Shell;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -171,8 +180,21 @@ public sealed partial class ShellPage : Page
 
     public ShellPageViewModel ViewModel { get; }
 
-    private static void ShellPage_Loaded(object sender, RoutedEventArgs e) =>
+    private static void ShellPage_Loaded(object sender, RoutedEventArgs e)
+    {
         ProductPerformanceReadiness.CommitApplicationInteractive();
+        if (sender is not ShellPage page)
+        {
+            return;
+        }
+
+        DeferredFrameAction.Schedule(
+            page,
+            () => page.IsLoaded,
+            () => UiTaskGuard.Observe(
+                ((App)Application.Current).MarkdownRuntime.WarmUpSvgRendererAsync(),
+                "ui-markdown-svg-warmup"));
+    }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -221,6 +243,9 @@ public sealed partial class ShellPage : Page
         _shellRailDrawerAnimator.Stop();
         ConnectedAnimationService.GetForCurrentView().PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
     }
+
+    internal Task DetachNestedContentForMarkdownShutdownAsync(TimeSpan timeout) =>
+        FrameContentDetacher.DetachAsync(ShellContentFrame, ShellContentFrame.Content as FrameworkElement, timeout);
 
     private void InitializeProductPerformanceBridge()
     {
@@ -573,10 +598,7 @@ public sealed partial class ShellPage : Page
 
     private async Task OpenLaunchRepositoryPageAsync()
     {
-        if (!MarkdownLifecycleAutomationBridge.IsEnabled)
-        {
-            await Task.Delay(350);
-        }
+        await Task.Delay(350);
 
         _ = DispatcherQueue.TryEnqueue(() =>
             ViewModel.OpenRepositoryPage(

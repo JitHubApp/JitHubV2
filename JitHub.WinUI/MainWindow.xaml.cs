@@ -4,10 +4,11 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using JitHub.Models;
-using JitHub.Services;
+using JitHub.Core.Models.Theming;
+using JitHub.Core.Services.Theming;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
+using JitHub.WinUI.Services.Theming;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -33,7 +34,7 @@ public sealed partial class MainWindow : Window
 {
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
-    private const uint WmClose = 0x0010;
+    private const uint WmFontChange = 0x001D;
     private const uint WmSetIcon = 0x0080;
     private const uint WmKeyDown = 0x0100;
     private const uint WmSysKeyDown = 0x0104;
@@ -193,7 +194,6 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _productPerformanceVisualProbe?.Dispose();
-            MarkdownRenderer.MarkdownRendererRuntime.Shutdown();
             _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
             _rootLayout.Loaded -= RootLayout_Loaded;
             _rootLayout.ActualThemeChanged -= RootLayout_ActualThemeChanged;
@@ -768,8 +768,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            _allowCloseAfterDiagnostics = true;
-            Close();
+            await MarkdownWindowClose.RetireViewsThenCloseAsync(ContentFrameHost, () => { _allowCloseAfterDiagnostics = true; Close(); });
         }
     }
 
@@ -872,9 +871,9 @@ public sealed partial class MainWindow : Window
 
     private nint KeyboardSubclassProc(nint hWnd, uint message, nint wParam, nint lParam, nuint subclassId, nuint refData)
     {
-        if (message == WmClose)
+        if (message == WmFontChange)
         {
-            MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown();
+            UiTaskGuard.Observe(((App)Application.Current).MarkdownRuntime.NotifyFontsChangedAsync(), "ui-markdown-svg-font-change");
         }
 
         if ((message == WmKeyDown || message == WmSysKeyDown) &&

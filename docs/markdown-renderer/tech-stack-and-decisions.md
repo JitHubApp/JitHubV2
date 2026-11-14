@@ -1,92 +1,92 @@
 # Tech stack and decisions
 
-## Core technologies
+| Technology | Role |
+| --- | --- |
+| .NET | Immutable engine/document model and host contracts. |
+| Markdig | Internal CommonMark/GFM parsing implementation. |
+| WinUI / Windows App SDK | Native views, input, theme resources, hosted elements, and UI Automation. |
+| Win2D / DirectWrite | Native paint, shaping, measurement, and hit testing. |
+| resvg 0.48.1 | Optional isolated static-SVG rendering provider. |
+| TextMate | Optional syntax-highlighting integration with separate grammar packs. |
 
-| Technology | Use | Reason |
-| --- | --- | --- |
-| WinUI / Windows App SDK | Control, visual tree, input, theme, UIA, hosted controls | Native Windows 11 integration. |
-| Markdig | Markdown parsing and extension pipeline | Mature, extensible CommonMark/GFM parser for .NET. |
-| Win2D | Virtual canvas and drawing API | Efficient Direct2D/DirectWrite-backed rendering from WinUI. |
-| DirectWrite via Win2D text layouts | Text shaping, metrics, hit testing | Native text quality, glyph metrics, RTL support path. |
-| ThorVG native DLL | SVG rasterization | Broad SVG feature support through one raster path. |
-| FlaUI | Sample app UI automation | End-to-end automation of WinUI behavior. |
-| xUnit | Unit tests | Standard .NET test infrastructure. |
+A Rust core was considered and deferred as a separate future project. The
+implementation retains its .NET document/WinUI
+host and isolated Rust rendering/decoding workers.
 
-## Why not WebView?
+## Native viewer instead of WebView
 
-A WebView would provide mature HTML/CSS/layout/selection quickly, but it would
-also bring:
+The viewer does not depend on browser DOM, script, or CSS layout. This keeps
+focus, theme, DPI, input, packaging, and UI Automation in the native WinUI model.
+It also means HTML must be an explicitly bounded native subset rather than an
+implicit browser capability.
 
-- larger process and memory footprint;
-- browser-specific styling and focus behavior;
-- less direct WinUI theme integration;
-- harder native hosted-control composition;
-- harder deterministic paint invalidation;
-- reduced control over text selection/copy semantics;
-- dependency on web accessibility semantics rather than UIA-native peers.
+## Immutable boundary
 
-The library chooses native implementation complexity in exchange for control over
-Windows integration and performance.
+`MarkdownEngineBuilder` freezes profiles and declarative extensions into a
+thread-safe engine. `ParseAsync` returns immutable documents that preserve
+half-open UTF-16 source spans, diagnostics, and semantic queries. Views consume
+documents without exposing their private layout or drawing implementation.
 
-## Why Markdig?
+## One renderer assembly
 
-Markdig provides:
+The engine, document model, profiles (CommonMark, strict GFM, Markdown Extra,
+GitHub README), safe HTML, the performance session, and the WinUI renderer ship
+as one assembly, `MarkdownRenderer.dll`, in the `MarkdownRenderer` package.
 
-- CommonMark-compatible parsing;
-- GFM extensions such as pipe tables, task lists, autolinks, emphasis extras,
-  footnotes, emoji, and generic attributes;
-- AST access suitable for custom layout;
-- an extensible pipeline that lets consumers opt into additional syntax.
+The WinUI layout walks the parser's Markdig syntax tree directly. That tree must
+not appear in the public API, and shipping assemblies do not grant each other
+`InternalsVisibleTo`. Splitting the engine, profiles, safe HTML, or viewer into
+separate assemblies would force one of those two rules to break, so they stay
+together. Math, Mermaid, resvg, and TextMate do not need the syntax tree: they
+stay separate packages and plug in through public extension points.
 
-The renderer does not use Markdig's HTML renderer. It consumes the AST and builds
-native boxes instead.
+## Optional capabilities
 
-## Why Win2D and DirectWrite?
+The `MarkdownRenderer` package carries no native payload of its own; Win2D and
+the Windows App SDK arrive as package dependencies. Its GFM, GitHub
+README, Markdown Extra, and safe-HTML profiles are compiled in but stay off
+until a builder call selects them; the default engine is CommonMark. Math,
+Mermaid, resvg, TextMate, and grammar payloads require explicit package choices.
+The default presentation follows WinUI/Fluent resources; GitHub behavior is not
+silently imposed on every app.
 
-Win2D provides a WinUI-friendly wrapper over Direct2D and DirectWrite. It supports
-`CanvasVirtualControl`, which lets the renderer repaint only invalidated regions.
-DirectWrite text layouts provide the text metrics needed for:
+resvg is kept out of the base package because architecture-specific workers are
+a real size and deployment decision. TextMate grammar resources are split for
+the same reason. Math and Mermaid provide bounded native implementations with
+accessible, atomic source fallbacks; their physical-device and release-evidence
+matrices remain separate 1.0 gates.
 
-- line wrapping;
-- hit testing;
-- selection rectangles;
-- baseline and font metrics;
-- RTL and mixed-direction text support path.
+## Out-of-process SVG and image worker
 
-## Why a XAML overlay?
+`MarkdownRenderer.Svg.Resvg` decodes SVG and raster images in a separate worker
+process (`MarkdownRenderer.Svg.Resvg.Worker.exe`), not in the host process. The
+input is untrusted: any image a document links to. Running the decoder in its
+own process lets the host contain failures that an in-process library or WinRT
+component cannot:
 
-Win2D paints pixels. It cannot host interactive WinUI controls or expose rich
-control-specific UI Automation peers by itself. The overlay solves this by placing
-real XAML elements above the paint surface while the renderer still owns their
-layout slot.
+- The worker runs in a Job Object with a commit-memory limit, so an oversized or
+  decompression-bomb image ends the worker instead of exhausting the app.
+- Each request has a deadline. A stalled or looping decode is ended with
+  `TerminateProcess` and a fresh worker replaces it; a stuck thread inside the
+  host process cannot be stopped safely.
+- A native abort, stack overflow or memory fault ends only the worker
+  (`DieOnUnhandledException`, `KillOnJobClose`), and the image shows its
+  accessible fallback.
 
-The overlay is also used for selection and focus visuals because those visuals
-can change every pointer move. Keeping them out of the DirectWrite canvas avoids
-expensive text repaint and fractional-DPI glyph jitter.
+An out-of-process WinRT server would still be an executable, would need
+activation registration (reg-free manifests for unpackaged hosts) and would not
+provide these limits by itself. The worker uses a small private pipe protocol,
+so hosts register nothing.
 
-## Why ThorVG for SVG?
+The cost is one executable per architecture (x86, x64, ARM64) and one process
+startup per persistent worker. The executables are committed so that .NET
+builds and packing don't need Rust. CI rebuilds all three from the vendored
+source and fails if any differs from the committed binary, and every build
+checks `RESVG_WORKER_IDENTITY.json` against the sources and binaries.
 
-The current design uses ThorVG as the single SVG rasterizer. SVG payloads are
-converted to BGRA bitmaps and then painted through the same `CanvasBitmap` branch
-as raster images.
+## Extensibility and AOT
 
-Benefits:
-
-- one image paint path;
-- broad SVG support, including features beyond simple Win2D SVG;
-- cached raster output for theme/DPI combinations;
-- no runtime tier classifier.
-
-The core package ships ThorVG native DLLs for x86, x64, and ARM64. Repo builds
-copy the selected architecture's DLL to the output root, and NuGet packages place
-all three assets under RID-native runtime folders.
-
-## AOT and trimming posture
-
-The projects enable trim, single-file, and AOT analyzers. Reflection-heavy plugin
-discovery is avoided. `MarkdownExtensionRegistry` dispatches custom renderers by
-concrete Markdig AST node type using a dictionary.
-
-Public XML docs, package metadata, versioning policy, and cross-architecture
-native asset packaging are part of the package contract and are validated during
-release.
+Extensions register exact syntax-kind strings and emit declarative semantic
+content. This avoids reflection-based discovery and prevents public API coupling
+to Markdig node classes or viewer layout objects. Trim/AOT and package-matrix
+validation are still required 1.0 gates, not completed guarantees.

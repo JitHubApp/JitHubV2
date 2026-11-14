@@ -6,10 +6,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Repositories"
     x:DataType="viewmodels:RepoManagePageViewModel"
     AutomationProperties.AccessibilityView="Control"
     AutomationProperties.AutomationId="RepoManagePageRoot"
@@ -299,7 +299,7 @@
                                 Style="{StaticResource AppSelectionCheckBoxStyle}"
                                 Unchecked="RepositorySelectionCheckBox_Unchecked"
                                 Visibility="{x:Bind IsSelectionModeVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                            <common:CachedImage
+                            <images:CachedImage
                                 Grid.Column="1"
                                 Width="{ThemeResource AppDimension30}"
                                 Height="{ThemeResource AppDimension30}"
@@ -351,7 +351,7 @@
                 </ListView.ItemTemplate>
             </ListView>
 
-            <common:EmptyStateView
+            <appcontrols:EmptyStateView
                 Title="{x:Bind ViewModel.EmptyStateTitle, Mode=OneWay}"
                 Description="{x:Bind ViewModel.EmptyStateDescription, Mode=OneWay}"
                 Visibility="{x:Bind ViewModel.IsEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />

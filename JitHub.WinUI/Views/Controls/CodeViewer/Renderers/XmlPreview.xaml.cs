@@ -1,9 +1,9 @@
 using System;
 using System.Threading.Tasks;
 using System.Xml.Linq;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

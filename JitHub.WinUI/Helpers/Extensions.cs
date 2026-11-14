@@ -1,4 +1,4 @@
-using JitHub.Models.LegacyGitHub;
+using JitHub.WinUI.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Globalization;

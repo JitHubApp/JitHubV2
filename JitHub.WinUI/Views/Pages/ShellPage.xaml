@@ -5,11 +5,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:app="using:JitHub.WinUI.Views.Controls.App"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-    xmlns:shell="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:shell="using:JitHub.Core.ViewModels.Shell"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     Background="{ThemeResource AppTransparentBrush}"
     Loaded="Page_Loaded"
@@ -610,7 +610,7 @@
                         Height="{ThemeResource AppDimension24}"
                         Background="{ThemeResource AppCanvasInsetBrush}"
                         CornerRadius="{ThemeResource AppRadiusCircle}">
-                        <common:CachedImage
+                        <images:CachedImage
                             SourceUrl="{x:Bind ViewModel.UserAvatarUrl, Mode=OneWay}"
                             Stretch="UniformToFill" />
                     </Border>

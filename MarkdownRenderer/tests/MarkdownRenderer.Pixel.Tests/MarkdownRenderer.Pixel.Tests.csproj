@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      Headless test project. SVG rasterization and validation helpers enter
+      through the compiled WinUI and optional feature-pack assemblies.
+      Headless Edge / Chrome is invoked as a subprocess for ground-truth
+      rasters; if no browser is found the dependent tests skip themselves.
+    -->
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>MarkdownRenderer.Pixel.Tests</RootNamespace>
+    <UseWinUI>false</UseWinUI>
+    <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" PrivateAssets="all" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="System.Drawing.Common" />
+    <PackageReference Include="Xunit.SkippableFact" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Rasterization is exercised through the compiled optional package. -->
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

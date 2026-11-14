@@ -1,14 +1,14 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common">
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images">
     <DataTemplate x:Key="DemilestonedEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <common:Avatar
+            <images:Avatar
                 AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
                 NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"

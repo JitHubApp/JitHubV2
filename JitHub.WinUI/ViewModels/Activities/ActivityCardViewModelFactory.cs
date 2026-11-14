@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
-using JitHub.Models.Activities;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Profile;
+using JitHub.WinUI.Models.Activities;
 
 namespace JitHub.WinUI.ViewModels.Activities;
 

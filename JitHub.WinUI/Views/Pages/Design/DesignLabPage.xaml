@@ -5,7 +5,10 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:emoji="using:JitHub.WinUI.Views.Controls.Emoji"
+    xmlns:comments="using:JitHub.WinUI.Views.Controls.Comments"
+    xmlns:issue="using:JitHub.WinUI.Views.Controls.Issue"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
     xmlns:conversation="using:JitHub.WinUI.Views.Controls.PullRequest.Conversation"
     xmlns:helpers="using:JitHub.WinUI.Helpers"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
@@ -281,36 +284,36 @@
                         AutomationProperties.AutomationId="ScenarioConversation"
                         Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Conversation reference" Description="Comment surfaces, labels, and reactions." />
-                        <common:MarkdownForm
+                        <markdown:MarkdownForm
                             AutomationProperties.AutomationId="DesignLabMarkdownComposer"
                             AutomationInstanceId="DesignLabMarkdownComposer"
                             EditorHeight="120"
                             HorizontalAlignment="Left"
                             Width="{ThemeResource AppDimension920}"
                             Text="Thanks for the detailed report. I can reproduce this on the current build.">
-                            <common:MarkdownForm.ActionContent>
+                            <markdown:MarkdownForm.ActionContent>
                                 <StackPanel Style="{StaticResource ActionPanel}">
                                     <Button AutomationProperties.AutomationId="DesignLabCloseIssueAction" AutomationProperties.Name="Close issue action sample" Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
                                     <Button AutomationProperties.AutomationId="DesignLabCommentAction" AutomationProperties.Name="Comment action sample" Content="Comment" Style="{StaticResource AppAccentButtonStyle}" />
                                 </StackPanel>
-                            </common:MarkdownForm.ActionContent>
-                        </common:MarkdownForm>
-                        <common:CommentBlock>
-                            <common:CommentBlock.HeaderContent>
+                            </markdown:MarkdownForm.ActionContent>
+                        </markdown:MarkdownForm>
+                        <comments:CommentBlock>
+                            <comments:CommentBlock.HeaderContent>
                                 <Grid>
                                     <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}">
                                         <Run FontWeight="{ThemeResource AppFontWeightSemibold}" Text="nerocui" />
                                         <Run Text=" commented 3h ago" />
                                     </TextBlock>
                                 </Grid>
-                            </common:CommentBlock.HeaderContent>
-                            <common:CommentBlock.BodyContent>
+                            </comments:CommentBlock.HeaderContent>
+                            <comments:CommentBlock.BodyContent>
                                 <StackPanel Padding="{ThemeResource AppPadding12}" Spacing="{ThemeResource AppGap12}">
                                     <TextBlock Text="This is a reference conversation block for screenshot proof." />
                                     <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}">
-                                        <common:RepoLabel Label="{x:Bind BugLabel, Mode=OneWay}" />
-                                        <common:RepoLabel Label="{x:Bind AccessibilityLabel, Mode=OneWay}" />
-                                        <common:RepoLabel Label="{x:Bind NeedsTriageLabel, Mode=OneWay}" />
+                                        <issue:RepoLabel Label="{x:Bind BugLabel, Mode=OneWay}" />
+                                        <issue:RepoLabel Label="{x:Bind AccessibilityLabel, Mode=OneWay}" />
+                                        <issue:RepoLabel Label="{x:Bind NeedsTriageLabel, Mode=OneWay}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                                         <Border
@@ -331,15 +334,15 @@
                                         </Border>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
-                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Plus1" ReactionCount="12" ShowReactionCount="True" Voted="True" />
-                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Heart" ReactionCount="4" ShowReactionCount="True" />
-                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Hooray" />
-                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Eyes" />
-                                        <common:EmojiPanelButton AutomationInstanceId="DesignLabReactionLauncher" ViewModel="{x:Bind DemoEmojiPanelViewModel}" />
+                                        <emoji:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Plus1" ReactionCount="12" ShowReactionCount="True" Voted="True" />
+                                        <emoji:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Heart" ReactionCount="4" ShowReactionCount="True" />
+                                        <emoji:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Hooray" />
+                                        <emoji:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Eyes" />
+                                        <emoji:EmojiPanelButton AutomationInstanceId="DesignLabReactionLauncher" ViewModel="{x:Bind DemoEmojiPanelViewModel}" />
                                     </StackPanel>
                                 </StackPanel>
-                            </common:CommentBlock.BodyContent>
-                        </common:CommentBlock>
+                            </comments:CommentBlock.BodyContent>
+                        </comments:CommentBlock>
                     </StackPanel>
                 </appcontrols:AppSurfaceCard.Child>
             </appcontrols:AppSurfaceCard>
@@ -396,7 +399,7 @@
 
             <appcontrols:AppSurfaceCard x:Name="EmptyScenarioCard" AutomationProperties.AutomationId="ScenarioEmptyState">
                 <appcontrols:AppSurfaceCard.Child>
-                    <common:EmptyStateView
+                    <appcontrols:EmptyStateView
                         AutomationProperties.AutomationId="ScenarioEmptyState"
                         Title="Nothing here yet"
                         Description="Use this surface to verify quiet empty states in both themes." />

@@ -6,14 +6,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:github="using:JitHub.Core.Models.GitHub.Commits"
+    xmlns:pullrequests="using:JitHub.Core.Models.GitHub.PullRequests"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:services="using:JitHub.Services"
+    xmlns:services="using:JitHub.Core.Services.Commits"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Commits"
     x:DataType="viewmodels:RepoCommitsPageViewModel"
     Background="{ThemeResource AppTransparentBrush}"
     mc:Ignorable="d">
@@ -59,7 +61,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <common:Avatar
+                    <images:Avatar
                         HorizontalAlignment="Left"
                         AutomationInstanceId="{x:Bind ShortSha}"
                         ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
@@ -150,7 +152,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <common:Avatar
+                        <images:Avatar
                             VerticalAlignment="Center"
                             AutomationInstanceId="{x:Bind AvatarAutomationId}"
                             ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
@@ -174,7 +176,7 @@
                             Style="{StaticResource SectionSecondaryTextBlockStyle}"
                             Text="{x:Bind CreatedAt, Converter={StaticResource TimeAgoConverter}}" />
                     </Grid>
-                    <common:MarkdownViewer
+                    <markdown:MarkdownViewer
                         HostKind="Comment"
                         AutomationInstanceId="{x:Bind MarkdownAutomationId}"
                         Grid.Row="1"
@@ -223,7 +225,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="AssociatedPullRequestTemplate" x:DataType="github:GitHubPullRequest">
+        <DataTemplate x:Key="AssociatedPullRequestTemplate" x:DataType="pullrequests:GitHubPullRequest">
             <Grid
                 MinHeight="{ThemeResource AppDimension34}"
                 Margin="{ThemeResource AppMargin0_0_0_8}"
@@ -671,7 +673,7 @@
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <common:Avatar
+                                        <images:Avatar
                                             VerticalAlignment="Center"
                                             AutomationInstanceId="{x:Bind ViewModel.SelectedCommitAuthorAutomationId, Mode=OneWay}"
                                             ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
@@ -727,7 +729,10 @@
                                         <SymbolIcon Symbol="Message" />
                                         <Button.Flyout>
                                             <Flyout Placement="BottomEdgeAlignedRight">
-                                                <Border Width="{ThemeResource AppDimension440}" Padding="{ThemeResource AppPadding16}">
+                                                <Border
+                                                    Width="{ThemeResource AppDimension440}"
+                                                    MaxHeight="{ThemeResource AppDimension520}"
+                                                    Padding="{ThemeResource AppPadding16}">
                                                     <StackPanel Spacing="{ThemeResource AppGap12}">
                                                         <TextBlock
                                                             x:Uid="PagesRepoCommitsPageTextBlockCommitMessage"
@@ -735,8 +740,10 @@
                                                             FontSize="{ThemeResource AppFontSize18}"
                                                             Foreground="{ThemeResource AppInkBrush}"
                                                             Text="Commit message" />
-                                                        <common:MarkdownViewer
+                                                        <markdown:MarkdownViewer
                                                             HostKind="Conversation"
+                                                            MaxHeight="{ThemeResource AppDimension440}"
+                                                            OwnsScrollViewport="True"
                                                             AutomationInstanceId="RepoCommitsMessage"
                                                             BaseUrl="https://github.com/"
                                                             DocumentSource="{x:Bind ViewModel.CommitBodyMarkdownSource, Mode=OneWay}"
@@ -1113,14 +1120,14 @@
                                                             </Style>
                                                         </Flyout.FlyoutPresenterStyle>
                                                         <Border Width="{ThemeResource AppDimension440}" Padding="{ThemeResource AppPadding16}">
-                                                            <common:MarkdownForm
+                                                            <markdown:MarkdownForm
                                                                 x:Name="CommitCommentForm"
                                                                 AutomationInstanceId="RepoCommitsCommentBox"
                                                                 DocumentSource="{x:Bind ViewModel.CommitCommentMarkdownSource, Mode=OneWay}"
                                                                 EditorHeight="140"
                                                                 IsEnabled="{x:Bind ViewModel.CanAddCommitComment, Mode=OneWay}"
                                                                 Text="{x:Bind ViewModel.CommentText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                                                <common:MarkdownForm.ActionContent>
+                                                                <markdown:MarkdownForm.ActionContent>
                                                                     <Button
                                                                         x:Uid="PagesRepoCommitsPageRepoCommitsCommentButton"
                                                                         MinHeight="{ThemeResource AppDimension34}"
@@ -1132,8 +1139,8 @@
                                                                         Content="Comment"
                                                                         IsEnabled="{x:Bind ViewModel.IsCommitCommentEnabled, Mode=OneWay}"
                                                                         Style="{StaticResource AppAccentButtonStyle}" />
-                                                                </common:MarkdownForm.ActionContent>
-                                                            </common:MarkdownForm>
+                                                                </markdown:MarkdownForm.ActionContent>
+                                                            </markdown:MarkdownForm>
                                                         </Border>
                                                     </Flyout>
                                                 </Button.Flyout>

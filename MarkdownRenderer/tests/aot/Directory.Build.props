@@ -1,0 +1,20 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- NativeAOT / trimmed consumers of the shipping libraries. CI publishes
+       each one for the RID matching its Platform (or passes -r explicitly). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <!-- Analyze every smoke as an AOT consumer at build time, including the
+         ones that receive PublishAot only from the command line. Implies
+         IsTrimmable and the trim, single-file and NativeAOT analyzers. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <WarningsAsErrors>$(WarningsAsErrors);$(MarkdownRendererTrimAndAotWarningsAsErrors)</WarningsAsErrors>
+  </PropertyGroup>
+</Project>

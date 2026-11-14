@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <!-- The WinUI renderer assembly (VerticalViewportIndex) brings the Windows
+         App SDK in transitively. Reference its framework runtime package so the
+         benchmark host and BenchmarkDotNet's generated child project stay
+         framework-dependent instead of defaulting to a self-contained,
+         architecture-specific Windows App SDK deployment. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <ProjectReference Include="..\..\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+  </ItemGroup>
+</Project>

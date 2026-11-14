@@ -1,5 +1,5 @@
 using System;
-using JitHub.Models;
+using JitHub.WinUI.Models.Settings;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;

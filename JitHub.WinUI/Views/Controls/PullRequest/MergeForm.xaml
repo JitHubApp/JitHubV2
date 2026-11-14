@@ -5,8 +5,8 @@
     xmlns:local="using:JitHub.WinUI.Views.Controls.PullRequest"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
-    xmlns:pullrequestviewmodels="using:JitHub.WinUI.ViewModels.PullRequestViewModels"
+    xmlns:markdown="using:JitHub.WinUI.Views.Controls.Markdown"
+    xmlns:pullrequestviewmodels="using:JitHub.WinUI.ViewModels.PullRequests"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
@@ -48,12 +48,12 @@
                     Foreground="{ThemeResource AppDangerBrush}"
                     Text="{x:Bind ViewModel.Error, Mode=OneWay}"
                     TextWrapping="Wrap" />
-            <common:MarkdownForm
+            <markdown:MarkdownForm
                     AutomationInstanceId="PullRequestMergeForm"
                     DocumentSource="{x:Bind ViewModel.MarkdownSource, Mode=OneWay}"
                     FormPadding="16 0"
                     Text="{x:Bind ViewModel.Body, Mode=TwoWay}">
-                <common:MarkdownForm.ActionContent>
+                <markdown:MarkdownForm.ActionContent>
                     <Grid
                             Background="{ThemeResource AppSolidSecondaryRush}"
                             Height="{ThemeResource AppDimension76}"
@@ -68,8 +68,8 @@
                                 VerticalContentAlignment="Center"
                                 Content="Merge pull request"/>
                     </Grid>
-                </common:MarkdownForm.ActionContent>
-            </common:MarkdownForm>
+                </markdown:MarkdownForm.ActionContent>
+            </markdown:MarkdownForm>
             <!--SubmitCommand="{x:Bind ViewModel.SubmitCommand, Mode=OneWay}"/>-->
         </StackPanel>
     </Grid>

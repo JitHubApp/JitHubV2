@@ -1,0 +1,40 @@
+using System;
+using System.Threading;
+using Microsoft.Graphics.Canvas.Text;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+
+namespace MarkdownRenderer.Layout.Internal.Text;
+
+/// <summary>
+/// The lease and helpers shared by every <see cref="SharedCanvasTextFormatStore"/>.
+/// Formats are not device resources, and callers hold leases so LRU eviction
+/// cannot dispose a descriptor while a native text-layout constructor is
+/// consuming it. Each <see cref="MarkdownRenderResources"/> owns the store its
+/// documents acquire formats from.
+/// </summary>
+internal static class SharedCanvasTextFormatCache
+{
+    internal const long DefaultBudgetBytes = 512L * 1024;
+    internal const string NativeCleanupFailureDataKey = "MarkdownRenderer.NativeCleanupFailure";
+
+    internal sealed class Lease : IDisposable
+    {
+        private SharedCanvasTextFormatEntry? _entry;
+
+        internal Lease(SharedCanvasTextFormatEntry entry) => _entry = entry;
+
+        internal CanvasTextFormat Format =>
+            Volatile.Read(ref _entry)?.Format ?? throw new ObjectDisposedException(nameof(Lease));
+
+        /// <summary>
+        /// The shared entry this lease still references, or null once released.
+        /// Narrow internal witness for native-lifetime diagnostics; never
+        /// exposed in the public renderer API.
+        /// </summary>
+        internal SharedCanvasTextFormatEntry? SharedEntry => Volatile.Read(ref _entry);
+
+        internal Exception? ReleaseForFailure() => Interlocked.Exchange(ref _entry, null)?.Release();
+
+        public void Dispose() => _ = ReleaseForFailure();
+    }
+}

@@ -1,0 +1,44 @@
+# Third-party notices
+
+`MarkdownRenderer.Svg.Resvg` contains a statically linked Rust worker built
+from resvg 0.48.1 and its Cargo dependency closure. resvg/usvg are used under
+the MIT option of their `Apache-2.0 OR MIT` license. The exact upstream source
+is commit `68b14c4c3bccdb60344c777406486b54c36ec1a4`.
+
+The resvg MIT text is included at `licenses/RESVG-LICENSE-MIT.txt`.
+`native/Cargo.lock` is the authoritative version/checksum graph and
+`NATIVE_RUST_DEPENDENCIES.json` is the generated, per-package SBOM inventory.
+`licenses/RUST-DEPENDENCY-LICENSES.txt` contains the deduplicated upstream
+license and notice files for the entire locked closure, with SHA-256 evidence
+links from every SBOM package record. That closure uses only
+repository-compatible MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, Zlib,
+Unlicense/0BSD, and Unicode-3.0 terms. Dual-licensed dependencies are consumed
+under MIT where offered.
+
+The worker includes reviewed local changes to resvg, usvg, tiny-skia and
+tiny-skia-path. Their `native/vendor/*/UPSTREAM.json` manifests retain the
+original source identities and list patched or added files. Original
+tiny-skia/tiny-skia-path code retains its BSD-3-Clause terms; the local
+bounded-rendering additions are MIT-licensed. Both notices are included in
+the generated license collection, and the combined distribution is recorded
+as `BSD-3-Clause AND MIT` rather than replacing the upstream license.
+
+The worker also includes a bounded local fork of `image-webp` 0.2.4 from
+`image-rs/image-webp` revision
+`08b57d473c90148dd4b37a075df365afc3dfcc2b`. Its upstream archive SHA-256,
+source inventory, and local patch/addition hashes are recorded in
+`native/vendor/image-webp/UPSTREAM.json`. The fork is distributed under the
+upstream `MIT OR Apache-2.0` terms and consumed under MIT; both upstream
+license texts and the separately identified local additions are included in
+the generated Rust dependency license collection. No WebP encoder or native
+libwebp implementation is included in the worker.
+
+ICC color conversion uses `moxcms` 0.8.1 and its `pxfm` 0.1.30 dependency.
+Both packages declare `BSD-3-Clause OR Apache-2.0`; this repository selects
+BSD-3-Clause for each, as recorded in the generated native SBOM. The worker
+pins their registry package checksums in `native/Cargo.lock` and enables only
+the `moxcms` `lut` feature (default features are disabled). The generated
+Rust dependency license collection retains both upstream license texts.
+
+No resvg trademark rights are granted. This product is not endorsed by the
+resvg authors.

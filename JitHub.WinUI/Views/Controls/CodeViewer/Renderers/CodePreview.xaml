@@ -5,7 +5,7 @@
     xmlns:codeviewer="using:JitHub.WinUI.Views.Controls.CodeViewer"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:models="using:JitHub.Models.CodeViewer"
+    xmlns:models="using:JitHub.Core.Models.CodeViewer"
     x:Name="Root"
     Background="{ThemeResource AppCanvasBrush}"
     d:DesignHeight="400"

@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { build, createServer } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const catalog = await readFile(path.resolve(root, '../JitHub.WinUI/Models/ThemePaletteCatalog.cs'), 'utf8');
+const catalog = await readFile(path.resolve(root, '../JitHub.Shared/Theming/ThemePaletteCatalog.cs'), 'utf8');
 const entries = [...catalog.matchAll(/(?:Resource|Generated)\(ThemePaletteIds\.(\w+),\s*"[^"]+",\s*"([^"]+)",\s*"([^"]+)",\s*(?:"[^"]+",\s*)?(?:new|Light)\(([^)]*)\),\s*(?:new|Dark)\(([^)]*)\)\)/g)];
 if (entries.length !== 20) throw new Error(`Expected 20 theme palettes; found ${entries.length}`);
 const values = (source) => [...source.matchAll(/"([^"]*)"/g)].map(match => match[1]);

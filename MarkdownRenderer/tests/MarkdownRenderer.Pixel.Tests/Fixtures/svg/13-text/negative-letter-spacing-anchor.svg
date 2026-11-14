@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="250" viewBox="0 0 256 250">
+  <g font-family="Arial" font-size="22" fill="#101010" unicode-bidi="bidi-override" letter-spacing="-20">
+    <g direction="ltr">
+      <text x="160" y="30" text-anchor="start">שלום</text>
+      <text x="160" y="65" text-anchor="middle">שלום</text>
+      <text x="160" y="100" text-anchor="end">שלום</text>
+    </g>
+    <g direction="rtl">
+      <text x="160" y="145" text-anchor="start">שלום</text>
+      <text x="160" y="180" text-anchor="middle">שלום</text>
+      <text x="160" y="215" text-anchor="end">שלום</text>
+    </g>
+  </g>
+</svg>

@@ -183,7 +183,9 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 ### Data, Cache, And Quiet Updates
 
-- Phase 0 infrastructure lives under `Services/Phase0`:
+- The shared data infrastructure lives in purpose-named folders: `Services/GitHub`
+  (transport, query service, response cache, prefetch), `Services/Images`,
+  `Services/Storage` (storage paths and the cache registry) and `Services/Telemetry`:
   - REST transport with conditional requests, ETag/Last-Modified, 304 reuse,
     rate-limit metadata, retry delay, and request priority lanes.
   - Account-partitioned stale-first query service and SQLite metadata store.
@@ -402,9 +404,12 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 ## Test And Tooling Inventory
 
-- `JitHub.WinUI.Tests`: service, policy, architecture, view-model, XAML/source
-  contracts, security, responsiveness, telemetry, performance-budget, cache,
-  pagination, and no-flash tests.
+- `JitHub.Core.Tests`: service, policy, view-model, security, telemetry,
+  performance-budget, cache, pagination, and no-flash tests of `JitHub.Core`,
+  in folders that mirror it.
+- `JitHub.WinUI.Tests`: XAML, resource, project, manifest, packaging, release
+  gate, architecture, responsiveness, and UI-automation-harness contracts of the
+  app's own files, in folders that mirror the app.
 - `JitHub.Web.Tests`: OAuth callback, one-time handoff, redirect policy,
   forwarded-header trust, expiry/replay, and backend behavior.
 - `MarkdownRenderer.Tests`: parser/layout/lifecycle/selection/accessibility/image,
@@ -654,26 +659,30 @@ before rebuilding all configurations and generating screenshots.
 .\eng\Restore-NativeAot.ps1 -Architecture arm64
 .\eng\Update-NativeAotDependencyLedger.ps1 -Verify
 
+dotnet restore JitHub.Core.Tests\JitHub.Core.Tests.csproj --locked-mode
 dotnet restore JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj --locked-mode
 dotnet restore JitHub.Web.Tests\JitHub.Web.Tests.csproj --locked-mode
 ```
 
-Do not change `JitHub.WinUI.Tests.csproj` to `AnyCPU`. Its default platform must
-remain `x64`; changing it moves output and breaks source-path contract tests.
+Do not change `JitHub.Core.Tests.csproj` or `JitHub.WinUI.Tests.csproj` to
+`AnyCPU`. Their default platform must remain `x64`; changing it moves output and
+breaks source-path contract tests.
 
 ### 3. Run Core Tests Sequentially
 
 ```powershell
+dotnet test JitHub.Core.Tests\JitHub.Core.Tests.csproj -c Debug --no-restore
+dotnet test JitHub.Core.Tests\JitHub.Core.Tests.csproj -c Release --no-restore
 dotnet test JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -c Debug --no-restore
 dotnet test JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -c Release --no-restore
 
 dotnet test JitHub.Web.Tests\JitHub.Web.Tests.csproj -c Debug --no-restore
 dotnet test JitHub.Web.Tests\JitHub.Web.Tests.csproj -c Release --no-restore
 
-dotnet test MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Debug --no-restore -p:Platform=x64
-dotnet test MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Release --no-restore -p:Platform=x64
-dotnet test MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Debug --no-restore -p:Platform=x64
-dotnet test MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Release --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Debug --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Release --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Debug --no-restore -p:Platform=x64
+dotnet test MarkdownRenderer\tests\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Release --no-restore -p:Platform=x64
 ```
 
 Run pixel tests sequentially; concurrent browser-backed pixel runs waste disk
@@ -776,15 +785,15 @@ Run the command above on a signed-in desktop before a Store release.
 
 | Concern | Principal locations |
 | --- | --- |
-| OAuth client/account partition | `JitHub.WinUI/Services/AuthService.cs`, `AuthCredentialStore.cs`, `AuthProtocolPolicy.cs`, auth tests |
+| OAuth client/account partition | `JitHub.Core/Services/Authentication/AuthService.cs`, `AuthCredentialStore.cs`, `AuthProtocolPolicy.cs`, auth tests |
 | OAuth web handoff/redirect | `JitHub.Web/Services/OAuthHandoffStore.cs`, `OAuthRedirectUriPolicy.cs`, `RedisOAuthHandoffBackend.cs`, `ForwardedHeaderTrustPolicy.cs`, `JitHub.Web.Tests` |
-| Profile mutation lifecycle | `JitHub.WinUI/Services/Profile`, `ProfilePageViewModel.cs`, profile tests |
-| File cache confinement | `JitHub.WinUI/Services/CodeViewer/RepoFileCacheService.cs`, `RepoFileCacheKey.cs`, cache tests |
+| Profile mutation lifecycle | `JitHub.Core/Services/Profile`, `ProfilePageViewModel.cs`, profile tests |
+| File cache confinement | `JitHub.Core/Services/CodeViewer/RepoFileCacheService.cs`, `RepoFileCacheKey.cs`, cache tests |
 | Shell route prefetch | `RepositoryRoutePrefetchCoordinator.cs`, `RepoCodeNavigationPreparationCache.cs`, `ShellPageViewModel.cs` |
-| Safe UI errors | `JitHub.WinUI/Helpers/UserFacingError.cs`, localized resources, presentation contract tests |
-| Progressive Issues | `JitHub.WinUI/Services/Issues`, `RepoIssuePageViewModel.cs`, Issues page/panes, progressive tests |
+| Safe UI errors | `JitHub.Core/Helpers/UserFacingError.cs`, localized resources, presentation contract tests |
+| Progressive Issues | `JitHub.Core/Services/Issues`, `RepoIssuePageViewModel.cs`, Issues page/panes, progressive tests |
 | Dependency gate | `Directory.Build.props`, all `packages.lock.json`, `eng/Verify-DependencySecurity.ps1`, Release target in `JitHub.WinUI.csproj` |
-| Responsive breakpoint | `JitHub.WinUI/Services/Layout/ShellResponsiveLayout.cs`, `AdaptiveWorkspaceLayoutTests.cs` |
+| Responsive breakpoint | `JitHub.Core/Services/Layout/ShellResponsiveLayout.cs`, `AdaptiveWorkspaceLayoutTests.cs` |
 | Performance bridge | `ProductPerformanceRouteProbe.cs`, `ShellPage.xaml`, `ShellPage.xaml.cs` |
 
 ## Commit Hygiene
