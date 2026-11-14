@@ -28,10 +28,14 @@ internal static class ThemeDefaultStyles
         const string font = "Segoe UI Variable Text";
         const string mono = "Consolas";
 
+        // The gap a paragraph leaves below itself. A list is a block in the
+        // same flow: it ends with the same gap, as HTML lists and paragraphs do.
+        var paragraphMargin = new Thickness(0, 0, 0, 8);
+
         return key switch
         {
             MarkdownElementKeys.Heading1 or MarkdownElementKeys.Heading2 or MarkdownElementKeys.Heading3 or MarkdownElementKeys.Heading4 or MarkdownElementKeys.Heading5 or MarkdownElementKeys.Heading6 => CreateHeadingStyle(key, font, colors.Foreground, colors.SecondaryForeground, semiBoldFontWeight),
-            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = new Thickness(0, 0, 0, 8), ListIndent = 22f, NestedListIndent = 0f },
+            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = paragraphMargin, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.CodeBackground, AccentBar = colors.HighContrastAccent, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.CodeBorder, BorderThickness = isHighContrast ? colors.HighContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
             MarkdownElementKeys.CodeBlockHeader or MarkdownElementKeys.CodeBlockGutter => new ElementStyle
             {
@@ -59,7 +63,7 @@ internal static class ThemeDefaultStyles
             MarkdownElementKeys.FigureCaption or MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = colors.SecondaryForeground, Background = key == MarkdownElementKeys.FigureCaption ? colors.HighContrastBackground : null, Margin = new Thickness(0, 2, 0, 8) },
             MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.CodeBackground, AccentBar = colors.HighContrastAccent, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.QuoteBar, BorderThickness = isHighContrast ? colors.HighContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
             MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = isHighContrast ? new Thickness(1, 0, 1, 0) : new Thickness(0, 0, 0, 4) },
-            MarkdownElementKeys.List => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground },
+            MarkdownElementKeys.List => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = paragraphMargin },
             MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.SecondaryForeground, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = isHighContrast ? colors.Foreground : colors.QuoteBar, Margin = new Thickness(0, 12, 0, 12) },
             MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.TableBackground, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.TableBorder, BorderThickness = isHighContrast ? colors.HighContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 8, 0, 12) },

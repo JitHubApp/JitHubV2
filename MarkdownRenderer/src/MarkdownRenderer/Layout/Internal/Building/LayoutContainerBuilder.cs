@@ -184,7 +184,52 @@ internal sealed class LayoutContainerBuilder
             }
             index++;
         }
+        CollapseTrailingItemMarginIntoListMargin(stack);
         return stack;
+    }
+
+    private void CollapseTrailingItemMarginIntoListMargin(StackBox list)
+    {
+        // The list's bottom margin is the block gap after it. A loose list's
+        // last item already ends with its paragraph's bottom margin, and CSS
+        // collapses that margin through the item into the list's own because
+        // no padding or border separates them. Keep the larger of the two so a
+        // list ends with exactly one block gap. Style sheets that opt into
+        // margin collapse keep the list geometry their profiles were pinned to.
+        if ((_context.ThemeSnapshot.LayoutPolicy & 1) != 0)
+            return;
+
+        Thickness margin = list.Margin;
+        if (!(margin.Bottom > 0) || !double.IsFinite(margin.Bottom))
+            return;
+
+        double trailingChildMargin = GetTrailingChildMargin(list);
+        if (trailingChildMargin <= 0)
+            return;
+
+        list.Margin = new Thickness(
+            margin.Left,
+            margin.Top,
+            margin.Right,
+            Math.Max(0, margin.Bottom - trailingChildMargin));
+    }
+
+    // The bottom margin that ends a stack's content and reaches its edge
+    // without crossing padding or a border.
+    private static double GetTrailingChildMargin(StackBox stack)
+        => stack.Children.Count == 0 ? 0 : GetOuterTrailingMargin(stack.Children[^1]);
+
+    private static double GetOuterTrailingMargin(BlockBox block)
+    {
+        double bottom = block.Margin.Bottom;
+        double trailing = double.IsFinite(bottom) ? Math.Max(0, bottom) : 0;
+        return block switch
+        {
+            ListItemBox item => trailing + GetOuterTrailingMargin(item.Content),
+            StackBox stack when stack.ContentPadding.Bottom <= 0 && stack.BorderThickness <= 0
+                => trailing + GetTrailingChildMargin(stack),
+            _ => trailing,
+        };
     }
 
     private ListItemBox BuildDefaultListItem(
@@ -270,6 +315,7 @@ internal sealed class LayoutContainerBuilder
         foreach (Block child in container)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
+            htmlScopes?.CloseParagraphBeforeMarkdownBlock(child);
             bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
             SafeHtmlAlignment alignmentAtBlockEntry = htmlScopes?.CurrentAlignment ?? SafeHtmlAlignment.Inherit;
             int? inlineFlowScopeIdAtBlockEntry = htmlScopes?.CurrentInlineFlowScopeId;

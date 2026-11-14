@@ -150,6 +150,8 @@
     <StaticResource x:Key="MarkdownRenderer.Quote.FontSize" ResourceKey="AppMarkdownBodyFontSize" />
     <StaticResource x:Key="MarkdownRenderer.Quote.Padding" ResourceKey="AppMarkdownQuotePadding" />
     <StaticResource x:Key="MarkdownRenderer.Quote.Margin" ResourceKey="AppMarkdownQuoteMargin" />
+    <!-- A list ends with the same gap as a standalone paragraph, as on GitHub. -->
+    <StaticResource x:Key="MarkdownRenderer.List.Margin" ResourceKey="AppMarkdownStandaloneParagraphMargin" />
     <StaticResource x:Key="MarkdownRenderer.ListMarker.ForegroundBrush" ResourceKey="AppInkSubtleBrush" />
     <StaticResource x:Key="MarkdownRenderer.ListMarker.FontFamily" ResourceKey="AppBodyFontFamily" />
     <StaticResource x:Key="MarkdownRenderer.ListMarker.FontSize" ResourceKey="AppMarkdownBodyFontSize" />

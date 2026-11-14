@@ -293,7 +293,7 @@ internal sealed class ThemeSnapshot
         string? language,
         string? state)
     {
-        ElementStyle mandatoryStyle = GetBaseStyle(elementKey);
+        ElementStyle mandatoryStyle = GetBaseStyle(elementKey, contextKeys);
         ElementStyle style = ApplyOverride(mandatoryStyle, elementKey);
 
         if (contextKeys is not null)
@@ -399,9 +399,26 @@ internal sealed class ThemeSnapshot
         return depth;
     }
 
-    private ElementStyle GetBaseStyle(string elementKey)
+    private ElementStyle GetBaseStyle(string elementKey, IReadOnlyList<string>? contextKeys)
     {
-        if (_styles.TryGetValue(elementKey, out var s)) return s;
+        if (_styles.TryGetValue(elementKey, out var s))
+        {
+            // A list's block gap belongs to the outermost list. As in HTML's
+            // user-agent style sheet, a list nested in another list's item has
+            // no vertical margin of its own, so it cannot widen the gap between
+            // its parent's items. Theme overrides and style-sheet rules apply
+            // on top and can still give nested lists a margin.
+            if (elementKey == MarkdownElementKeys.List && GetListNestingDepth(contextKeys) > 1)
+            {
+                Thickness margin = s.Margin;
+                return ApplyOverride(s, new ElementStyleOverride
+                {
+                    Margin = new Thickness(margin.Left, 0, margin.Right, 0),
+                });
+            }
+
+            return s;
+        }
         // Lists are structural containers, not body paragraphs. Sparse custom
         // snapshots historically lay them out with zero margin, so do not let
         // the generic Body fallback introduce paragraph margins at the list edge.

@@ -249,6 +249,111 @@ public sealed class SafeHtmlAlignmentScopeTests
     }
 
     [Fact]
+    public void TypoedParagraphClosersInAHeaderDoNotCenterTheRestOfTheDocument()
+    {
+        // mermaid-js/mermaid's README header, verbatim: the two bare `<p>` lines
+        // were meant to be `</p>`. HTML closes an open paragraph when another
+        // paragraph starts, so only the header itself is centered.
+        const string source = """
+            <p align="center">
+            <img src="https://raw.githubusercontent.com/mermaid-js/mermaid/develop/docs/public/favicon.svg" height="150">
+            </p>
+            <h1 align="center">
+            Mermaid
+            </h1>
+            <p align="center">
+            Generate diagrams from Markdown-like text.
+            <p>
+            <p align="center">
+              <a href="https://www.npmjs.com/package/mermaid"><img src="https://img.shields.io/npm/v/mermaid?color=ff3670&label="></a>
+            <p>
+
+            <p align="center">
+            <a href="https://mermaid.ai/live/"><b>Live Editor!</b></a>
+            </p>
+
+            <br>
+            <br>
+
+            [![NPM](https://img.shields.io/npm/v/mermaid)](https://www.npmjs.com/package/mermaid)
+
+            ## About
+
+            Mermaid is a JavaScript-based diagramming and charting tool.
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox tagline = FindTextBox(snapshot, "Generate diagrams from Markdown-like text.");
+        InlineContainerBox liveEditor = FindTextBox(snapshot, "Live Editor!");
+        InlineContainerBox badge = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.Runs.OfType<InlineImageRun>()
+                .Any(static image => image.Url == "https://img.shields.io/npm/v/mermaid"));
+        InlineContainerBox heading = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.Heading2 &&
+                          box.Runs.Any(static run => run.Text == "About"));
+        InlineContainerBox body = FindTextBox(snapshot, "Mermaid is a JavaScript-based diagramming and charting tool.");
+
+        Assert.Equal(CanvasHorizontalAlignment.Center, tagline.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Center, liveEditor.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, badge.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, heading.TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, body.TextAlignment);
+    }
+
+    [Fact]
+    public void UnclosedCenteredParagraphEndsBeforeTheFollowingMarkdownBlocks()
+    {
+        // Every Markdown block is an HTML block-level element, which closes an
+        // open paragraph, so an unclosed `<p align>` cannot reach past its block.
+        const string source = """
+            <p align="center">
+            Centered tagline
+
+            ## Heading after the paragraph
+
+            Body paragraph.
+
+            - List item
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+
+        Assert.Equal(CanvasHorizontalAlignment.Center, FindTextBox(snapshot, "Centered tagline").TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, FindTextBox(snapshot, "Heading after the paragraph").TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, FindTextBox(snapshot, "Body paragraph.").TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, FindTextBox(snapshot, "List item").TextAlignment);
+    }
+
+    [Fact]
+    public void CenteredDivKeepsCenteringMarkdownAfterAnUnclosedParagraphInsideIt()
+    {
+        // The implicit paragraph closure ends only the paragraph: the div that
+        // contains it, and its Markdown, stay centered until `</div>`.
+        const string source = """
+            <div align="center">
+            <p align="right">
+            Right tagline
+
+            ## Centered heading in the div
+
+            Centered paragraph in the div.
+
+            </div>
+
+            Outside paragraph.
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+
+        Assert.Equal(CanvasHorizontalAlignment.Right, FindTextBox(snapshot, "Right tagline").TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Center, FindTextBox(snapshot, "Centered heading in the div").TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Center, FindTextBox(snapshot, "Centered paragraph in the div.").TextAlignment);
+        Assert.Equal(CanvasHorizontalAlignment.Left, FindTextBox(snapshot, "Outside paragraph.").TextAlignment);
+    }
+
+    [Fact]
     public void PersistentCenteredHtmlBlockKeepsNestedRightHeadingAndCenteredSibling()
     {
         const string source = """
@@ -269,5 +374,26 @@ public sealed class SafeHtmlAlignmentScopeTests
 
         Assert.Equal(CanvasHorizontalAlignment.Right, heading.TextAlignment);
         Assert.Equal(CanvasHorizontalAlignment.Center, paragraph.TextAlignment);
+    }
+
+    private static InlineContainerBox FindTextBox(LayoutSnapshot snapshot, string text) =>
+        Assert.Single(
+            FlattenBoxesAndListItems(snapshot.Blocks).OfType<InlineContainerBox>(),
+            box => string.Concat(box.Runs.Select(static run => run.Text)).Trim() == text);
+
+    private static IEnumerable<BlockBox> FlattenBoxesAndListItems(IEnumerable<BlockBox> blocks)
+    {
+        foreach (BlockBox block in blocks)
+        {
+            yield return block;
+            IEnumerable<BlockBox> children = block switch
+            {
+                ListItemBox item => FlattenBoxesAndListItems(item.Content.Children),
+                StackBox stack => FlattenBoxesAndListItems(stack.Children),
+                _ => [],
+            };
+            foreach (BlockBox child in children)
+                yield return child;
+        }
     }
 }

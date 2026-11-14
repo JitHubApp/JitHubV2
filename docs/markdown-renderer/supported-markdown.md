@@ -119,6 +119,13 @@ HTML scopes. Nesting counts actual elements, not a synthetic document root.
 Over-budget content emits a localized omission notice. These rendering limits
 do not replace the engine's overall Markdown source and parsing limits.
 
+Cross-block scopes follow HTML's paragraph rules. A `<div>`, `<center>` or
+`<details>` opened in one HTML block contains the Markdown that follows until
+its closing tag, so `<div align="center">` centers the Markdown inside it. A
+`<p>` closes as soon as another block starts, whether that is a block-level
+HTML tag or any Markdown block, so an unclosed `<p align="center">` aligns only
+its own HTML content, as it does on GitHub.
+
 ## Fallback policy
 
 Unsupported, disabled, unavailable, timed-out, or invalid optional content must

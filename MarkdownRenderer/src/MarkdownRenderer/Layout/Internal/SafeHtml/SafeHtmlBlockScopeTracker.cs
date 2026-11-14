@@ -159,6 +159,14 @@ internal sealed class SafeHtmlBlockScopeTracker
                 continue;
             }
 
+            if (tag.Kind is not (SafeHtmlTagKind.Opening or SafeHtmlTagKind.SelfClosing))
+            {
+                continue;
+            }
+
+            if (SafeHtmlElementCategories.ClosesOpenParagraph(tag.Name))
+                CloseOpenParagraph();
+
             if (tag.Kind != SafeHtmlTagKind.Opening)
             {
                 continue;
@@ -284,6 +292,36 @@ internal sealed class SafeHtmlBlockScopeTracker
             if (BudgetExceeded)
                 return;
         }
+    }
+
+    /// <summary>
+    /// Closes an open paragraph before a Markdown block. Every rendered
+    /// Markdown block is an HTML block-level element (p, h1-h6, ul, ol, pre,
+    /// blockquote, table, hr), and starting one closes an open paragraph, so a
+    /// paragraph scope left open by an earlier HTML block, such as a
+    /// <c>&lt;p&gt;</c> typed where <c>&lt;/p&gt;</c> was meant, cannot align
+    /// the Markdown after it. Div, center and details scopes are not closed:
+    /// they legitimately contain Markdown until their closing tag.
+    /// </summary>
+    internal void CloseParagraphBeforeMarkdownBlock(Block block)
+    {
+        // Raw HTML is tracked tag by tag; link reference definitions render
+        // nothing, so they leave the open paragraph as it is.
+        if (block is HtmlBlock or LinkReferenceDefinitionGroup)
+            return;
+
+        CloseOpenParagraph();
+    }
+
+    // HTML closes an open paragraph when a paragraph-closing block starts.
+    // Each tracked scope other than a paragraph is itself such a block start,
+    // so an open paragraph is always the innermost tracked scope. Button-scope
+    // boundaries such as table cells and buttons are not tracked here; the
+    // safe-HTML tree builder applies them inside one HTML block.
+    private void CloseOpenParagraph()
+    {
+        if (_scopes.Count > 0 && _scopes[^1].Name.Equals("p", StringComparison.OrdinalIgnoreCase))
+            _scopes.RemoveAt(_scopes.Count - 1);
     }
 
     private bool ExceedBudget()

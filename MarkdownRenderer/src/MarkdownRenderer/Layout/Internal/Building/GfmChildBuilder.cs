@@ -41,6 +41,7 @@ internal static class GfmChildBuilder
         foreach (Block child in container)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
+            htmlScopes?.CloseParagraphBeforeMarkdownBlock(child);
             bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
             SafeHtmlAlignment alignmentAtBlockEntry = htmlScopes?.CurrentAlignment ?? SafeHtmlAlignment.Inherit;
             if (alignmentAtBlockEntry == SafeHtmlAlignment.Inherit)

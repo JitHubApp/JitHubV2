@@ -70,6 +70,7 @@ internal sealed class LayoutBlockBuilder
         foreach (var b in document)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            htmlScopes?.CloseParagraphBeforeMarkdownBlock(b);
             bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
             SafeHtmlAlignment alignmentAtBlockEntry = htmlScopes?.CurrentAlignment ?? SafeHtmlAlignment.Inherit;
             int? inlineFlowScopeIdAtBlockEntry = htmlScopes?.CurrentInlineFlowScopeId;
