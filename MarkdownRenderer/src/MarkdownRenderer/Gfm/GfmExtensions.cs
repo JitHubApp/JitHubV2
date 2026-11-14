@@ -8,6 +8,7 @@ using Markdig.Extensions.Figures;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
@@ -76,7 +77,7 @@ public static class GfmExtensions
 
         registry.ConfigurePipeline(p =>
         {
-            p.UsePipeTables();
+            PipeTableDelimiterLiteralExtension.UsePipeTables(p);
             p.UseTaskLists();
             p.UseAutoLinks();
             p.UseEmphasisExtras(EmphasisExtraOptions.Strikethrough);

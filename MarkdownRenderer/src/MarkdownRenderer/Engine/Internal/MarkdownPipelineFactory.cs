@@ -4,6 +4,7 @@ using Markdig;
 using Markdig.Extensions.EmphasisExtras;
 using Markdig.Extensions.Tables;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Gfm.Internal.Compatibility;
 
 namespace MarkdownRenderer.Engine.Internal;
 
@@ -22,7 +23,7 @@ internal static class MarkdownPipelineFactory
 
         if ((features & MarkdownProfileFeatures.PipeTables) != 0)
         {
-            builder.UsePipeTables(new PipeTableOptions
+            PipeTableDelimiterLiteralExtension.UsePipeTables(builder, new PipeTableOptions
             {
                 UseHeaderForColumnCount = true,
             });
