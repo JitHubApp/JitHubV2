@@ -293,8 +293,11 @@ internal sealed class ThemeSnapshot
         string? language,
         string? state)
     {
-        ElementStyle mandatoryStyle = GetBaseStyle(elementKey, contextKeys);
-        ElementStyle style = ApplyOverride(mandatoryStyle, elementKey);
+        ElementStyle mandatoryStyle = GetBaseStyle(elementKey);
+        ElementStyle style = ApplyNestedListMargin(
+            ApplyOverride(mandatoryStyle, elementKey),
+            elementKey,
+            contextKeys);
 
         if (contextKeys is not null)
         {
@@ -399,26 +402,40 @@ internal sealed class ThemeSnapshot
         return depth;
     }
 
-    private ElementStyle GetBaseStyle(string elementKey, IReadOnlyList<string>? contextKeys)
+    /// <summary>
+    /// A list's block gap belongs to the outermost list. As on GitHub
+    /// (<c>ul ul, ol ol, ul ol, ol ul { margin-top: 0; margin-bottom: 0 }</c>),
+    /// a list nested in another list's item has no vertical margin, so it
+    /// cannot widen the gap between its parent's items.
+    /// </summary>
+    /// <remarks>
+    /// This runs after the role's base style, which already holds its host
+    /// resources, and after its plain theme override: both describe the list
+    /// block gap. Context overrides, alias overrides and style-sheet rules run
+    /// later, so a rule aimed at nested lists can still give them a margin.
+    /// </remarks>
+    private static ElementStyle ApplyNestedListMargin(
+        ElementStyle style,
+        string elementKey,
+        IReadOnlyList<string>? contextKeys)
+    {
+        if (elementKey != MarkdownElementKeys.List || GetListNestingDepth(contextKeys) <= 1)
+            return style;
+
+        Thickness margin = style.Margin;
+        if (margin.Top == 0 && margin.Bottom == 0)
+            return style;
+
+        return ApplyOverride(style, new ElementStyleOverride
+        {
+            Margin = new Thickness(margin.Left, 0, margin.Right, 0),
+        });
+    }
+
+    private ElementStyle GetBaseStyle(string elementKey)
     {
         if (_styles.TryGetValue(elementKey, out var s))
-        {
-            // A list's block gap belongs to the outermost list. As in HTML's
-            // user-agent style sheet, a list nested in another list's item has
-            // no vertical margin of its own, so it cannot widen the gap between
-            // its parent's items. Theme overrides and style-sheet rules apply
-            // on top and can still give nested lists a margin.
-            if (elementKey == MarkdownElementKeys.List && GetListNestingDepth(contextKeys) > 1)
-            {
-                Thickness margin = s.Margin;
-                return ApplyOverride(s, new ElementStyleOverride
-                {
-                    Margin = new Thickness(margin.Left, 0, margin.Right, 0),
-                });
-            }
-
             return s;
-        }
         // Lists are structural containers, not body paragraphs. Sparse custom
         // snapshots historically lay them out with zero margin, so do not let
         // the generic Body fallback introduce paragraph margins at the list edge.

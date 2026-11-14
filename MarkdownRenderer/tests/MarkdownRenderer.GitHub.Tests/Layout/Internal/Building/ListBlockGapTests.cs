@@ -31,22 +31,43 @@ public sealed class ListBlockGapTests
 {
     private const float LayoutWidth = 600;
 
-    public static TheoryData<bool> Themes => new() { false, true };
+    /// <summary>Where a customized paragraph and list gap comes from.</summary>
+    public enum Customization
+    {
+        /// <summary>The built-in Fluent role styles.</summary>
+        None,
 
-    public static TheoryData<bool, string, string> ListShapes
+        /// <summary>
+        /// Host resources such as <c>MarkdownRenderer.List.Margin</c>, which
+        /// the theme resolver folds into each role's base style.
+        /// </summary>
+        HostResources,
+
+        /// <summary><c>MarkdownTheme.Overrides</c> entries for the roles.</summary>
+        ThemeOverrides,
+    }
+
+    public static TheoryData<Customization> Themes => new()
+    {
+        Customization.None,
+        Customization.HostResources,
+        Customization.ThemeOverrides,
+    };
+
+    public static TheoryData<Customization, string, string> ListShapes
     {
         get
         {
-            var data = new TheoryData<bool, string, string>();
-            foreach (bool hostTokens in new[] { false, true })
+            var data = new TheoryData<Customization, string, string>();
+            foreach (Customization customization in Enum.GetValues<Customization>())
             {
-                data.Add(hostTokens, "- First item\n- Second item", "Second item");
-                data.Add(hostTokens, "1. First item\n2. Second item", "Second item");
-                data.Add(hostTokens, "- [ ] Open task\n- [x] Done task", "Done task");
-                data.Add(hostTokens, "- First item\n\n- Loose item", "Loose item");
-                data.Add(hostTokens, "- Outer item\n  - Nested item\n  - Nested last", "Nested last");
-                data.Add(hostTokens, "- Outer item\n\n  - Nested loose\n\n  - Nested loose last", "Nested loose last");
-                data.Add(hostTokens, "- Outer item\n  1. Nested ordered\n  2. Nested ordered last", "Nested ordered last");
+                data.Add(customization, "- First item\n- Second item", "Second item");
+                data.Add(customization, "1. First item\n2. Second item", "Second item");
+                data.Add(customization, "- [ ] Open task\n- [x] Done task", "Done task");
+                data.Add(customization, "- First item\n\n- Loose item", "Loose item");
+                data.Add(customization, "- Outer item\n  - Nested item\n  - Nested last", "Nested last");
+                data.Add(customization, "- Outer item\n\n  - Nested loose\n\n  - Nested loose last", "Nested loose last");
+                data.Add(customization, "- Outer item\n  1. Nested ordered\n  2. Nested ordered last", "Nested ordered last");
             }
 
             return data;
@@ -55,7 +76,7 @@ public sealed class ListBlockGapTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void ParagraphAndHeadingAfterAListUseTheirNormalBlockGap(bool hostTokens)
+    public void ParagraphAndHeadingAfterAListUseTheirNormalBlockGap(Customization customization)
     {
         const string source =
             "Paragraph one.\n\n" +
@@ -69,7 +90,7 @@ public sealed class ListBlockGapTests
             "Paragraph three.\n\n" +
             "## Heading after a paragraph";
 
-        using LayoutSnapshot snapshot = Build(source, hostTokens);
+        using LayoutSnapshot snapshot = Build(source, customization);
 
         double paragraphGap = Gap(snapshot, "Paragraph one.", "Paragraph two.");
         double headingGap = Gap(snapshot, "Paragraph three.", "Heading after a paragraph");
@@ -82,13 +103,13 @@ public sealed class ListBlockGapTests
     [Theory]
     [MemberData(nameof(ListShapes))]
     public void EveryListShapeEndsWithExactlyOneParagraphGap(
-        bool hostTokens,
+        Customization customization,
         string list,
         string lastItemText)
     {
         string source = "Paragraph one.\n\nParagraph two.\n\n" + list + "\n\nAfter the list.";
 
-        using LayoutSnapshot snapshot = Build(source, hostTokens);
+        using LayoutSnapshot snapshot = Build(source, customization);
 
         AssertClose(
             Gap(snapshot, "Paragraph one.", "Paragraph two."),
@@ -97,7 +118,7 @@ public sealed class ListBlockGapTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void NestedTightListsAddNoGapInsideTheirParentList(bool hostTokens)
+    public void NestedTightListsAddNoGapInsideTheirParentList(Customization customization)
     {
         const string source =
             "- Outer one\n" +
@@ -105,7 +126,7 @@ public sealed class ListBlockGapTests
             "  - Inner two\n" +
             "- Outer two";
 
-        using LayoutSnapshot snapshot = Build(source, hostTokens);
+        using LayoutSnapshot snapshot = Build(source, customization);
         StackBox outer = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
         StackBox inner = Assert.Single(
             Assert.IsType<ListItemBox>(outer.Children[0]).Content.Children.OfType<StackBox>());
@@ -118,7 +139,29 @@ public sealed class ListBlockGapTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void ListInsideABlockQuoteUsesTheQuoteParagraphGap(bool hostTokens)
+    public void NestedListStyleSheetRuleCanStillGiveNestedListsAGap(Customization customization)
+    {
+        const string source =
+            "- Outer one\n" +
+            "  - Inner one\n" +
+            "  - Inner two\n" +
+            "- Outer two";
+        var nestedListGap = new MarkdownStyleRule(
+            new MarkdownStyleSelector(MarkdownStyleRole.List, minimumNestingDepth: 2),
+            new ElementStyleOverride { Margin = new Thickness(0, 4, 0, 6) });
+
+        using LayoutSnapshot snapshot = Build(source, customization, nestedListGap);
+        StackBox outer = Assert.IsType<StackBox>(Assert.Single(snapshot.Blocks));
+        StackBox inner = Assert.Single(
+            Assert.IsType<ListItemBox>(outer.Children[0]).Content.Children.OfType<StackBox>());
+
+        Assert.Equal(4, inner.Margin.Top);
+        Assert.Equal(6, inner.Margin.Bottom);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ListInsideABlockQuoteUsesTheQuoteParagraphGap(Customization customization)
     {
         const string source =
             "> Quote one.\n" +
@@ -129,7 +172,7 @@ public sealed class ListBlockGapTests
             ">\n" +
             "> After the quoted list.";
 
-        using LayoutSnapshot snapshot = Build(source, hostTokens);
+        using LayoutSnapshot snapshot = Build(source, customization);
 
         AssertClose(
             Gap(snapshot, "Quote one.", "Quote two."),
@@ -138,10 +181,10 @@ public sealed class ListBlockGapTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void ListEndingABlockQuoteLeavesTheSameTrailingSpaceAsAParagraph(bool hostTokens)
+    public void ListEndingABlockQuoteLeavesTheSameTrailingSpaceAsAParagraph(Customization customization)
     {
-        using LayoutSnapshot paragraphQuote = Build("> Quoted paragraph.", hostTokens);
-        using LayoutSnapshot listQuote = Build("> - Quoted item\n> - Quoted last", hostTokens);
+        using LayoutSnapshot paragraphQuote = Build("> Quoted paragraph.", customization);
+        using LayoutSnapshot listQuote = Build("> - Quoted item\n> - Quoted last", customization);
 
         StackBox paragraphStack = Assert.IsType<StackBox>(Assert.Single(paragraphQuote.Blocks));
         StackBox listStack = Assert.IsType<StackBox>(Assert.Single(listQuote.Blocks));
@@ -153,11 +196,11 @@ public sealed class ListBlockGapTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void ListEndingTheDocumentLeavesTheSameTrailingSpaceAsAParagraph(bool hostTokens)
+    public void ListEndingTheDocumentLeavesTheSameTrailingSpaceAsAParagraph(Customization customization)
     {
-        using LayoutSnapshot paragraphDocument = Build("Last paragraph.", hostTokens);
-        using LayoutSnapshot tightDocument = Build("- Item\n- Last item", hostTokens);
-        using LayoutSnapshot looseDocument = Build("- Item\n\n- Last loose item", hostTokens);
+        using LayoutSnapshot paragraphDocument = Build("Last paragraph.", customization);
+        using LayoutSnapshot tightDocument = Build("- Item\n- Last item", customization);
+        using LayoutSnapshot looseDocument = Build("- Item\n\n- Last loose item", customization);
 
         double paragraphTrailing = paragraphDocument.Size.Height -
             TextBottom(paragraphDocument, "Last paragraph.");
@@ -212,11 +255,14 @@ public sealed class ListBlockGapTests
 
     /// <summary>
     /// Lays out <paramref name="source"/> with the built-in Fluent role styles.
-    /// With <paramref name="hostTokens"/>, the paragraph and list margins come
-    /// from a host's 16-DIP paragraph-gap resources and paragraphs inside lists
-    /// use a compact 8-DIP style-sheet margin, the way an app customizes them.
+    /// A customized build gives paragraphs and lists a 16-DIP paragraph gap,
+    /// from host resources or theme overrides, and gives paragraphs inside
+    /// lists a compact 8-DIP style-sheet margin, the way an app customizes them.
     /// </summary>
-    private static LayoutSnapshot Build(string source, bool hostTokens)
+    private static LayoutSnapshot Build(
+        string source,
+        Customization customization,
+        params MarkdownStyleRule[] extraRules)
     {
         MarkdownExtensionRegistry registry = new MarkdownExtensionRegistry().ConfigureGfmRegistry();
         Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(source, registry.BuildPipeline());
@@ -246,24 +292,34 @@ public sealed class ListBlockGapTests
                 systemTheme: null);
         }
 
-        MarkdownStyleSheet? styleSheet = null;
-        if (hostTokens)
+        var overrides = new Dictionary<string, ElementStyleOverride>(StringComparer.Ordinal);
+        var paragraphGap = new ElementStyleOverride { Margin = new Thickness(0, 0, 0, 16) };
+        switch (customization)
         {
-            var paragraphGap = new ElementStyleOverride { Margin = new Thickness(0, 0, 0, 16) };
-            styles[MarkdownElementKeys.Body] = ThemeSnapshot.ApplyOverride(styles[MarkdownElementKeys.Body], paragraphGap);
-            styles[MarkdownElementKeys.List] = ThemeSnapshot.ApplyOverride(styles[MarkdownElementKeys.List], paragraphGap);
-            styleSheet = new MarkdownStyleSheet(
-            [
-                new MarkdownStyleRule(
-                    new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1),
-                    new ElementStyleOverride { Margin = new Thickness(0, 0, 0, 8) }),
-            ]);
+            case Customization.HostResources:
+                styles[MarkdownElementKeys.Body] = ThemeSnapshot.ApplyOverride(styles[MarkdownElementKeys.Body], paragraphGap);
+                styles[MarkdownElementKeys.List] = ThemeSnapshot.ApplyOverride(styles[MarkdownElementKeys.List], paragraphGap);
+                break;
+            case Customization.ThemeOverrides:
+                overrides[MarkdownElementKeys.Body] = paragraphGap;
+                overrides[MarkdownElementKeys.List] = paragraphGap;
+                break;
         }
 
+        var rules = new List<MarkdownStyleRule>();
+        if (customization != Customization.None)
+        {
+            rules.Add(new MarkdownStyleRule(
+                new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1),
+                new ElementStyleOverride { Margin = new Thickness(0, 0, 0, 8) }));
+        }
+
+        rules.AddRange(extraRules);
+        MarkdownStyleSheet? styleSheet = rules.Count == 0 ? null : new MarkdownStyleSheet(rules);
         Color transparent = Color.FromArgb(0, 0, 0, 0);
         var theme = new ThemeSnapshot(
             styles,
-            new Dictionary<string, ElementStyleOverride>(StringComparer.Ordinal),
+            overrides,
             transparent,
             transparent,
             transparent,

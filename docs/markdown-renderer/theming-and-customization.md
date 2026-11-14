@@ -34,7 +34,9 @@ Core keys:
 - `Strikethrough`
 - `List`: the list block. Its bottom margin is the gap after the list and
   defaults to the paragraph gap. A list nested in a list item has no vertical
-  margin of its own unless an override or style-sheet rule sets one.
+  margin, even when the `List` resource or theme override sets one; a
+  style-sheet rule for `List` with `minimumNestingDepth: 2` can still give
+  nested lists a margin.
 - `ListMarker`
 - `ThematicBreak`
 - `ImageCaption`
