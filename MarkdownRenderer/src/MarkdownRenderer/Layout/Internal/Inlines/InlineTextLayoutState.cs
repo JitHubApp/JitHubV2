@@ -166,6 +166,7 @@ internal struct InlineTextLayoutState
                     candidateLayout,
                     inverseMetricScale: inlineMetricScale,
                     maxInlineWidth: layoutWidth);
+                InlineGluedTokenWrapping.Apply(box, candidateLayout);
                 replacementScriptBaselineGeometry = InlineScriptBaselineLayout.BuildScriptBaselineGeometry(box, style.FontSize);
                 if (box.Context.ThemeSnapshot.MiddleAlignInlineImages &&
                     box.InlineImageEntries is { Count: > 0 })

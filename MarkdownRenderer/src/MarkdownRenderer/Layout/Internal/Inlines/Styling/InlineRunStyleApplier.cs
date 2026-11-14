@@ -16,9 +16,33 @@ internal static class InlineRunStyleApplier
 {
     internal static void ApplyRunStyles(InlineContainerBox box, CanvasTextLayout layout, bool applyColors, bool observeCancellation = true)
     {
+        CodeTextTypography? codeTypography = null;
+        try
+        {
+            ApplyRunStyles(box, layout, applyColors, observeCancellation, ref codeTypography);
+        }
+        finally
+        {
+            codeTypography?.Dispose();
+        }
+    }
+
+    // Code text is styled here, in the one pass every painted, selection and
+    // intrinsic layout of an inline container runs, so each code surface
+    // draws its characters as typed: code-block chunks (fenced, indented,
+    // syntax-highlighted and safe-HTML <pre>), inline code spans and the
+    // safe-HTML <code>, <kbd> and <samp> runs, including code inside links.
+    private static void ApplyRunStyles(
+        InlineContainerBox box,
+        CanvasTextLayout layout,
+        bool applyColors,
+        bool observeCancellation,
+        ref CodeTextTypography? codeTypography)
+    {
         var containerStyle = box.GetContainerStyle();
         string containerFontFamily = CanvasFontFamilyReference.ForCanvas(
             containerStyle.FontFamily);
+        bool codeContainer = box.ElementKey == MarkdownElementKeys.CodeBlock;
         List<InlineCodePaddingRange>? inlineCodePaddingRanges = null;
         int cumulative = 0;
         foreach (var run in box.RunList)
@@ -49,6 +73,8 @@ internal static class InlineRunStyleApplier
                     containerFontFamily,
                     applyColors);
             }
+            if (!codeContainer && IsCodeRun(run))
+                (codeTypography ??= new CodeTextTypography()).Apply(layout, cumulative, len);
             if (run is CodeInlineRun)
             {
                 ElementStyle codeStyle = appliedRunStyle ?? box.GetRunStyle(run);
@@ -68,14 +94,23 @@ internal static class InlineRunStyleApplier
                     cumulative,
                     applyColors,
                     observeCancellation,
-                    ref inlineCodePaddingRanges);
+                    ref inlineCodePaddingRanges,
+                    ref codeTypography);
             }
 
             cumulative += len;
         }
 
+        if (codeContainer)
+            (codeTypography ??= new CodeTextTypography()).Apply(layout, 0, cumulative);
+
         InlineCodePaddingLayout.ApplyInlineCodePaddingRanges(box, layout, inlineCodePaddingRanges, observeCancellation);
     }
+
+    private static bool IsCodeRun(InlineRun run)
+        => run is CodeInlineRun ||
+            run.ElementKey is MarkdownElementKeys.CodeInline or MarkdownElementKeys.CodeBlock ||
+            run.HasStyleModifier(MarkdownElementKeys.CodeInline);
 
     private static void ApplyLinkSpanStyles(
         InlineContainerBox box,
@@ -86,7 +121,8 @@ internal static class InlineRunStyleApplier
         int cumulative,
         bool applyColors,
         bool observeCancellation,
-        ref List<InlineCodePaddingRange>? inlineCodePaddingRanges)
+        ref List<InlineCodePaddingRange>? inlineCodePaddingRanges,
+        ref CodeTextTypography? codeTypography)
     {
         // The full link run has already been styled above. Compare
         // each nested range with that actual base, not the paragraph
@@ -114,6 +150,8 @@ internal static class InlineRunStyleApplier
                 linkStyle,
                 linkFontFamily,
                 applyColors);
+            if (!IsCodeRun(styledLink) && InlineCodePaddingLayout.HasInlineCodeStylePath(span.Path))
+                (codeTypography ??= new CodeTextTypography()).Apply(layout, spanStart, span.Length);
         }
 
         InlineCodePaddingLayout.QueueLinkInlineCodePadding(

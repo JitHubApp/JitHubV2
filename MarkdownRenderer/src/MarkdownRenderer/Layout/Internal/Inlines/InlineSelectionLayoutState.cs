@@ -120,6 +120,7 @@ internal struct InlineSelectionLayoutState
                 inverseMetricScale: inlineMetricScale,
                 maxInlineWidth: selectionLayoutWidth,
                 computeInlineImageMetrics: false);
+            InlineGluedTokenWrapping.Apply(box, candidateLayout, observeCancellation: false);
         }
         catch (Exception exception)
         {
