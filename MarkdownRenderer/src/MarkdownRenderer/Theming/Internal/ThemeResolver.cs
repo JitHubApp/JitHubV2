@@ -16,6 +16,13 @@ namespace MarkdownRenderer.Theming.Internal;
 /// </summary>
 internal sealed class ThemeResolver
 {
+    /// <summary>
+    /// The built-in style roles in the fixed order of the style-role demand
+    /// mask: bit <c>i</c> of a demand mask stands for the role at index
+    /// <c>i</c>, and <c>MarkdownStyleRoleDemand</c> names the same bits.
+    /// </summary>
+    internal static IReadOnlyList<string> BuiltInStyleRoleOrder => BuiltInElementKeys;
+
     private static readonly string[] BuiltInElementKeys =
     [
         MarkdownElementKeys.Heading1, MarkdownElementKeys.Heading2,

@@ -3,8 +3,9 @@ using System;
 namespace MarkdownRenderer.Performance.Internal.StyleRoles;
 
 /// <summary>
-/// Built-in style roles a document can read. Bit positions intentionally match
-/// ThemeResolver.BuiltInElementKeys.
+/// Built-in style roles a document can read. Each flag is named after its role,
+/// and its bit position is that role's index in
+/// ThemeResolver.BuiltInStyleRoleOrder, which reads the mask bit by index.
 /// </summary>
 [Flags]
 internal enum MarkdownStyleRoleDemand : ulong
@@ -33,21 +34,22 @@ internal enum MarkdownStyleRoleDemand : ulong
     Inserted = 1UL << 20,
     Marked = 1UL << 21,
     Abbreviation = 1UL << 22,
-    ListMarker = 1UL << 23,
-    ThematicBreak = 1UL << 24,
-    ImageCaption = 1UL << 25,
-    Figure = 1UL << 26,
-    FigureCaption = 1UL << 27,
-    Diagram = 1UL << 28,
-    Math = 1UL << 29,
-    DefinitionTerm = 1UL << 30,
-    DefinitionDescription = 1UL << 31,
-    Table = 1UL << 32,
-    TableHeader = 1UL << 33,
-    TableCell = 1UL << 34,
-    AlertNote = 1UL << 35,
-    AlertTip = 1UL << 36,
-    AlertImportant = 1UL << 37,
-    AlertWarning = 1UL << 38,
-    AlertCaution = 1UL << 39,
+    List = 1UL << 23,
+    ListMarker = 1UL << 24,
+    ThematicBreak = 1UL << 25,
+    ImageCaption = 1UL << 26,
+    Figure = 1UL << 27,
+    FigureCaption = 1UL << 28,
+    Diagram = 1UL << 29,
+    Math = 1UL << 30,
+    DefinitionTerm = 1UL << 31,
+    DefinitionDescription = 1UL << 32,
+    Table = 1UL << 33,
+    TableHeader = 1UL << 34,
+    TableCell = 1UL << 35,
+    AlertNote = 1UL << 36,
+    AlertTip = 1UL << 37,
+    AlertImportant = 1UL << 38,
+    AlertWarning = 1UL << 39,
+    AlertCaution = 1UL << 40,
 }

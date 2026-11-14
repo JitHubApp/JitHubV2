@@ -9,6 +9,7 @@ using MarkdownRenderer.Theming;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Performance.Internal.StyleRoles;
+using MarkdownRenderer.Theming.Internal;
 using MarkdownDocumentSnapshot = MarkdownRenderer.Document.MarkdownDocument;
 using System.Threading;
 using Xunit;
@@ -17,6 +18,60 @@ namespace MarkdownRenderer.GitHub.Tests.Performance.Internal.StyleRoles;
 
 public sealed class MarkdownStyleRoleDemandTests
 {
+    public static TheoryData<string> BuiltInStyleRoles
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            foreach (string role in ThemeResolver.BuiltInStyleRoleOrder)
+                data.Add(role);
+            return data;
+        }
+    }
+
+    [Fact]
+    public void EveryDemandFlagNamesTheBuiltInRoleAtItsBitPosition()
+    {
+        IReadOnlyList<string> roles = ThemeResolver.BuiltInStyleRoleOrder;
+        MarkdownStyleRoleDemand[] flags = Enum.GetValues<MarkdownStyleRoleDemand>()
+            .Where(static flag => flag != MarkdownStyleRoleDemand.None)
+            .ToArray();
+
+        Assert.Equal(roles, flags.Select(static flag => flag.ToString()));
+        for (int bit = 0; bit < roles.Count; bit++)
+            Assert.Equal(1UL << bit, (ulong)Enum.Parse<MarkdownStyleRoleDemand>(roles[bit]));
+    }
+
+    [Theory]
+    [MemberData(nameof(BuiltInStyleRoles))]
+    public void EachBuiltInRoleResolvesItsResourcesUnderItsOwnDemandFlag(string role)
+    {
+        Assert.True(Enum.TryParse(role, out MarkdownStyleRoleDemand flag), $"No demand flag for {role}.");
+
+        HashSet<string> resolved = ThemeResolver.GetScopedResourceStyleRoles(
+            ThemeResolver.BuiltInStyleRoleOrder,
+            (ulong)flag);
+
+        Assert.Equal([role], resolved);
+    }
+
+    [Theory]
+    [InlineData("- item\n- item", new[] { "Body", "List", "ListMarker" })]
+    [InlineData("---", new[] { "Body", "ThematicBreak" })]
+    [InlineData("| a |\n| --- |\n| b |", new[] { "Body", "Table", "TableHeader", "TableCell" })]
+    public void DocumentDemandResolvesExactlyTheRolesItsBlocksRead(string markdown, string[] expectedRoles)
+    {
+        var pipeline = new MarkdownPipelineBuilder().UsePipeTables().Build();
+        MarkdownStyleRoleDemandResult result = MarkdownStyleRoleDemandCollector.Collect(
+            MarkdownDocumentSnapshot.FromParsed(markdown, Markdown.Parse(markdown, pipeline)));
+
+        Assert.True(result.IsComplete, result.FirstIncompleteNodeType);
+        HashSet<string> resolved = ThemeResolver.GetScopedResourceStyleRoles(
+            ThemeResolver.BuiltInStyleRoleOrder,
+            result.Mask);
+        Assert.Equal(expectedRoles.ToHashSet(StringComparer.Ordinal), resolved);
+    }
+
     [Fact]
     public void ParsedDocumentCollectsRolesFromTheWholeAst()
     {
@@ -54,32 +109,34 @@ public sealed class MarkdownStyleRoleDemandTests
         MarkdownStyleRoleDemandResult result = MarkdownStyleRoleDemandCollector.Collect(document);
 
         Assert.True(result.IsComplete);
-        // Bit positions follow ThemeResolver's fixed BuiltInElementKeys order.
-        const ulong expectedRoles =
-            (1UL << 0) |  // Heading1
-            (1UL << 6) |  // Body
-            (1UL << 7) |  // CodeInline
-            (1UL << 8) |  // CodeBlock
-            (1UL << 9) |  // CodeBlockHeader
-            (1UL << 10) | // CodeBlockLanguage
-            (1UL << 11) | // CodeBlockGutter
-            (1UL << 12) | // CodeBlockLineNumber
-            (1UL << 13) | // Quote
-            (1UL << 14) | // Link
-            (1UL << 15) | // Strong
-            (1UL << 16) | // Emphasis
-            (1UL << 17) | // Strikethrough
-            (1UL << 23) | // ListMarker
-            (1UL << 24) | // ThematicBreak
-            (1UL << 25) | // ImageCaption
-            (1UL << 32) | // Table
-            (1UL << 33) | // TableHeader
-            (1UL << 34) | // TableCell
-            (1UL << 35) | // AlertNote
-            (1UL << 36) | // AlertTip
-            (1UL << 37) | // AlertImportant
-            (1UL << 38) | // AlertWarning
-            (1UL << 39);  // AlertCaution
+        // Each flag's bit is its role's index in ThemeResolver's built-in role
+        // order, which EveryDemandFlagNamesTheBuiltInRoleAtItsBitPosition pins.
+        const ulong expectedRoles = (ulong)(
+            MarkdownStyleRoleDemand.Heading1 |
+            MarkdownStyleRoleDemand.Body |
+            MarkdownStyleRoleDemand.CodeInline |
+            MarkdownStyleRoleDemand.CodeBlock |
+            MarkdownStyleRoleDemand.CodeBlockHeader |
+            MarkdownStyleRoleDemand.CodeBlockLanguage |
+            MarkdownStyleRoleDemand.CodeBlockGutter |
+            MarkdownStyleRoleDemand.CodeBlockLineNumber |
+            MarkdownStyleRoleDemand.Quote |
+            MarkdownStyleRoleDemand.Link |
+            MarkdownStyleRoleDemand.Strong |
+            MarkdownStyleRoleDemand.Emphasis |
+            MarkdownStyleRoleDemand.Strikethrough |
+            MarkdownStyleRoleDemand.List |
+            MarkdownStyleRoleDemand.ListMarker |
+            MarkdownStyleRoleDemand.ThematicBreak |
+            MarkdownStyleRoleDemand.ImageCaption |
+            MarkdownStyleRoleDemand.Table |
+            MarkdownStyleRoleDemand.TableHeader |
+            MarkdownStyleRoleDemand.TableCell |
+            MarkdownStyleRoleDemand.AlertNote |
+            MarkdownStyleRoleDemand.AlertTip |
+            MarkdownStyleRoleDemand.AlertImportant |
+            MarkdownStyleRoleDemand.AlertWarning |
+            MarkdownStyleRoleDemand.AlertCaution);
 
         Assert.Equal(expectedRoles, result.Mask & expectedRoles);
     }
@@ -159,11 +216,11 @@ public sealed class MarkdownStyleRoleDemandTests
 
         Assert.True(result.IsComplete, result.FirstIncompleteNodeType);
         Assert.Equal(
-            (1UL << 0) |  // Heading1
-            (1UL << 2) |  // Heading3
-            (1UL << 6) |  // Body
-            (1UL << 14) | // Link
-            (1UL << 25), // ImageCaption
+            (ulong)(MarkdownStyleRoleDemand.Heading1 |
+                MarkdownStyleRoleDemand.Heading3 |
+                MarkdownStyleRoleDemand.Body |
+                MarkdownStyleRoleDemand.Link |
+                MarkdownStyleRoleDemand.ImageCaption),
             result.Mask);
     }
 
@@ -180,22 +237,22 @@ public sealed class MarkdownStyleRoleDemandTests
         MarkdownStyleRoleDemandResult result = MarkdownStyleRoleDemandCollector.Collect(document);
 
         Assert.True(result.IsComplete, result.FirstIncompleteNodeType);
-        const ulong expectedRoles =
-            (1UL << 1) |  // Heading2
-            (1UL << 6) |  // Body
-            (1UL << 8) |  // CodeBlock
-            (1UL << 9) |  // CodeBlockHeader
-            (1UL << 10) | // CodeBlockLanguage
-            (1UL << 11) | // CodeBlockGutter
-            (1UL << 12) | // CodeBlockLineNumber
-            (1UL << 14) | // Link
-            (1UL << 15) | // Strong
-            (1UL << 16) | // Emphasis
-            (1UL << 24) | // ThematicBreak
-            (1UL << 25) | // ImageCaption
-            (1UL << 32) | // Table
-            (1UL << 33) | // TableHeader
-            (1UL << 34);  // TableCell
+        const ulong expectedRoles = (ulong)(
+            MarkdownStyleRoleDemand.Heading2 |
+            MarkdownStyleRoleDemand.Body |
+            MarkdownStyleRoleDemand.CodeBlock |
+            MarkdownStyleRoleDemand.CodeBlockHeader |
+            MarkdownStyleRoleDemand.CodeBlockLanguage |
+            MarkdownStyleRoleDemand.CodeBlockGutter |
+            MarkdownStyleRoleDemand.CodeBlockLineNumber |
+            MarkdownStyleRoleDemand.Link |
+            MarkdownStyleRoleDemand.Strong |
+            MarkdownStyleRoleDemand.Emphasis |
+            MarkdownStyleRoleDemand.ThematicBreak |
+            MarkdownStyleRoleDemand.ImageCaption |
+            MarkdownStyleRoleDemand.Table |
+            MarkdownStyleRoleDemand.TableHeader |
+            MarkdownStyleRoleDemand.TableCell);
         Assert.Equal(expectedRoles, result.Mask);
     }
 
@@ -229,35 +286,35 @@ public sealed class MarkdownStyleRoleDemandTests
             MarkdownDocumentSnapshot.FromParsed(markdown, Markdown.Parse(markdown)));
 
         Assert.True(result.IsComplete, result.FirstIncompleteNodeType);
-        const ulong expectedRoles =
-            (1UL << 0) |  // Heading1
-            (1UL << 1) |  // Heading2
-            (1UL << 2) |  // Heading3
-            (1UL << 3) |  // Heading4
-            (1UL << 4) |  // Heading5
-            (1UL << 5) |  // Heading6
-            (1UL << 6) |  // Body
-            (1UL << 7) |  // CodeInline
-            (1UL << 8) |  // CodeBlock
-            (1UL << 9) |  // CodeBlockHeader
-            (1UL << 10) | // CodeBlockLanguage
-            (1UL << 11) | // CodeBlockGutter
-            (1UL << 12) | // CodeBlockLineNumber
-            (1UL << 13) | // Quote
-            (1UL << 14) | // Link
-            (1UL << 15) | // Strong
-            (1UL << 16) | // Emphasis
-            (1UL << 17) | // Strikethrough
-            (1UL << 18) | // Subscript
-            (1UL << 19) | // Superscript
-            (1UL << 20) | // Inserted
-            (1UL << 21) | // Marked
-            (1UL << 23) | // ListMarker
-            (1UL << 24) | // ThematicBreak
-            (1UL << 25) | // ImageCaption
-            (1UL << 32) | // Table
-            (1UL << 33) | // TableHeader
-            (1UL << 34);  // TableCell
+        const ulong expectedRoles = (ulong)(
+            MarkdownStyleRoleDemand.Heading1 |
+            MarkdownStyleRoleDemand.Heading2 |
+            MarkdownStyleRoleDemand.Heading3 |
+            MarkdownStyleRoleDemand.Heading4 |
+            MarkdownStyleRoleDemand.Heading5 |
+            MarkdownStyleRoleDemand.Heading6 |
+            MarkdownStyleRoleDemand.Body |
+            MarkdownStyleRoleDemand.CodeInline |
+            MarkdownStyleRoleDemand.CodeBlock |
+            MarkdownStyleRoleDemand.CodeBlockHeader |
+            MarkdownStyleRoleDemand.CodeBlockLanguage |
+            MarkdownStyleRoleDemand.CodeBlockGutter |
+            MarkdownStyleRoleDemand.CodeBlockLineNumber |
+            MarkdownStyleRoleDemand.Quote |
+            MarkdownStyleRoleDemand.Link |
+            MarkdownStyleRoleDemand.Strong |
+            MarkdownStyleRoleDemand.Emphasis |
+            MarkdownStyleRoleDemand.Strikethrough |
+            MarkdownStyleRoleDemand.Subscript |
+            MarkdownStyleRoleDemand.Superscript |
+            MarkdownStyleRoleDemand.Inserted |
+            MarkdownStyleRoleDemand.Marked |
+            MarkdownStyleRoleDemand.ListMarker |
+            MarkdownStyleRoleDemand.ThematicBreak |
+            MarkdownStyleRoleDemand.ImageCaption |
+            MarkdownStyleRoleDemand.Table |
+            MarkdownStyleRoleDemand.TableHeader |
+            MarkdownStyleRoleDemand.TableCell);
         Assert.Equal(expectedRoles, result.Mask);
     }
 

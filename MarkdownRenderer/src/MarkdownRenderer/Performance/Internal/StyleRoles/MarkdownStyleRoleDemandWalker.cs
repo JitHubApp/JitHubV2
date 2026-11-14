@@ -143,7 +143,9 @@ internal sealed class MarkdownStyleRoleDemandWalker
                     MarkdownStyleRoleDemand.AlertCaution);
                 break;
             case ListBlock or ListItemBlock:
-                _demand.Add(MarkdownStyleRoleDemand.ListMarker);
+                // The list block reads List for its margins and its items
+                // read ListMarker.
+                _demand.Add(MarkdownStyleRoleDemand.List | MarkdownStyleRoleDemand.ListMarker);
                 break;
             case ThematicBreakBlock:
                 _demand.Add(MarkdownStyleRoleDemand.ThematicBreak);
