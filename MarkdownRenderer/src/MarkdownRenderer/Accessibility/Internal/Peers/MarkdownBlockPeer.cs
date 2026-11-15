@@ -1,12 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Text;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Text;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
-using MarkdownRenderer.Accessibility.Internal.TextRanges;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout.Internal.Inlines;
@@ -27,6 +25,7 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     private readonly MarkdownAutomationPeer _root;
     private readonly WeakReference<InlineContainerBox> _boxReference;
     private readonly MarkdownAutomationPeerLifetime _lifetime;
+    private readonly MarkdownScopedTextPattern _text;
 
     public MarkdownBlockPeer(MarkdownRendererControl owner, MarkdownAutomationPeer root, InlineContainerBox box) : base(owner)
     {
@@ -34,6 +33,7 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         _root = root;
         _boxReference = new(box);
         _lifetime = MarkdownAutomationPeerLifetime.Capture(owner, root);
+        _text = new MarkdownScopedTextPattern(owner, root);
     }
 
     public ITextRangeProvider DocumentRange
@@ -42,13 +42,13 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         {
             EnsureCurrentDocument();
             var (start, end) = GetTextRange();
-            return new MarkdownTextRangeProvider(_root, start, end, _box);
+            return _text.GetDocumentRange(start, end, _box);
         }
     }
 
     public SupportedTextSelection SupportedTextSelection
     {
-        get { EnsureCurrentDocument(); return _root.SupportedTextSelection; }
+        get { EnsureCurrentDocument(); return _text.SupportedTextSelection; }
     }
 
     protected override string GetClassNameCore()
@@ -141,15 +141,18 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     protected override string GetNameCore()
     {
         EnsureCurrentDocument();
-        if (_root.TryGetTextRangeForInlineBox(_box, out int start, out int end))
-        {
-            var document = _root.GetSemanticDocument();
-            start = System.Math.Clamp(start, 0, document.Text.Length);
-            end = System.Math.Clamp(end, start, document.Text.Length);
-            return document.Text.Substring(start, end - start);
-        }
+        MarkdownSemanticDocument document = _root.GetSemanticDocument();
+        if (!document.TryGetInlineContainerNode(_box, out MarkdownSemanticNode node))
+            return string.Empty;
 
-        return string.Empty;
+        // Code (a preformatted table cell) is named for what it is, not by its
+        // whole text; this peer's TextPattern reads the code.
+        if (node.Role == MarkdownSemanticRole.CodeBlock)
+            return MarkdownNodeAutomationText.GetName(_owner.Localization, document, node, task: null);
+
+        int start = System.Math.Clamp(node.TextStart, 0, document.Text.Length);
+        int end = System.Math.Clamp(node.TextEnd, start, document.Text.Length);
+        return document.Text.Substring(start, end - start);
     }
 
     protected override string GetHelpTextCore()
@@ -173,86 +176,41 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     public ITextRangeProvider[] GetSelection()
     {
         EnsureCurrentDocument();
-        if (!_owner.IsSelectionEnabled)
-            return System.Array.Empty<ITextRangeProvider>();
-
-        var (blockStart, blockEnd) = GetTextRange();
-        var selection = _root.GetSelection();
-        var clipped = new List<ITextRangeProvider>();
-        foreach (var range in selection)
-        {
-            if (range is not MarkdownTextRangeProvider markdownRange)
-                continue;
-
-            if (markdownRange.End < blockStart || markdownRange.Start > blockEnd)
-                continue;
-
-            int start = System.Math.Max(blockStart, markdownRange.Start);
-            int end = System.Math.Min(blockEnd, markdownRange.End);
-            if (end >= start)
-                clipped.Add(new MarkdownTextRangeProvider(_root, start, end));
-        }
-
-        return clipped.ToArray();
+        var (start, end) = GetTextRange();
+        return _text.GetSelection(start, end);
     }
 
     public ITextRangeProvider[] GetVisibleRanges()
     {
         EnsureCurrentDocument();
-        var (blockStart, blockEnd) = GetTextRange();
-        var clipped = new List<ITextRangeProvider>();
-        foreach (ITextRangeProvider range in _root.GetVisibleRanges())
-        {
-            if (range is not MarkdownTextRangeProvider markdownRange ||
-                markdownRange.End < blockStart ||
-                markdownRange.Start > blockEnd)
-            {
-                continue;
-            }
-
-            clipped.Add(new MarkdownTextRangeProvider(
-                _root,
-                System.Math.Max(blockStart, markdownRange.Start),
-                System.Math.Min(blockEnd, markdownRange.End)));
-        }
-
-        return clipped.ToArray();
+        var (start, end) = GetTextRange();
+        return _text.GetVisibleRanges(start, end);
     }
 
     public ITextRangeProvider RangeFromChild(IRawElementProviderSimple childElement)
     {
         EnsureCurrentDocument();
-        return _root.RangeFromChild(childElement);
+        return _text.RangeFromChild(childElement);
     }
 
     public ITextRangeProvider RangeFromPoint(Windows.Foundation.Point screenLocation)
     {
         EnsureCurrentDocument();
-        var range = _root.RangeFromPoint(screenLocation);
-        if (range is not MarkdownTextRangeProvider markdownRange)
-            return range;
-
-        var (blockStart, blockEnd) = GetTextRange();
-        int offset = System.Math.Clamp(markdownRange.Start, blockStart, blockEnd);
-        return new MarkdownTextRangeProvider(_root, offset, offset);
+        var (start, end) = GetTextRange();
+        return _text.RangeFromPoint(screenLocation, start, end);
     }
 
     public ITextRangeProvider RangeFromAnnotation(IRawElementProviderSimple annotationElement)
     {
         EnsureCurrentDocument();
-        int start = GetTextRange().Start;
-        return new MarkdownTextRangeProvider(_root, start, start);
+        return _text.RangeFromAnnotation(GetTextRange().Start);
     }
 
     public ITextRangeProvider GetCaretRange(out bool isActive)
     {
         EnsureCurrentDocument();
-        var selection = GetSelection();
-        ITextRangeProvider caretRange = selection.Length > 0
-            ? selection[0]
-            : new MarkdownTextRangeProvider(_root, GetTextRange().Start, GetTextRange().Start);
-        isActive = _root.IsTextCaretActive;
-        return caretRange;
+        var (start, end) = GetTextRange();
+        return _text.GetCaretRange(start, end, out isActive);
     }
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()

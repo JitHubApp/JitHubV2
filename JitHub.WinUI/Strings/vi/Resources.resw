@@ -682,6 +682,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Nội dung nhúng không khả dụng.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Sơ đồ</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Ngôn ngữ: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>Khối mã {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Chi tiết</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Nội dung HTML bổ sung đã bị lược bỏ vì vượt quá giới hạn an toàn của trình kết xuất.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Phần nội dung</value></data>

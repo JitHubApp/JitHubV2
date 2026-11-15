@@ -61,6 +61,7 @@ public sealed class JitHubMarkdownStringProvider : IMarkdownStringProvider
         MarkdownStringKeys.EmbeddedContentUnavailable => "Embedded content unavailable.",
         MarkdownStringKeys.DiagramName => "Diagram",
         MarkdownStringKeys.CodeLanguageHelp => "Language: {0}",
+        MarkdownStringKeys.CodeBlockLanguageName => "{0} code block",
         MarkdownStringKeys.HtmlDetails => "Details",
         MarkdownStringKeys.HtmlBudgetExceeded =>
             "Additional HTML content was omitted because it exceeded the renderer safety limit.",

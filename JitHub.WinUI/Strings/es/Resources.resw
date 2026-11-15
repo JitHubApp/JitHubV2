@@ -682,6 +682,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>El contenido incrustado no está disponible.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagrama</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Idioma: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>Bloque de código {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Detalles</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Se omitió contenido HTML adicional porque superaba el límite de seguridad del renderizador.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Cuerpo</value></data>

@@ -51,6 +51,8 @@ internal static class MarkdownLocalizedStrings
 
     public static string CodeLanguageHelpFormat => Get("CodeLanguageHelpFormat", "Language: {0}");
 
+    public static string CodeBlockLanguageNameFormat => Get("CodeBlockLanguageNameFormat", "{0} code block");
+
     public static string StyleName(string elementKey)
     {
         var definition = GetStyleNameDefinition(elementKey);

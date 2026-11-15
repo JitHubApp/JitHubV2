@@ -676,6 +676,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Gömülü içerik kullanılamıyor.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diyagram</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Dil: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>{0} kod bloğu</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Ayrıntılar</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Ek HTML içeriği, oluşturucunun güvenlik sınırını aştığı için atlandı.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Gövde</value></data>

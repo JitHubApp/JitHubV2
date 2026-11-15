@@ -15,7 +15,7 @@ namespace MarkdownRenderer.Accessibility.Internal.Peers;
 
 /// <summary>
 /// The UIA peer for one semantic node: its properties, children and the grid,
-/// table, scroll, invoke and toggle patterns the node supports.
+/// table, scroll, invoke, toggle and text patterns the node supports.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,11 +24,13 @@ namespace MarkdownRenderer.Accessibility.Internal.Peers;
 /// </para>
 /// <para>
 /// This file is longer than 500 lines because <see cref="GetPatternCore"/>
-/// returns the peer itself for every grid, table, scroll, invoke and toggle
-/// pattern its node supports, so each pattern's explicit interface members
-/// must live on this one WinRT object. Names, help text and control types come
-/// from <see cref="MarkdownNodeAutomationDescriptor"/> and
-/// <see cref="MarkdownNodeAutomationText"/>.
+/// returns the peer itself for every grid, table, scroll, invoke, toggle and
+/// text pattern its node supports, so each pattern's explicit interface
+/// members must live on this one WinRT object. Names, help text, control types
+/// and the text pattern's range come from
+/// <see cref="MarkdownNodeAutomationDescriptor"/> and
+/// <see cref="MarkdownNodeAutomationText"/>; text ranges come from
+/// <see cref="MarkdownScopedTextPattern"/>.
 /// </para>
 /// </remarks>
 internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
@@ -38,12 +40,15 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     ITableItemProvider,
     IScrollProvider,
     IInvokeProvider,
-    IToggleProvider
+    IToggleProvider,
+    ITextProvider,
+    ITextProvider2
 {
     private readonly MarkdownRendererControl _owner;
     private readonly MarkdownAutomationPeer _root;
     private readonly WeakReference<MarkdownSemanticNode> _nodeReference;
     private readonly MarkdownAutomationPeerLifetime _lifetime;
+    private readonly MarkdownScopedTextPattern _text;
     private MarkdownImageAccessibilityState? _lastImageState;
     private MarkdownCodeBlockCopyPeer? _codeBlockCopyPeer;
 
@@ -53,6 +58,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         _root = root;
         _nodeReference = new(node);
         _lifetime = MarkdownAutomationPeerLifetime.Capture(owner, root);
+        _text = new MarkdownScopedTextPattern(owner, root);
         _lastImageState = node.ImageBox?.AccessibilityState;
     }
 
@@ -160,7 +166,11 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     protected override string GetNameCore()
     {
         EnsureCurrentDocument();
-        return MarkdownNodeAutomationText.GetName(_owner, _root, _node, TaskMetadata);
+        return MarkdownNodeAutomationText.GetName(
+            _owner.Localization,
+            _root.GetSemanticDocument(),
+            _node,
+            TaskMetadata);
     }
 
     protected override string GetHelpTextCore()
@@ -268,6 +278,12 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
         if (patternIinterface == PatternInterface.Toggle && TaskMetadata is { CanToggle: true })
             return this;
+
+        if ((patternIinterface == PatternInterface.Text || patternIinterface == PatternInterface.Text2) &&
+            MarkdownNodeAutomationDescriptor.TryGetTextPatternRange(_node, out _, out _))
+        {
+            return this;
+        }
 
         return base.GetPatternCore(patternIinterface);
     }
@@ -455,6 +471,61 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         _owner.AutomationHost.SetHorizontalOverflowPercent(overflow, horizontalPercent);
     }
 
+    ITextRangeProvider ITextProvider.DocumentRange
+    {
+        get
+        {
+            var (start, end) = GetTextPatternRange();
+            return _text.GetDocumentRange(start, end, exactRangeScope: null);
+        }
+    }
+
+    SupportedTextSelection ITextProvider.SupportedTextSelection
+    {
+        get { _ = GetTextPatternRange(); return _text.SupportedTextSelection; }
+    }
+
+    ITextRangeProvider[] ITextProvider.GetSelection()
+    {
+        var (start, end) = GetTextPatternRange();
+        return _text.GetSelection(start, end);
+    }
+
+    ITextRangeProvider[] ITextProvider.GetVisibleRanges()
+    {
+        var (start, end) = GetTextPatternRange();
+        return _text.GetVisibleRanges(start, end);
+    }
+
+    ITextRangeProvider ITextProvider.RangeFromChild(IRawElementProviderSimple childElement)
+    {
+        _ = GetTextPatternRange();
+        return _text.RangeFromChild(childElement);
+    }
+
+    ITextRangeProvider ITextProvider.RangeFromPoint(Windows.Foundation.Point screenLocation)
+    {
+        var (start, end) = GetTextPatternRange();
+        return _text.RangeFromPoint(screenLocation, start, end);
+    }
+
+    ITextRangeProvider ITextProvider2.RangeFromAnnotation(IRawElementProviderSimple annotationElement) =>
+        _text.RangeFromAnnotation(GetTextPatternRange().Start);
+
+    ITextRangeProvider ITextProvider2.GetCaretRange(out bool isActive)
+    {
+        var (start, end) = GetTextPatternRange();
+        return _text.GetCaretRange(start, end, out isActive);
+    }
+
+    private (int Start, int End) GetTextPatternRange()
+    {
+        EnsureCurrentDocument();
+        return MarkdownNodeAutomationDescriptor.TryGetTextPatternRange(_node, out int start, out int end)
+            ? (start, end)
+            : throw new System.InvalidOperationException("This semantic item has no text pattern.");
+    }
+
     private bool IsVectorSemanticNode =>
         IsCurrentDocument() && _node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0;
 
@@ -498,8 +569,8 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             return;
 
         string text = _root.GetSemanticDocument().GetText(node);
-        string oldName = MarkdownNodeAutomationText.GetImageName(_owner, text, previous);
-        string newName = MarkdownNodeAutomationText.GetImageName(_owner, text, current);
+        string oldName = MarkdownNodeAutomationText.GetImageName(_owner.Localization, text, previous);
+        string newName = MarkdownNodeAutomationText.GetImageName(_owner.Localization, text, current);
         string oldStatus = previous == MarkdownImageAccessibilityState.Loading ? oldName : string.Empty;
         string newStatus = current == MarkdownImageAccessibilityState.Loading ? newName : string.Empty;
         _lastImageState = current;

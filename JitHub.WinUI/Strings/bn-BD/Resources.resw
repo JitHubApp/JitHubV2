@@ -695,6 +695,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>এম্বেড করা বিষয়বস্তু উপলভ্য নয়।</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>ডায়াগ্রাম</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>ভাষা: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>{0} কোড ব্লক</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>বিস্তারিত</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>রেন্ডারারের নিরাপত্তা সীমা অতিক্রম করায় অতিরিক্ত HTML বিষয়বস্তু বাদ দেওয়া হয়েছে।</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>মূলপাঠ</value></data>

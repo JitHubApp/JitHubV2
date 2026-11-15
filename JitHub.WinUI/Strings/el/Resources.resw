@@ -682,6 +682,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Το ενσωματωμένο περιεχόμενο δεν είναι διαθέσιμο.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Διάγραμμα</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Γλώσσα: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>Μπλοκ κώδικα {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Λεπτομέρειες</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Το πρόσθετο περιεχόμενο HTML παραλείφθηκε επειδή υπερέβη το όριο ασφαλείας του προγράμματος απόδοσης.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Κυρίως κείμενο</value></data>

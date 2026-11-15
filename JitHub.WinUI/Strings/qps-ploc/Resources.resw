@@ -6472,6 +6472,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>⟦Embedded content unavailable. ~~~~~~~~~~⟧</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>⟦Diagram ~~~~~~~~~~⟧</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>⟦Language: {0} ~~~~~~~~~~⟧</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>⟦{0} code block ~~~~~~~~~~⟧</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>⟦Details ~~~~~~~~~~⟧</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>⟦Additional HTML content was omitted because it exceeded the renderer safety limit. ~~~~~~~~~~⟧</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>⟦Body ~~~~~~~~~~⟧</value></data>

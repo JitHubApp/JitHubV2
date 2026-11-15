@@ -722,6 +722,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>A beágyazott tartalom nem érhető el.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagram</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Nyelv: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>{0} kódblokk</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Részletek</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>A további HTML-tartalom kimaradt, mert túllépte a megjelenítő biztonsági korlátját.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Törzsszöveg</value></data>

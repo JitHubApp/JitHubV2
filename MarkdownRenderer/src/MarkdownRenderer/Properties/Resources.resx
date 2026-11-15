@@ -39,6 +39,10 @@
   <data name="CodeLanguageHelpFormat" xml:space="preserve">
     <value>Language: {0}</value>
   </data>
+  <data name="CodeBlockLanguageNameFormat" xml:space="preserve">
+    <value>{0} code block</value>
+    <comment>Accessible name of a code block whose language is known. {0} is the language name, for example TypeScript.</comment>
+  </data>
   <data name="StyleBody" xml:space="preserve">
     <value>Body</value>
   </data>

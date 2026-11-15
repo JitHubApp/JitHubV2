@@ -682,6 +682,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>O conteúdo incorporado não está disponível.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagrama</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Idioma: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>Bloco de código {0}</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Detalhes</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>O conteúdo HTML adicional foi omitido porque excedeu o limite de segurança do renderizador.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Corpo</value></data>

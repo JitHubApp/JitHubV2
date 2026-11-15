@@ -58,6 +58,7 @@ const MarkdownRenderer.Extensions.MarkdownSyntaxKinds.Inline.LineBreak = "common
 const MarkdownRenderer.Extensions.MarkdownSyntaxKinds.Inline.Link = "commonmark.inline.link" -> string!
 const MarkdownRenderer.Extensions.MarkdownSyntaxKinds.Inline.Math = "markdown.inline.math" -> string!
 const MarkdownRenderer.Extensions.MarkdownSyntaxKinds.Inline.Text = "commonmark.inline.text" -> string!
+const MarkdownRenderer.Hosting.MarkdownStringKeys.CodeBlockLanguageName = "Code.BlockLanguageName" -> string!
 const MarkdownRenderer.Hosting.MarkdownStringKeys.CodeCopied = "Feedback.CodeCopied" -> string!
 const MarkdownRenderer.Hosting.MarkdownStringKeys.CodeLanguageHelp = "Code.LanguageHelp" -> string!
 const MarkdownRenderer.Hosting.MarkdownStringKeys.Copy = "Command.Copy" -> string!

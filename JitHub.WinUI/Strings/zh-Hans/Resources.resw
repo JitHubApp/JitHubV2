@@ -682,6 +682,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>嵌入内容不可用。</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>图表</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>语言：{0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>{0} 代码块</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>详细信息</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>其他 HTML 内容因超出渲染器安全限制而被省略。</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>正文</value></data>

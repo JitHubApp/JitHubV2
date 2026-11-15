@@ -53,6 +53,8 @@ public static class MarkdownStringKeys
     public const string DiagramName = "Diagram.Name";
     /// <summary>Code-language help-text format. Placeholder <c>{0}</c> is the language name.</summary>
     public const string CodeLanguageHelp = "Code.LanguageHelp";
+    /// <summary>Accessible name format for a code block whose language is known. Placeholder <c>{0}</c> is the language name.</summary>
+    public const string CodeBlockLanguageName = "Code.BlockLanguageName";
     /// <summary>Default label for a safe-HTML disclosure without a summary.</summary>
     public const string HtmlDetails = "Html.Details";
     /// <summary>Notice shown when safe-HTML input exceeds a configured budget.</summary>

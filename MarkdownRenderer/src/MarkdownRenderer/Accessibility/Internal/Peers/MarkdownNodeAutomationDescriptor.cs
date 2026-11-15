@@ -141,6 +141,27 @@ internal static class MarkdownNodeAutomationDescriptor
         };
     }
 
+    /// <summary>
+    /// The document text range a node peer's TextPattern covers, if it has one.
+    /// A code block keeps a short name, so its code is read through a
+    /// TextPattern over exactly the code text, line breaks included. The range
+    /// is two offsets into the semantic text the document TextPattern already
+    /// reads, so even a huge block builds no per-line peers or strings.
+    /// </summary>
+    internal static bool TryGetTextPatternRange(MarkdownSemanticNode node, out int start, out int end)
+    {
+        if (node.Role == MarkdownSemanticRole.CodeBlock)
+        {
+            start = node.TextStart;
+            end = node.TextEnd;
+            return true;
+        }
+
+        start = 0;
+        end = 0;
+        return false;
+    }
+
     // The peer checks document currency before calling, so only the run shape remains.
     private static bool IsLinkedInlineVectorScene(MarkdownSemanticNode node) =>
         node.InlineRun is InlineVectorSceneRun { IsLinked: true };

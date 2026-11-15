@@ -682,6 +682,7 @@
   <data name="MarkdownRenderer/EmbeddedContent/Unavailable" xml:space="preserve"><value>Eingebetteter Inhalt ist nicht verfügbar.</value></data>
   <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>Diagramm</value></data>
   <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>Sprache: {0}</value></data>
+  <data name="MarkdownRenderer/Code/BlockLanguageName" xml:space="preserve"><value>{0}-Codeblock</value></data>
   <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>Details</value></data>
   <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>Zusätzlicher HTML-Inhalt wurde ausgelassen, da er das Sicherheitslimit des Renderers überschritten hat.</value></data>
   <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>Textkörper</value></data>
