@@ -617,4 +617,15 @@
         BasedOn="{StaticResource AppSegmentedItemBaseStyle}">
         <Setter Property="MinWidth" Value="{ThemeResource AppDimension0}" />
     </Style>
+
+    <!--
+        A TextBlock placed inside a segmented item as its label. It matches the implicit TextBlock
+        typography but sets no Foreground, so the label inherits the item's state foreground
+        (selected, hover, pressed, disabled and the High Contrast system pairs).
+    -->
+    <Style x:Key="AppSegmentedItemLabelTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{ThemeResource AppBodyFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource AppBodyFontSize}" />
+        <Setter Property="TextWrapping" Value="WrapWholeWords" />
+    </Style>
 </ResourceDictionary>

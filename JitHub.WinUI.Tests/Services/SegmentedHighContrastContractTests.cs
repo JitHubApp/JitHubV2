@@ -121,6 +121,59 @@ public sealed class SegmentedHighContrastContractTests
         Assert.Equal("AppStrongBorderThickness", ResolveAttribute(focusVisual, "BorderThickness", highContrast));
     }
 
+    [Fact]
+    public void SegmentedItemTextLabels_InheritTheItemStateForeground()
+    {
+        // The implicit TextBlock style sets Foreground, and an implicit style value beats the foreground a
+        // TextBlock would otherwise inherit from the item's ContentPresenter. A label that keeps the implicit
+        // style therefore ignores every state brush; in High Contrast the selected label stays WindowText on the
+        // Highlight fill. Labels must use the keyed label style, which sets no Foreground, and set none locally.
+        const string labelStyleReference = "{StaticResource AppSegmentedItemLabelTextBlockStyle}";
+        XElement labelStyle = FindStyle(LoadBridge(), "AppSegmentedItemLabelTextBlockStyle");
+        Assert.Equal("TextBlock", (string?)labelStyle.Attribute("TargetType"));
+        Assert.Null(labelStyle.Attribute("BasedOn"));
+        Assert.DoesNotContain(
+            labelStyle.Elements(),
+            setter => string.Equals((string?)setter.Attribute("Property"), "Foreground", StringComparison.Ordinal));
+
+        string appRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
+        List<string> violations = [];
+        int labelCount = 0;
+        foreach (string path in Directory.EnumerateFiles(appRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(path => !IsBuildOutput(appRoot, path)))
+        {
+            XDocument document = XDocument.Load(path);
+            foreach (XElement label in document.Descendants()
+                         .Where(element => element.Name.LocalName is "AppSegmentedItem" or "SegmentedItem")
+                         .SelectMany(item => item.Descendants())
+                         .Where(element => element.Name.LocalName == "TextBlock"))
+            {
+                labelCount++;
+                string where = $"{Path.GetRelativePath(appRoot, path)}: TextBlock '{(string?)label.Attribute("Text")}'";
+                if (!string.Equals((string?)label.Attribute("Style"), labelStyleReference, StringComparison.Ordinal))
+                {
+                    violations.Add($"{where} must use {labelStyleReference}.");
+                }
+
+                if (label.Attribute("Foreground") is not null)
+                {
+                    violations.Add($"{where} must not set Foreground.");
+                }
+            }
+        }
+
+        Assert.True(labelCount > 0, "Expected at least one segmented item with a TextBlock label.");
+        Assert.True(
+            violations.Count == 0,
+            $"Segmented item labels must follow the item's state foreground:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+    }
+
+    private static bool IsBuildOutput(string appRoot, string path)
+    {
+        string first = Path.GetRelativePath(appRoot, path).Split(Path.DirectorySeparatorChar)[0];
+        return first is "obj" or "bin";
+    }
+
     private static IEnumerable<string> ReadBrushReferences(XElement style)
     {
         foreach (XElement element in style.Descendants())

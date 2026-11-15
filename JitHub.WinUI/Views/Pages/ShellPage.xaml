@@ -714,6 +714,7 @@
                                         AutomationProperties.Name="Show public repositories">
                                         <TextBlock
                                             x:Uid="PagesShellPageShellRepoFilterPublicLabel"
+                                            Style="{StaticResource AppSegmentedItemLabelTextBlockStyle}"
                                             AutomationProperties.AccessibilityView="Raw"
                                             MaxLines="2"
                                             Text="Public"
@@ -730,6 +731,7 @@
                                         AutomationProperties.Name="Show private repositories">
                                         <TextBlock
                                             x:Uid="PagesShellPageShellRepoFilterPrivateLabel"
+                                            Style="{StaticResource AppSegmentedItemLabelTextBlockStyle}"
                                             AutomationProperties.AccessibilityView="Raw"
                                             MaxLines="2"
                                             Text="Private"
@@ -746,6 +748,7 @@
                                         AutomationProperties.Name="Show forked repositories">
                                         <TextBlock
                                             x:Uid="PagesShellPageShellRepoFilterForkedLabel"
+                                            Style="{StaticResource AppSegmentedItemLabelTextBlockStyle}"
                                             AutomationProperties.AccessibilityView="Raw"
                                             MaxLines="2"
                                             Text="Forked"
@@ -821,6 +824,7 @@
                                         AutomationProperties.Name="Show public repositories">
                                         <TextBlock
                                             x:Uid="PagesShellPageShellRepoCompactFilterPublicLabel"
+                                            Style="{StaticResource AppSegmentedItemLabelTextBlockStyle}"
                                             AutomationProperties.AccessibilityView="Raw"
                                             FontSize="{ThemeResource AppFontSize10}"
                                             MaxLines="1"
@@ -840,6 +844,7 @@
                                         AutomationProperties.Name="Show private repositories">
                                         <TextBlock
                                             x:Uid="PagesShellPageShellRepoCompactFilterPrivateLabel"
+                                            Style="{StaticResource AppSegmentedItemLabelTextBlockStyle}"
                                             AutomationProperties.AccessibilityView="Raw"
                                             FontSize="{ThemeResource AppFontSize10}"
                                             MaxLines="1"
@@ -859,6 +864,7 @@
                                         AutomationProperties.Name="Show forked repositories">
                                         <TextBlock
                                             x:Uid="PagesShellPageShellRepoCompactFilterForkedLabel"
+                                            Style="{StaticResource AppSegmentedItemLabelTextBlockStyle}"
                                             AutomationProperties.AccessibilityView="Raw"
                                             FontSize="{ThemeResource AppFontSize10}"
                                             MaxLines="1"
