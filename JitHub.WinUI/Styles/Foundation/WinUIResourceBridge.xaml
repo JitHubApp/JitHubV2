@@ -11,6 +11,86 @@
         Platform resource overrides must not be declared in any other app dictionary.
     -->
 
+    <!--
+        Segmented control state tokens. Light and Dark alias the canonical semantic brushes;
+        HighContrast uses WinUI's own system colour brushes so every state paints a system pair
+        (ButtonText on ButtonFace, HighlightText on Highlight, GrayText when disabled). The item
+        template turns off the High Contrast text backplate because it paints those pairs itself.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <StaticResource x:Key="AppSegmentedBackgroundBrush" ResourceKey="AppCanvasInsetBrush" />
+            <StaticResource x:Key="AppSegmentedForegroundBrush" ResourceKey="AppInkBrush" />
+            <StaticResource x:Key="AppSegmentedBorderBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundBrush" ResourceKey="AppInkMutedBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundPointerOverBrush" ResourceKey="AppInputBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundPointerOverBrush" ResourceKey="AppRowHoverForegroundBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderPointerOverBrush" ResourceKey="AppOutlineBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundPressedBrush" ResourceKey="AppRowPressedBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundPressedBrush" ResourceKey="AppRowPressedForegroundBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderPressedBrush" ResourceKey="AppOutlineStrongBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundSelectedBrush" ResourceKey="AppRowSelectedBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundSelectedBrush" ResourceKey="AppRowSelectedForegroundBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderSelectedBrush" ResourceKey="AppAccentBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundDisabledBrush" ResourceKey="AppInkMutedBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderDisabledBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemFocusStrokeBrush" ResourceKey="AppAccentBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderThickness" ResourceKey="AppZeroThickness" />
+            <StaticResource x:Key="AppSegmentedItemFocusStrokeThickness" ResourceKey="AppHairlineBorderThickness" />
+            <StaticResource x:Key="AppSegmentedItemDisabledOpacity" ResourceKey="AppOpacityDisabledControl" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <StaticResource x:Key="AppSegmentedBackgroundBrush" ResourceKey="AppCanvasInsetBrush" />
+            <StaticResource x:Key="AppSegmentedForegroundBrush" ResourceKey="AppInkBrush" />
+            <StaticResource x:Key="AppSegmentedBorderBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundBrush" ResourceKey="AppInkMutedBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundPointerOverBrush" ResourceKey="AppInputBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundPointerOverBrush" ResourceKey="AppRowHoverForegroundBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderPointerOverBrush" ResourceKey="AppOutlineBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundPressedBrush" ResourceKey="AppRowPressedBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundPressedBrush" ResourceKey="AppRowPressedForegroundBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderPressedBrush" ResourceKey="AppOutlineStrongBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundSelectedBrush" ResourceKey="AppRowSelectedBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundSelectedBrush" ResourceKey="AppRowSelectedForegroundBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderSelectedBrush" ResourceKey="AppAccentBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundDisabledBrush" ResourceKey="AppInkMutedBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderDisabledBrush" ResourceKey="AppTransparentBrush" />
+            <StaticResource x:Key="AppSegmentedItemFocusStrokeBrush" ResourceKey="AppAccentBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderThickness" ResourceKey="AppZeroThickness" />
+            <StaticResource x:Key="AppSegmentedItemFocusStrokeThickness" ResourceKey="AppHairlineBorderThickness" />
+            <StaticResource x:Key="AppSegmentedItemDisabledOpacity" ResourceKey="AppOpacityDisabledControl" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <StaticResource x:Key="AppSegmentedBackgroundBrush" ResourceKey="SystemColorWindowColorBrush" />
+            <StaticResource x:Key="AppSegmentedForegroundBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedBorderBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundPointerOverBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundPointerOverBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderPointerOverBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundPressedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundPressedBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderPressedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBackgroundSelectedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundSelectedBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderSelectedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemForegroundDisabledBrush" ResourceKey="SystemColorGrayTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemBorderDisabledBrush" ResourceKey="SystemColorGrayTextColorBrush" />
+            <StaticResource x:Key="AppSegmentedItemFocusStrokeBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+            <!--  Unselected items are outlined and the selected item is filled: selection is a shape change, not only a hue.  -->
+            <StaticResource x:Key="AppSegmentedItemBorderThickness" ResourceKey="AppHairlineBorderThickness" />
+            <StaticResource x:Key="AppSegmentedItemFocusStrokeThickness" ResourceKey="AppStrongBorderThickness" />
+            <!--  System colours must not be dimmed; disabled items use GrayText instead.  -->
+            <StaticResource x:Key="AppSegmentedItemDisabledOpacity" ResourceKey="AppOpacityVisible" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
     <!--  Buttons and command surfaces  -->
     <StaticResource x:Key="ButtonRevealBorderThemeThickness" ResourceKey="AppHairlineBorderThickness" />
     <StaticResource x:Key="ButtonBackground" ResourceKey="AppInputBrush" />
@@ -366,9 +446,9 @@
     <Style x:Key="AppSegmentedBaseStyle" TargetType="controls:Segmented">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
-        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-        <Setter Property="Background" Value="{ThemeResource AppCanvasInsetBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppSegmentedForegroundBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppSegmentedBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppSegmentedBorderBrush}" />
         <Setter Property="BorderThickness" Value="{ThemeResource AppZeroThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Padding" Value="{ThemeResource AppSegmentedControlPadding}" />
@@ -400,10 +480,10 @@
     <Style x:Key="AppSegmentedItemBaseStyle" TargetType="controls:SegmentedItem">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
-        <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
-        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
-        <Setter Property="BorderThickness" Value="{ThemeResource AppZeroThickness}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppSegmentedItemForegroundBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppSegmentedItemBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppSegmentedItemBorderBrush}" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppSegmentedItemBorderThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         <Setter Property="Margin" Value="{ThemeResource AppSegmentedItemMargin}" />
         <Setter Property="Padding" Value="{ThemeResource AppSegmentedItemPadding}" />
@@ -420,61 +500,65 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppInputBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowHoverForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundPointerOverBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderPointerOverBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundPointerOverBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppRowPressedBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppOutlineStrongBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowPressedForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundPressedBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderPressedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundPressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Selected">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppRowSelectedBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowSelectedForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundSelectedBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderSelectedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundSelectedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="PointerOverSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppRowSelectedBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowSelectedForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundSelectedBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderSelectedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundSelectedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedPointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppRowSelectedBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowSelectedForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundSelectedBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderSelectedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundSelectedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="PressedSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppRowPressedBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppOutlineStrongBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowPressedForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundPressedBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderPressedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundPressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedPressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppRowPressedBrush}" />
-                                        <Setter Target="Root.BorderBrush" Value="{ThemeResource AppOutlineStrongBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppRowPressedForegroundBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppSegmentedItemBackgroundPressedBrush}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderPressedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundPressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Opacity" Value="{ThemeResource AppOpacityDisabledControl}" />
+                                        <Setter Target="Root.Opacity" Value="{ThemeResource AppSegmentedItemDisabledOpacity}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderDisabledBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundDisabledBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedDisabled">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Opacity" Value="{ThemeResource AppOpacityDisabledControl}" />
+                                        <Setter Target="Root.Opacity" Value="{ThemeResource AppSegmentedItemDisabledOpacity}" />
+                                        <Setter Target="Outline.BorderBrush" Value="{ThemeResource AppSegmentedItemBorderDisabledBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppSegmentedItemForegroundDisabledBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -492,8 +576,6 @@
                         <Border
                             x:Name="Root"
                             Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{TemplateBinding CornerRadius}">
                             <ContentPresenter
                                 x:Name="ContentPresenter"
@@ -501,13 +583,21 @@
                                 Content="{TemplateBinding Content}"
                                 ContentTemplate="{TemplateBinding ContentTemplate}"
                                 Foreground="{TemplateBinding Foreground}"
+                                HighContrastAdjustment="None"
                                 HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
+                        <!--  The state outline overlays the item so a theme-scoped stroke never resizes its content.  -->
+                        <Border
+                            x:Name="Outline"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False" />
                         <Border
                             x:Name="FocusVisual"
-                            BorderBrush="{ThemeResource AppAccentBrush}"
-                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                            BorderBrush="{ThemeResource AppSegmentedItemFocusStrokeBrush}"
+                            BorderThickness="{ThemeResource AppSegmentedItemFocusStrokeThickness}"
                             CornerRadius="{TemplateBinding CornerRadius}"
                             IsHitTestVisible="False"
                             Opacity="{ThemeResource AppOpacityTransparent}" />
