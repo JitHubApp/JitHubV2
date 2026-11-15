@@ -174,8 +174,9 @@ internal sealed class InlineRunBuilder
     }
 
     // Emphasis that carries a relative script size or contains a Markdown
-    // link or inline code builds its children under the emphasis style
-    // modifier instead of resolving to a single run.
+    // link, inline code or nested emphasis builds its children under the
+    // emphasis style modifier instead of resolving to a single run. A nested
+    // emphasis then carries the outer role as a modifier, so the roles combine.
     private bool TryAddEmphasisAsStyledChildren(
         InlineContainerBox box,
         EmphasisInline emphasis,
@@ -186,7 +187,7 @@ internal sealed class InlineRunBuilder
         string? containingLinkTitle)
     {
         string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
-        if (!_context.ThemeSnapshot.HasRelativeScriptFontSizeRules && !MarkdownInlineSyntax.ContainsLinkOrInlineCode(emphasis))
+        if (!_context.ThemeSnapshot.HasRelativeScriptFontSizeRules && !MarkdownInlineSyntax.ContainsNestedInlineRole(emphasis))
             return false;
 
         _context.RegisterMarkdownAttributes(emphasis, box.BlockIndex);

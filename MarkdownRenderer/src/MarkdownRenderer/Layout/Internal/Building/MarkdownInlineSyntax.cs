@@ -51,23 +51,32 @@ internal static class MarkdownInlineSyntax
     /// <summary>
     /// Whether emphasis must build its children as separate runs instead of
     /// flattening them into one run of its own role. A run carries a single
-    /// style, so flattening drops a nested link (an autolink is a link too)
-    /// and the typeface and chip of nested inline code.
+    /// style, so flattening drops a nested link (an autolink is a link too),
+    /// the typeface and chip of nested inline code, and the role of nested
+    /// emphasis (italic inside bold, bold inside strikethrough).
     /// </summary>
-    internal static bool ContainsLinkOrInlineCode(ContainerInline container)
+    /// <remarks>
+    /// Plain-text emphasis, the common case, stays one run. The scan stops at
+    /// the first nested role and allocates only for unusual non-role
+    /// containers, so emphasis-heavy documents pay one pass over each
+    /// emphasis's direct children.
+    /// </remarks>
+    internal static bool ContainsNestedInlineRole(ContainerInline container)
     {
-        var pending = new Stack<ContainerInline>();
-        pending.Push(container);
-        while (pending.Count > 0)
+        Stack<ContainerInline>? pending = null;
+        ContainerInline? current = container;
+        while (current is not null)
         {
-            foreach (Inline child in pending.Pop())
+            foreach (Inline child in current)
             {
-                if (child is LinkInline or AutolinkInline or CodeInline)
+                if (child is EmphasisInline or LinkInline or AutolinkInline or CodeInline)
                     return true;
 
                 if (child is ContainerInline nested)
-                    pending.Push(nested);
+                    (pending ??= new Stack<ContainerInline>()).Push(nested);
             }
+
+            current = pending is { Count: > 0 } ? pending.Pop() : null;
         }
 
         return false;

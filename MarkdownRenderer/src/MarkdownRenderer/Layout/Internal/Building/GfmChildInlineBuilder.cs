@@ -137,7 +137,7 @@ internal static class GfmChildInlineBuilder
         using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
         int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
         if (i is EmphasisInline emphasis &&
-            (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsLinkOrInlineCode(emphasis)))
+            (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsNestedInlineRole(emphasis)))
         {
             box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
             string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);

@@ -33,19 +33,22 @@ public sealed class FlattenContainerParityTests
         {
             yield return
             [
-                "prefix **bold *nested* e\u0301 😀 אבג &amp;** " +
+                "prefix **bold e\u0301 😀 אבג &amp;** " +
                 "[linked _inner_ first\nsecond](https://example.test) " +
                 "![alt **bold** e\u0301 😀 אבג &amp;](https://example.test/image.png) " +
                 "  \nhard break and soft\ncontinuation",
                 false,
             ];
-            // Inline code is flattened here inside image alt text. Emphasis
-            // that contains code is no longer a flattened wrapper: it keeps
-            // the code as its own run (InlineRunBuilderEmphasisCodeTests).
+            // Emphasis that contains inline code or nested emphasis is not a
+            // flattened wrapper: it keeps those roles as their own runs
+            // (InlineRunBuilderEmphasisCodeTests and
+            // InlineRunBuilderNestedEmphasisTests). Code and nested emphasis
+            // are still flattened inside link labels and image alt text,
+            // which stay single runs, so they remain covered here.
             yield return
             [
-                "~~strike with *nested*~~ and ==marked *nested*== " +
-                "![emoji :rocket: with `code` and &amp;](https://example.test/emoji.png)",
+                "~~strike with plain text~~ and ==marked plain text== " +
+                "![emoji :rocket: with `code` and *nested* &amp;](https://example.test/emoji.png)",
                 true,
             ];
         }
