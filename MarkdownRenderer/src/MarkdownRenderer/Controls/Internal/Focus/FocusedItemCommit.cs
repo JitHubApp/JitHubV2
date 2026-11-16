@@ -1,4 +1,5 @@
 using System;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Internal.Embeds;
 using MarkdownRenderer.Controls.Internal.Focus.Hosted;
 using MarkdownRenderer.Controls.Internal.Input.Keyboard;
@@ -339,30 +340,9 @@ internal sealed class FocusedItemCommit
                 !AutomationPeer.ListenerExists(AutomationEvents.AutomationFocusChanged))
                 return;
 
-            var peer = _host.GetOrCreateAutomationPeer();
-            if (_focus.TryGetFocusedLinkedAtomic(out var inline, out InlineRun linkedRun))
-            {
-                switch (linkedRun)
-                {
-                    case LinkRun link:
-                        peer?.RaiseFocusForLink(inline, link);
-                        break;
-                    case InlineImageRun image:
-                        peer?.RaiseFocusForLinkedImage(inline, image);
-                        break;
-                    case InlineVectorSceneRun inlineScene:
-                        peer?.RaiseFocusForInlineVectorScene(inlineScene);
-                        break;
-                }
-            }
-            else if (_focus.TryGetFocusedVectorSemantic(out var vectorBox, out int semanticIndex))
-            {
-                peer?.RaiseFocusForVectorSemantic(vectorBox, semanticIndex);
-            }
-            else if (_focus.TryGetFocusedHorizontalOverflow(out var overflow))
-            {
-                peer?.RaiseFocusForHorizontalOverflow(overflow);
-            }
+            MarkdownFocusedChild child = _focus.GetFocusedChild();
+            if (!child.IsNone)
+                _host.GetOrCreateAutomationPeer()?.RaiseFocusChanged(child);
         }
 
         // Let WinUI finish the real focus transition to the renderer first,

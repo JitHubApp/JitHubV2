@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Controls.Internal.View;
@@ -131,6 +132,24 @@ internal sealed class KeyboardFocusModel
         ResumeIndex = resumeIdentity is { } resume
             ? FocusableItemQueries.FindFocusableItemIndex(items, resume)
             : -1;
+    }
+
+    /// <summary>
+    /// The focused item as an automation child of the document: a link,
+    /// linked image or linked inline vector scene, a vector semantic, or a
+    /// horizontal overflow region. Other items, such as hosted elements and
+    /// the code-block copy button, have real XAML focus and give
+    /// <see cref="MarkdownFocusedChild.None"/>.
+    /// </summary>
+    internal MarkdownFocusedChild GetFocusedChild()
+    {
+        if (TryGetFocusedLinkedAtomic(out InlineContainerBox inline, out InlineRun run))
+            return MarkdownFocusedChild.ForLinkedAtomic(inline, run);
+        if (TryGetFocusedVectorSemantic(out VectorSceneBox vector, out int semanticIndex))
+            return MarkdownFocusedChild.ForVectorSemantic(vector, semanticIndex);
+        return TryGetFocusedHorizontalOverflow(out IHorizontalOverflowBox overflow)
+            ? MarkdownFocusedChild.ForHorizontalOverflow(overflow)
+            : MarkdownFocusedChild.None;
     }
 
     internal bool TryGetFocusedLink(out InlineContainerBox inline, out LinkRun link)

@@ -179,12 +179,6 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
         return _parent.IsOffscreenForChild(GetBoundingRectangleCore());
     }
 
-    internal void RaiseAutomationFocusChanged()
-    {
-        if (_lifetime.IsCurrent())
-            RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
-    }
-
     private void EnsureCurrentDocument() => _lifetime.EnsureCurrent();
 
     private MarkdownBlockPeer _parent => MarkdownAutomationPeerLifetime.GetPayloadOrThrow(_parentReference);

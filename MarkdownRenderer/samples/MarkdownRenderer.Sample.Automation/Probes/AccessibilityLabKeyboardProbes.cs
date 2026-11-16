@@ -25,6 +25,7 @@ internal static class AccessibilityLabKeyboardProbes
         var focusedPaintedLink = TabIntoRendererFromSampleList(window, renderer);
         Assert(IsPaintedLinkFocus(focusedPaintedLink),
             $"Tab entry should promote renderer root focus to the first painted hyperlink, focused={DescribeFocus(focusedPaintedLink)}");
+        AssertFocusedElementIs(renderer, focusedPaintedLink, "Tab entry");
 
         Keyboard.Press(VirtualKeyShort.TAB); // hosted button
         Thread.Sleep(250);
@@ -55,6 +56,7 @@ internal static class AccessibilityLabKeyboardProbes
         var focusedSecondPaintedLink = PressTabExpectPaintedLink(renderer, "Sixth Tab");
         Assert(IsPaintedLinkFocus(focusedSecondPaintedLink),
             $"Sixth Tab should land on second painted hyperlink, focused={DescribeFocus(focusedSecondPaintedLink)}");
+        AssertFocusedElementIs(renderer, focusedSecondPaintedLink, "Sixth Tab");
 
         Keyboard.Press(VirtualKeyShort.TAB); // seventh Tab leaves markdown
         Thread.Sleep(300);
@@ -121,6 +123,20 @@ internal static class AccessibilityLabKeyboardProbes
         {
             renderer.Automation.UnregisterFocusChangedEvent(focusHandler);
         }
+    }
+
+    /// <summary>
+    /// A client that asks UIA for the focused element (rather than listening for
+    /// focus events) must get the painted hyperlink the event announced, not the
+    /// document that hosts it.
+    /// </summary>
+    private static void AssertFocusedElementIs(AutomationElement renderer, AutomationElement announced, string stepName)
+    {
+        var focused = renderer.Automation.FocusedElement();
+        Assert(
+            IsPaintedLinkFocus(focused) &&
+            string.Equals(AutomationIdOrEmpty(focused), AutomationIdOrEmpty(announced), StringComparison.Ordinal),
+            $"{stepName}: the focused-element query should report the announced hyperlink {DescribeFocus(announced)}, focused={DescribeFocus(focused)}");
     }
 
     private static AutomationElement PressTabExpectPaintedLink(AutomationElement renderer, string stepName)

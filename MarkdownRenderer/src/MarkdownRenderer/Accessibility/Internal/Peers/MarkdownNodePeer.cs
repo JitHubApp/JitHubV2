@@ -586,12 +586,6 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             InvalidatePeer();
     }
 
-    internal void RaiseAutomationFocusChanged()
-    {
-        if (IsCurrentDocument())
-            RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
-    }
-
     internal void NotifyHorizontalScrollChanged(
         double oldPhysicalPercent,
         double newPhysicalPercent)

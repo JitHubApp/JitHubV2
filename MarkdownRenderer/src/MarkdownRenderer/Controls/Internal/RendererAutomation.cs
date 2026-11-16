@@ -192,11 +192,10 @@ internal sealed class RendererAutomation : IMarkdownAutomationHost
     bool IMarkdownAutomationHost.IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
         _focus.TryGetIndexForHorizontalOverflow(overflow, out _);
 
-    bool IMarkdownAutomationHost.HasKeyboardFocusOnVirtualChild =>
-        _control.FocusState != FocusState.Unfocused &&
-        (_focus.TryGetFocusedLinkedAtomic(out _, out _) ||
-         _focus.TryGetFocusedVectorSemantic(out _, out _) ||
-         _focus.TryGetFocusedHorizontalOverflow(out _));
+    MarkdownFocusedChild IMarkdownAutomationHost.FocusedChild =>
+        _control.FocusState == FocusState.Unfocused
+            ? MarkdownFocusedChild.None
+            : _focus.GetFocusedChild();
 
     bool IMarkdownAutomationHost.FocusLinkedAtomic(InlineRun run)
     {
