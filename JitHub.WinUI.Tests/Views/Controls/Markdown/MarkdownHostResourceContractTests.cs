@@ -112,7 +112,21 @@ public sealed class MarkdownHostResourceContractTests
         Assert.Contains("LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target)", automation, StringComparison.Ordinal);
         Assert.Contains("InvalidateAutomationLayout();", focusableItems, StringComparison.Ordinal);
         Assert.Contains("FrameworkElementAutomationPeer.FromElement(_control)?.InvalidatePeer();", automation, StringComparison.Ordinal);
-        Assert.Contains("RaiseFocusForLinkedImage", automationPeer, StringComparison.Ordinal);
+        // A focused linked image raises AutomationFocusChanged on its hyperlink
+        // peer, and the focused-element query reports that same peer. Resolving
+        // the focused child to the linked-image peer is covered by
+        // MarkdownFocusedChildTests.FocusedLinkedImageResolvesToItsLinkedImagePeer.
+        string focusedChild = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownFocusedChild.cs"));
+        string focusedChildPeers = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownFocusedChildPeers.cs"));
+        string focusCommit = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Focus", "FocusedItemCommit.cs"));
+        Assert.Contains("_host.GetOrCreateAutomationPeer()?.RaiseFocusChanged(child);", focusCommit, StringComparison.Ordinal);
+        Assert.Contains("InlineImageRun image => peers.ForLinkedImage(_inline!, image),", focusedChild, StringComparison.Ordinal);
+        Assert.Contains("_owner.AutomationHost.GetOrCreateLinkedImagePeer(", focusedChildPeers, StringComparison.Ordinal);
+        Assert.Contains("ResolveFocusedChildPeer(child)?.RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);", automationPeer, StringComparison.Ordinal);
+        Assert.Contains("ResolveFocusedChildPeer(_owner.AutomationHost.FocusedChild) ?? base.GetFocusedElementCore();", automationPeer, StringComparison.Ordinal);
         Assert.Contains("IInvokeProvider", imagePeer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Hyperlink", imagePeer, StringComparison.Ordinal);
         Assert.Contains("GetImageName(_run, state)", imagePeer, StringComparison.Ordinal);
