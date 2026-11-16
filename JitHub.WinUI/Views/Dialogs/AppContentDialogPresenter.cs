@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Telemetry;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

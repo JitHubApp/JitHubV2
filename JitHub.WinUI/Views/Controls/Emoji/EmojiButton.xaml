@@ -1,0 +1,70 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Emoji.EmojiButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.Emoji"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Button
+        AutomationProperties.AutomationId="{x:Bind GetAutomationId(Reaction, AutomationInstanceId), Mode=OneWay}"
+        AutomationProperties.Name="{x:Bind GetAutomationName(Reaction, ReactionCount, Voted), Mode=OneWay}"
+        Style="{StaticResource AppEmojiReactionButtonStyle}"
+        Padding="{x:Bind GetPadding(ShowReactionCount), Mode=OneWay}"
+        Command="{x:Bind ReactionCommand, Mode=OneWay}"
+        Background="{x:Bind GetBackgroundBrush(Voted), Mode=OneWay}"
+        CommandParameter="{x:Bind Reaction, Mode=OneWay}">
+        <Grid
+            MinHeight="{ThemeResource AppDimension32}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            ColumnSpacing="{ThemeResource AppGap6}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="{ThemeResource AppGridLength24}"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid
+                Width="{ThemeResource AppDimension24}"
+                Height="{ThemeResource AppDimension24}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontFamily="Segoe UI Emoji"
+                    FontSize="{ThemeResource AppFontSize16}"
+                    LineHeight="{ThemeResource AppLineHeight24}"
+                    LineStackingStrategy="BlockLineHeight"
+                    TextAlignment="Center"
+                    Translation="0,0,0"
+                    Text="{x:Bind Reaction, Converter={StaticResource ReactionTypeToEmojiConverter}, Mode=OneWay}"/>
+            </Grid>
+
+            <Grid
+                Grid.Column="1"
+                Height="{ThemeResource AppDimension16}"
+                MinWidth="{ThemeResource AppDimension8}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Visibility="{x:Bind ShowReactionCount, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="{ThemeResource AppFontSize12}"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                    Foreground="{x:Bind GetForegroundBrush(Voted), Mode=OneWay}"
+                    LineHeight="{ThemeResource AppLineHeight14}"
+                    TextAlignment="Center"
+                    TextLineBounds="Tight"
+                    Translation="0,1,0"
+                    Text="{x:Bind ReactionCount, Mode=OneWay}"/>
+            </Grid>
+        </Grid>
+    </Button>
+</UserControl>
+

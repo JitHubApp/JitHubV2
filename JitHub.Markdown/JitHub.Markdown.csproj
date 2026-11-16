@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- JitHub's markdown host policy: host kinds and their automation contract,
+       link and GitHub route classification, remote-image consent and policy,
+       and GitHub image URL resolution. It depends only on the renderer, so the
+       app and its tests reference it instead of compiling its files. -->
+  <PropertyGroup>
+    <!-- Match JitHub.WinUI and the renderer projects it references. Like the
+         renderer, it uses the SDK's default Windows projection so that
+         JitHub.WinUI.Tests, which also uses the default, resolves one version. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>JitHub.Markdown</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- The SDK defaults Platform to AnyCPU before this file is evaluated. -->
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <!-- Architecture-neutral IL, like the renderer libraries. RuntimeIdentifiers
+         makes the lock file record every app deployment graph. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <!-- Implies IsTrimmable and the trim, single-file and Native AOT analyzers. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Like JitHub.WinUI: types here cross the WinRT ABI in the Native AOT app,
+         so CsWinRT generates their AOT vtables where they are declared (which
+         needs unsafe code), and level 2 makes a type that CsWinRT cannot
+         generate for, such as a non-partial IDisposable, a build error here. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="JitHub.Markdown.Tests" />
+  </ItemGroup>
+
+  <!-- The public surface is tracked in PublicAPI.Shipped.txt and
+       PublicAPI.Unshipped.txt; undeclared or stale entries are build errors. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+    <GlobalAnalyzerConfigFiles Include="PublicApiAnalyzers.globalconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+  </ItemGroup>
+</Project>

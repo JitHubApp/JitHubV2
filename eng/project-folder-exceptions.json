@@ -1,0 +1,80 @@
+{
+  "$comment": "Item includes that eng/Test-RepositoryProjectStructure.ps1 allows to leave their project folder (RPS0001, RPS0002). Each entry names the MSBuild file, the include exactly as written there, and why the file cannot live in the project that builds it. An entry that no longer matches an include fails the check (RPS0003), so remove it with the include. Do not add entries for code or content one project borrows from another; move it into a project both reference.",
+  "includes": [
+    {
+      "file": "JitHub.WinUI/JitHub.WinUI.csproj",
+      "include": "..\\LICENSE",
+      "reason": "The repository license is the app's own license. The app ships it as ThirdPartyNotices\\JitHub-MIT.txt."
+    },
+    {
+      "file": "MarkdownRenderer/src/Directory.Build.props",
+      "include": "$(MSBuildThisFileDirectory)..\\..\\LICENSE",
+      "reason": "The repository license is the license of every renderer package; NuGet packs it into each one."
+    },
+    {
+      "file": "MarkdownRenderer/src/Directory.Build.props",
+      "include": "$(MSBuildThisFileDirectory)..\\assets\\package-icon.png",
+      "reason": "The one icon every renderer package uses; NuGet packs it into each one."
+    },
+    {
+      "file": "MarkdownRenderer/src/Directory.Build.props",
+      "include": "$(MarkdownRendererPackageReadme)",
+      "reason": "The package readme. It defaults to docs/markdown-renderer/README.md, the published renderer overview; a feature package sets the property to the README.md in its own folder."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj",
+      "include": "..\\..\\eng\\textmate\\THIRD-PARTY-NOTICES.md",
+      "reason": "The grammar notices both grammar packages ship. The TextMate release-evidence and license scripts read them from eng/textmate, where the provenance script also writes the provenance."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj",
+      "include": "..\\..\\eng\\textmate\\GRAMMAR-PROVENANCE.v2.0.3.json",
+      "reason": "The grammar provenance both grammar packages ship, generated into eng/textmate by New-TextMateGrammarProvenance.ps1 and read there by the TextMate release-evidence and license scripts."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj",
+      "include": "..\\..\\eng\\textmate\\THIRD-PARTY-NOTICES.md",
+      "reason": "The grammar notices both grammar packages ship. The TextMate release-evidence and license scripts read them from eng/textmate, where the provenance script also writes the provenance."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All/MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj",
+      "include": "..\\..\\eng\\textmate\\GRAMMAR-PROVENANCE.v2.0.3.json",
+      "reason": "The grammar provenance both grammar packages ship, generated into eng/textmate by New-TextMateGrammarProvenance.ps1 and read there by the TextMate release-evidence and license scripts."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/MarkdownRenderer.Svg.Resvg.csproj",
+      "include": "$(ResvgUnsignedWorkerDirectory)\\RESVG_WORKER_IDENTITY.json",
+      "reason": "Release packaging points this property at the staged unsigned-worker build; by default it is this project's folder and the item is not included."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/MarkdownRenderer.Svg.Resvg.csproj",
+      "include": "$(ResvgWorkerDirectory)\\RESVG_WORKER_IDENTITY.json",
+      "reason": "Release packaging points this property at the staged signed-worker build; by default it is this project's folder and the item is not included."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/MarkdownRenderer.Svg.Resvg.csproj",
+      "include": "$(ResvgWorkerDirectory)\\runtimes\\win-x86\\native\\MarkdownRenderer.Svg.Resvg.Worker.exe",
+      "reason": "Release packaging points this property at the staged signed-worker build; by default it is this project's folder and the item is not included."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/MarkdownRenderer.Svg.Resvg.csproj",
+      "include": "$(ResvgWorkerDirectory)\\runtimes\\win-x64\\native\\MarkdownRenderer.Svg.Resvg.Worker.exe",
+      "reason": "Release packaging points this property at the staged signed-worker build; by default it is this project's folder and the item is not included."
+    },
+    {
+      "file": "MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/MarkdownRenderer.Svg.Resvg.csproj",
+      "include": "$(ResvgWorkerDirectory)\\runtimes\\win-arm64\\native\\MarkdownRenderer.Svg.Resvg.Worker.exe",
+      "reason": "Release packaging points this property at the staged signed-worker build; by default it is this project's folder and the item is not included."
+    },
+    {
+      "file": "MarkdownRenderer/tests/MarkdownRenderer.Svg.Resvg.Tests/MarkdownRenderer.Svg.Resvg.Tests.csproj",
+      "include": "$(ResvgWorkerDirectory)\\runtimes\\$(ResvgWorkerRid)\\native\\MarkdownRenderer.Svg.Resvg.Worker.exe",
+      "reason": "The native worker the tests run, for the test host's runtime identifier, from the Svg.Resvg worker staging folder (the library's folder by default, or a staged worker build). The test verifies that worker's identity before it builds."
+    },
+    {
+      "file": "MarkdownRenderer/tests/MarkdownRenderer.Svg.Resvg.Tests/MarkdownRenderer.Svg.Resvg.Tests.csproj",
+      "include": "..\\..\\src\\MarkdownRenderer.Svg.Resvg\\native\\tests\\fixtures\\opaque-vp8-256.webp",
+      "reason": "A fixture the Rust worker owns: its tests embed it with include_bytes!, and ResvgWorkerIdentity.psm1 fingerprints the native source tree it sits in, so moving it would change the worker identity. The .NET tests embed the same bytes."
+    }
+  ]
+}

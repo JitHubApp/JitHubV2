@@ -1,0 +1,2 @@
+# Corpus inputs are byte-exact test data: no end-of-line conversion.
+inputs/** -text

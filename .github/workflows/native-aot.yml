@@ -19,6 +19,22 @@ jobs:
         shell: pwsh
         run: .\eng\Test-JitHubStorePackageVersion.ps1
 
+      - name: Test project folder check
+        shell: pwsh
+        run: .\eng\tests\Test-RepositoryProjectStructure.Tests.ps1
+
+      - name: Check that projects build only their own folders
+        shell: pwsh
+        run: .\eng\Test-RepositoryProjectStructure.ps1
+
+      - name: Test source organization check
+        shell: pwsh
+        run: .\eng\tests\Test-SourceOrganization.Tests.ps1
+
+      - name: Check that C# sources follow their namespaces and folders
+        shell: pwsh
+        run: .\eng\Test-SourceOrganization.ps1
+
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ./global.json
@@ -31,13 +47,23 @@ jobs:
 
       - name: Restore tests
         shell: pwsh
+        run: |
+          foreach ($project in '.\JitHub.Core.Tests\JitHub.Core.Tests.csproj', '.\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj') {
+            dotnet restore $project -p:Platform=x64 -p:RuntimeIdentifier=win-x64 --locked-mode
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Run JitHub.Core unit tests
+        shell: pwsh
         run: >
-          dotnet restore .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
+          dotnet test .\JitHub.Core.Tests\JitHub.Core.Tests.csproj
+          -c Debug
           -p:Platform=x64
           -p:RuntimeIdentifier=win-x64
-          --locked-mode
+          --no-restore
+          --logger "trx;LogFileName=native-aot-core-tests.trx"
 
-      - name: Run unit tests
+      - name: Run app unit tests
         shell: pwsh
         run: >
           dotnet test .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
@@ -52,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-aot-test-results
-          path: '**/native-aot-tests.trx'
+          path: '**/native-aot*-tests.trx'
           if-no-files-found: warn
           retention-days: 7
 

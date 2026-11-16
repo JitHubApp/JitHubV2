@@ -111,6 +111,7 @@
     <x:Double x:Key="AppMarkdownListIndent">24</x:Double>
     <x:Double x:Key="AppMarkdownNestedListIndent">20</x:Double>
     <Thickness x:Key="AppMarkdownBodyMargin">0,0,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownStandaloneParagraphMargin">0,0,0,16</Thickness>
     <Thickness x:Key="AppMarkdownHeading1Margin">0,16,0,8</Thickness>
     <Thickness x:Key="AppMarkdownHeading2Margin">0,16,0,8</Thickness>
     <Thickness x:Key="AppMarkdownHeading3Margin">0,12,0,4</Thickness>

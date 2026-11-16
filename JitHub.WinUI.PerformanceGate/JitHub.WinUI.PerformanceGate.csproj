@@ -7,13 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\JitHub.WinUI\Services\Performance\*.cs"
-             Exclude="..\JitHub.WinUI\Services\Performance\ProductPerformanceLargeAccountFixture.cs"
-             Link="Services\Performance\%(Filename)%(Extension)" />
+    <ProjectReference Include="..\JitHub.Performance\JitHub.Performance.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
-    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
   </ItemGroup>
 </Project>

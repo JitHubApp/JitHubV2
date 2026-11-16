@@ -1,0 +1,274 @@
+using System.Globalization;
+using System.Text;
+using MarkdownRenderer.Math.Accessibility.Internal;
+
+namespace MarkdownRenderer.Math.Localization.Internal;
+
+/// <summary>
+/// Contains the trust boundary around host localization. A faulty provider can
+/// never suppress a renderer diagnostic or exact-source fallback.
+/// </summary>
+internal static class MathStringResolver
+{
+    private const int MaximumLocalizedStringLength = 1024;
+
+    internal static string Resolve(
+        IMathStringProvider? provider,
+        string key,
+        string? languageTag)
+    {
+        string fallback = GetEnglishString(key);
+        if (provider is null)
+            return fallback;
+
+        try
+        {
+            string? candidate = provider.GetString(key, languageTag);
+            return string.IsNullOrWhiteSpace(candidate) || candidate.Length > MaximumLocalizedStringLength
+                ? fallback
+                : candidate;
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    internal static string FormatOriginalTex(
+        IMathStringProvider? provider,
+        string? languageTag,
+        string tex,
+        CultureInfo fallbackCulture,
+        int maximumLength = MathAccessibilityLimits.MaximumHelpTextLength,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tex);
+        ArgumentNullException.ThrowIfNull(fallbackCulture);
+        if (maximumLength < 2)
+            throw new ArgumentOutOfRangeException(nameof(maximumLength));
+
+        cancellationToken.ThrowIfCancellationRequested();
+        string format = Resolve(provider, MathStringKeys.OriginalTex, languageTag);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (TryFormatSingleTexPlaceholder(
+            format,
+            tex,
+            maximumLength,
+            cancellationToken,
+            out string result))
+        {
+            return result;
+        }
+
+        return TryFormatSingleTexPlaceholder(
+            GetEnglishString(MathStringKeys.OriginalTex),
+            tex,
+            maximumLength,
+            cancellationToken,
+            out result)
+            ? result
+            : "Original TeX is available through copy.";
+    }
+
+    private static bool TryFormatSingleTexPlaceholder(
+        string format,
+        string tex,
+        int maximumLength,
+        CancellationToken cancellationToken,
+        out string result)
+    {
+        if (!TryMeasureSingleTexPlaceholder(format, tex.Length, cancellationToken, out long outputLength))
+        {
+            result = string.Empty;
+            return false;
+        }
+
+        result = FormatMeasuredSingleTexPlaceholder(format, tex, maximumLength, outputLength, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Validates that <paramref name="format"/> has exactly one <c>{0}</c> and
+    /// only doubled braces otherwise, and measures the formatted length
+    /// without building it.
+    /// </summary>
+    private static bool TryMeasureSingleTexPlaceholder(
+        string format,
+        int texLength,
+        CancellationToken cancellationToken,
+        out long outputLength)
+    {
+        int placeholderCount = 0;
+        outputLength = 0;
+        for (int index = 0; index < format.Length; index++)
+        {
+            if ((index & 0x3f) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            char value = format[index];
+            if (value == '{')
+            {
+                if (index + 1 < format.Length && format[index + 1] == '{')
+                {
+                    outputLength++;
+                    index++;
+                    continue;
+                }
+
+                if (index + 2 >= format.Length ||
+                    format[index + 1] != '0' ||
+                    format[index + 2] != '}')
+                {
+                    return false;
+                }
+
+                placeholderCount++;
+                if (placeholderCount != 1)
+                    return false;
+
+                outputLength += texLength;
+                index += 2;
+            }
+            else if (value == '}')
+            {
+                if (index + 1 >= format.Length || format[index + 1] != '}')
+                    return false;
+
+                outputLength++;
+                index++;
+            }
+            else
+            {
+                outputLength++;
+            }
+        }
+
+        return placeholderCount == 1;
+    }
+
+    /// <summary>
+    /// Formats a <paramref name="format"/> that
+    /// <see cref="TryMeasureSingleTexPlaceholder"/> accepted, truncating to
+    /// <paramref name="maximumLength"/> with an ellipsis.
+    /// </summary>
+    private static string FormatMeasuredSingleTexPlaceholder(
+        string format,
+        string tex,
+        int maximumLength,
+        long outputLength,
+        CancellationToken cancellationToken)
+    {
+        bool truncated = outputLength > maximumLength;
+        int contentLimit = truncated
+            ? maximumLength - 1
+            : checked((int)outputLength);
+        var output = new StringBuilder(maximumLength);
+        for (int index = 0; index < format.Length && output.Length < contentLimit; index++)
+        {
+            if ((index & 0x3f) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            char value = format[index];
+            if (value == '{')
+            {
+                if (format[index + 1] == '{')
+                {
+                    output.Append('{');
+                    index++;
+                }
+                else
+                {
+                    bool appendedAllTex = AppendBounded(
+                        output,
+                        tex,
+                        contentLimit,
+                        cancellationToken);
+                    index += 2;
+                    if (!appendedAllTex)
+                        break;
+                }
+            }
+            else if (value == '}')
+            {
+                output.Append('}');
+                index++;
+            }
+            else
+            {
+                output.Append(value);
+            }
+        }
+
+        if (truncated)
+            output.Append('\u2026');
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return output.ToString();
+    }
+
+    private static bool AppendBounded(
+        StringBuilder output,
+        string value,
+        int contentLimit,
+        CancellationToken cancellationToken)
+    {
+        int available = contentLimit - output.Length;
+        if (available <= 0)
+            return value.Length == 0;
+
+        int take = System.Math.Min(available, value.Length);
+        if (take < value.Length &&
+            take > 0 &&
+            char.IsHighSurrogate(value[take - 1]) &&
+            char.IsLowSurrogate(value[take]))
+        {
+            take--;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        output.Append(value.AsSpan(0, take));
+        cancellationToken.ThrowIfCancellationRequested();
+        return take == value.Length;
+    }
+
+    internal static CultureInfo SnapshotCulture(CultureInfo? culture = null) =>
+        CultureInfo.ReadOnly((CultureInfo)(culture ?? CultureInfo.CurrentUICulture).Clone());
+
+    internal static string GetLanguageTag(CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(culture);
+        return string.IsNullOrWhiteSpace(culture.Name) ? "en-US" : culture.Name;
+    }
+
+    internal static string GetEnglishString(string key) => key switch
+    {
+        MathStringKeys.AutomationName => "Mathematical expression",
+        MathStringKeys.OriginalTex => "Original TeX: {0}",
+        MathStringKeys.Fraction => "fraction",
+        MathStringKeys.Numerator => "numerator",
+        MathStringKeys.Denominator => "denominator",
+        MathStringKeys.EndFraction => "end fraction",
+        MathStringKeys.SquareRoot => "square root of",
+        MathStringKeys.EndRoot => "end root",
+        MathStringKeys.Superscript => "superscript",
+        MathStringKeys.EndSuperscript => "end superscript",
+        MathStringKeys.Subscript => "subscript",
+        MathStringKeys.EndSubscript => "end subscript",
+        MathStringKeys.Plus => "plus",
+        MathStringKeys.Minus => "minus",
+        MathStringKeys.EqualsOperator => "equals",
+        MathStringKeys.Times => "times",
+        MathStringKeys.DividedBy => "divided by",
+        MathStringKeys.InvalidFormula => "The formula is invalid or uses TeX syntax this renderer does not support.",
+        MathStringKeys.UnmatchedInlineDelimiter => "Unmatched inline-math delimiter.",
+        MathStringKeys.UnmatchedDisplayDelimiter => "Unmatched display-math delimiter.",
+        MathStringKeys.SourceTooLong => "The formula exceeds the configured source-length limit.",
+        MathStringKeys.NestingTooDeep => "The formula exceeds the configured nesting-depth limit.",
+        MathStringKeys.SceneTooComplex => "The formula exceeds the configured scene-complexity limit.",
+        MathStringKeys.SceneTooLarge => "The formula exceeds the configured scene-size limit.",
+        MathStringKeys.WorkingMemoryExceeded => "The formula exceeds the configured working-memory limit.",
+        MathStringKeys.ProcessingTimedOut => "The formula exceeded the configured processing deadline.",
+        MathStringKeys.ProcessingFailed => "The formula could not be rendered.",
+        _ => "The formula could not be rendered.",
+    };
+}

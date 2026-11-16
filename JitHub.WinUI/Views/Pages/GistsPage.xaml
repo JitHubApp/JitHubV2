@@ -7,7 +7,7 @@
     xmlns:appControls="using:JitHub.WinUI.Views.Controls.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:viewmodels="using:JitHub.Core.ViewModels.Gists"
     x:DataType="viewmodels:GistsPageViewModel"
     Background="{ThemeResource AppCanvasBrush}"
     SizeChanged="Page_SizeChanged"

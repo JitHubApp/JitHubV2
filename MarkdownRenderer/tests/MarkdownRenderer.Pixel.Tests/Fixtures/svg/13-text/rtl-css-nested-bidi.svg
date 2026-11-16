@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="140" viewBox="0 0 420 140">
+  <style>
+    .rtl { direction: rtl; unicode-bidi: bidi-override; text-anchor: start; }
+    .isolate { direction: ltr; unicode-bidi: isolate-override; }
+  </style>
+  <g font-family="Arial" font-size="22" fill="#101010">
+    <text class="rtl" x="400" y="30">שלום <tspan class="isolate">ABC 123</tspan> עולם</text>
+    <g direction="rtl">
+      <text x="400" y="68" text-anchor="start">مرحبا بالعالم</text>
+      <text x="400" y="106" text-anchor="start">שלום <tspan direction="ltr" unicode-bidi="isolate">hello 123</tspan> עולם</text>
+    </g>
+  </g>
+</svg>

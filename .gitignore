@@ -28,6 +28,12 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+# Isolated build and measurement runs use named scratch output directories.
+**/obj-*/
+**/bin-*/
+# Preserve local benchmark evidence without adding generated caches to Git.
+# Already tracked fixtures and comparison results remain versioned.
+**/artifacts/
 [Ll]og/
 
 # Visual Studio 2015/2017 cache/options directory
@@ -439,6 +445,8 @@ appsettings.development.json
 !JitHub.WinUI/appsettings.json
 **/dist
 **/output
+**/native/target/
+MarkdownRenderer/eng/raster-fixtures/target/
 JitHub.WinUI/artifacts/
 JitHub.WinUI/JitHub.WinUI/
 .tools/
@@ -447,6 +455,6 @@ JitHub.WinUI/JitHub.WinUI/
 **/obj-security/
 JitHub.WinUI.Tests/artifacts/
 MarkdownRenderer/artifacts/
-MarkdownRenderer/MarkdownRenderer.PixelTests/artifacts/
+MarkdownRenderer/tests/MarkdownRenderer.Pixel.Tests/artifacts/
 markdown-security-lifecycle-smoke/
 *.backup.png

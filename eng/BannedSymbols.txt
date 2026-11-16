@@ -17,3 +17,6 @@ M:System.Text.Json.JsonSerializer.SerializeToElement``1(``0,System.Text.Json.Jso
 M:System.Text.Json.JsonSerializer.Deserialize``1(System.String,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
 M:System.Text.Json.JsonSerializer.Deserialize``1(System.IO.Stream,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
 M:System.Text.Json.JsonSerializer.DeserializeAsync``1(System.IO.Stream,System.Text.Json.JsonSerializerOptions,System.Threading.CancellationToken);Pass generated JsonTypeInfo<T>.
+
+# Raster tiles upload to Win2D CanvasBitmaps off the UI thread; a WriteableBitmap PixelBuffer copy would run on it.
+T:Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap;Upload pixels to a Win2D CanvasBitmap off the UI thread, as AppSvgViewport does.

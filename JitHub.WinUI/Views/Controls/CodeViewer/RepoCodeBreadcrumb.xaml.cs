@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Input;
-using JitHub.Services.Layout;
-using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

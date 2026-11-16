@@ -1,0 +1,4 @@
+{
+  "$comment": "Source organization violations that eng/Test-SourceOrganization.ps1 allows (SRC0001-SRC0007). Each entry names the code, the path the violation reports (the project file for SRC0001, the folder for SRC0004 and SRC0005, the C# file otherwise) and why the code cannot follow the rule yet. An entry that no longer matches a violation fails the check (SRC0008), so remove it with the fix. Do not add entries to avoid moving files; move them.",
+  "exceptions": []
+}

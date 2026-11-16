@@ -1,0 +1,2856 @@
+diff --git a/crates/merman-core/src/diagrams/flowchart.rs b/crates/merman-core/src/diagrams/flowchart.rs
+index 09d03e357..b80f72fd7 100644
+--- a/crates/merman-core/src/diagrams/flowchart.rs
++++ b/crates/merman-core/src/diagrams/flowchart.rs
+@@ -1594,8 +1594,14 @@ impl FlowchartSemanticSource {
+             } else {
+                 None
+             };
+-            let (node, render_label_source) = flow_node_to_model(node, &meta.effective_config);
+-            render_label_sources.insert_node(node.id.clone(), render_label_source, source_span);
++            let (node, render_label_source, svg_text_source) =
++                flow_node_to_model(node, &meta.effective_config);
++            render_label_sources.insert_node(
++                node.id.clone(),
++                render_label_source,
++                svg_text_source,
++                source_span,
++            );
+             render_nodes.push(node);
+         }
+         let mut render_edges = Vec::with_capacity(edges.len());
+@@ -1604,9 +1610,13 @@ impl FlowchartSemanticSource {
+                 control.checkpoint()?;
+             }
+             match flow_edge_to_model(edge, meta) {
+-                Ok((edge, render_label_source)) => {
+-                    if let Some(source) = render_label_source {
+-                        render_label_sources.insert_edge(edge.id.clone(), source);
++                Ok((edge, render_label_source, svg_text_source)) => {
++                    if render_label_source.is_some() || svg_text_source.is_some() {
++                        render_label_sources.insert_edge(
++                            edge.id.clone(),
++                            render_label_source,
++                            svg_text_source,
++                        );
+                     }
+                     render_edges.push(edge);
+                 }
+@@ -1618,9 +1628,14 @@ impl FlowchartSemanticSource {
+             if index % 128 == 0 {
+                 control.checkpoint()?;
+             }
+-            let (subgraph, render_title_source) =
++            let (subgraph, render_title_source, svg_text_source) =
+                 flow_subgraph_to_model(subgraph, &meta.effective_config);
+-            render_label_sources.insert_subgraph(subgraph.id.clone(), index, render_title_source);
++            render_label_sources.insert_subgraph(
++                subgraph.id.clone(),
++                index,
++                render_title_source,
++                svg_text_source,
++            );
+             render_subgraphs.push(subgraph);
+         }
+         let mut render_tooltips = rustc_hash::FxHashMap::default();
+@@ -1703,13 +1718,19 @@ fn append_missing_subgraph_nodes(
+     control.checkpoint()
+ }
+ 
+-fn flow_node_to_model(n: Node, config: &MermaidConfig) -> (FlowNode, Option<String>) {
++fn flow_node_to_model(
++    n: Node,
++    config: &MermaidConfig,
++) -> (FlowNode, Option<String>, Option<String>) {
+     let layout_shape = layout_shape_for_node(&n);
+     let label = sanitized_node_label(&n, config);
+     let label_raw = n.label.as_deref().unwrap_or(&n.id);
+     let render_label_source = render_label_source_needs_provenance(label_raw)
+         .then(|| sanitized_node_render_label_source(&n, config))
+         .filter(|source| *source != label);
++    let svg_text_source = (title_kind_str(&n.label_type) != "markdown"
++        && has_mermaid_entity_placeholder(label_raw))
++    .then(|| sanitized_node_svg_text_source(&n, config));
+ 
+     let node = FlowNode {
+         id: n.id,
+@@ -1731,10 +1752,13 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> (FlowNode, Option<Stri
+         link_target: n.link_target,
+         have_callback: n.have_callback,
+     };
+-    (node, render_label_source)
++    (node, render_label_source, svg_text_source)
+ }
+ 
+-fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option<String>)> {
++fn flow_edge_to_model(
++    e: Edge,
++    meta: &ParseMetadata,
++) -> Result<(FlowEdge, Option<String>, Option<String>)> {
+     let label = sanitized_optional_label(e.label.as_deref(), &meta.effective_config);
+     let render_label_source = e
+         .label
+@@ -1745,6 +1769,12 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
+         (Some(label), Some(source)) if *label != source => Some(source),
+         _ => None,
+     };
++    let svg_text_source = e
++        .label
++        .as_deref()
++        .filter(|_| title_kind_str(&e.label_type) != "markdown")
++        .filter(|raw| has_mermaid_entity_placeholder(raw))
++        .map(|raw| sanitized_svg_text_source(raw, &meta.effective_config));
+     let id = e.id.ok_or_else(|| {
+         Error::diagram_parse_fallback(
+             meta.diagram_type.clone(),
+@@ -1777,6 +1807,7 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
+             animation: e.animation,
+         },
+         render_label_source,
++        svg_text_source,
+     ))
+ }
+ 
+@@ -1819,6 +1850,15 @@ fn sanitized_node_render_label_source(n: &Node, config: &MermaidConfig) -> Strin
+     label
+ }
+ 
++fn sanitized_node_svg_text_source(n: &Node, config: &MermaidConfig) -> String {
++    let label_raw = n.label.as_ref().unwrap_or(&n.id);
++    let mut label = sanitized_svg_text_source(label_raw, config);
++    if label.len() >= 2 && label.starts_with('"') && label.ends_with('"') {
++        label = label[1..label.len() - 1].to_string();
++    }
++    label
++}
++
+ fn sanitized_optional_label(label: Option<&str>, config: &MermaidConfig) -> Option<String> {
+     label.map(|s| sanitized_label(s, config))
+ }
+@@ -1834,6 +1874,16 @@ fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
+     crate::sanitize::sanitize_text_as_html_fragment(decoded.as_ref(), config)
+ }
+ 
++fn sanitized_svg_text_source(raw: &str, config: &MermaidConfig) -> String {
++    // Keep Mermaid's preprocessor placeholders intact. The renderer consumes this only as inert
++    // SVG text, resolving the placeholders after it has classified source words and line breaks.
++    sanitize_text(raw, config)
++}
++
++fn has_mermaid_entity_placeholder(raw: &str) -> bool {
++    raw.contains("ﬂ°") && raw.contains("¶ß")
++}
++
+ fn render_label_source_needs_provenance(raw: &str) -> bool {
+     raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
+ }
+@@ -1848,12 +1898,15 @@ fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
+ fn flow_subgraph_to_model(
+     sg: FlowSubGraph,
+     config: &MermaidConfig,
+-) -> (FlowSubgraph, Option<String>) {
++) -> (FlowSubgraph, Option<String>, Option<String>) {
+     let sanitized_title = sanitize_text(&sg.title, config);
+     let title = decode_mermaid_hash_entities(&sanitized_title).into_owned();
+     let render_title_source = render_label_source_needs_provenance(&sg.title)
+         .then(|| sanitized_render_label_source(&sg.title, config))
+         .filter(|source| *source != title);
++    let svg_text_source = (sg.label_type != "markdown"
++        && has_mermaid_entity_placeholder(&sg.title))
++    .then(|| sanitized_svg_text_source(&sg.title, config));
+     let subgraph = FlowSubgraph {
+         id: sg.id,
+         nodes: sg.nodes,
+@@ -1864,7 +1917,7 @@ fn flow_subgraph_to_model(
+         has_explicit_dir: sg.has_explicit_dir,
+         label_type: Some(sg.label_type),
+     };
+-    (subgraph, render_title_source)
++    (subgraph, render_title_source, svg_text_source)
+ }
+ 
+ #[cfg(test)]
+@@ -2292,6 +2345,145 @@ F -- "&nbsp;" --> G
+         );
+     }
+ 
++    #[test]
++    fn flowchart_svg_text_context_retains_mermaid_entity_placeholders_separately() {
++        // These marker spellings are the parser-owned representation produced by Mermaid's
++        // `encodeEntities` preprocessing. Passing them directly here isolates the core projection
++        // from preprocessing while exercising the exact value it transports to the renderer.
++        let source = concat!(
++            "flowchart LR\n",
++            "Quote[\"ﬂ°quot¶ß\"]\n",
++            "Numeric[\"ﬂ°°160¶ß\"]\n",
++            "Unicode[\"ﬂ°eacute¶ß\"]\n",
++            "LiteralEntity[\"&quot;\"]\n",
++            "DoubleEncoded[\"&amp;quot;\"]\n",
++            "RawBreak[\"A<br>B\"]\n",
++            "EncodedBreak[\"Aﬂ°lt¶ßbrﬂ°gt¶ßB\"]\n",
++            "Shape@{ label: \"ﬂ°quot¶ß\", labelType: \"string\", shape: \"rect\" }\n",
++            "A -->|ﬂ°quot¶ß| B\n",
++            "subgraph SG[\"ﬂ°quot¶ß\"]\n",
++            "  Inside\n",
++            "end\n",
++        );
++        let meta = flowchart_test_meta("flowchart-v2");
++        let (model, sources) =
++            parse_flowchart_model_with_render_context(source, &meta).expect("flowchart model");
++
++        let node = |id: &str| {
++            model
++                .nodes
++                .iter()
++                .find(|node| node.id == id)
++                .unwrap_or_else(|| panic!("missing node {id}"))
++        };
++
++        let quote = node("Quote");
++        assert_eq!(quote.label.as_deref(), Some("\""));
++        assert_eq!(sources.node_label_for_render(quote), Some("&quot;"));
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(quote),
++            Some("ﬂ°quot¶ß")
++        );
++
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(node("Numeric")),
++            Some("ﬂ°°160¶ß")
++        );
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(node("Unicode")),
++            Some("ﬂ°eacute¶ß")
++        );
++
++        // Literal HTML entity spellings were not introduced by Mermaid's placeholder pass, so
++        // they continue through the existing HTML-safe source projection unchanged.
++        let literal_entity = node("LiteralEntity");
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(literal_entity),
++            None
++        );
++        assert_eq!(
++            sources.node_label_for_render(literal_entity),
++            Some("&quot;")
++        );
++        let double_encoded = node("DoubleEncoded");
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(double_encoded),
++            None
++        );
++        assert_eq!(
++            sources.node_label_for_render(double_encoded),
++            Some("&amp;quot;")
++        );
++        assert!(
++            sources
++                .node_label_for_render(double_encoded)
++                .expect("double-encoded source")
++                .contains("quot;")
++        );
++
++        // Classification must occur after the distinction has been retained: literal `<br>` is
++        // still a break candidate, while Mermaid-encoded angle brackets are SVG text characters.
++        let raw_break = node("RawBreak");
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(raw_break),
++            None
++        );
++        assert_eq!(sources.node_label_for_render(raw_break), Some("A<br/>B"));
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(node("EncodedBreak")),
++            Some("Aﬂ°lt¶ßbrﬂ°gt¶ßB")
++        );
++
++        // The same typed projection follows final model identity for shape-data labels, edge
++        // labels, and subgraph titles; it is not reconstructed from displayed text.
++        assert_eq!(
++            sources.node_mermaid_svg_text_source_for_render(node("Shape")),
++            Some("ﬂ°quot¶ß")
++        );
++        let edge = model
++            .edges
++            .iter()
++            .find(|edge| edge.from == "A" && edge.to == "B")
++            .expect("quoted edge label");
++        assert_eq!(sources.edge_label_for_render(edge), Some("&quot;"));
++        assert_eq!(
++            sources.edge_mermaid_svg_text_source_for_render(edge),
++            Some("ﬂ°quot¶ß")
++        );
++        let subgraph = model
++            .subgraphs
++            .iter()
++            .find(|subgraph| subgraph.id == "SG")
++            .expect("quoted subgraph title");
++        assert_eq!(sources.subgraph_title_for_render(0, subgraph), "&quot;");
++        assert_eq!(
++            sources.subgraph_mermaid_svg_text_source_for_render(0, subgraph),
++            Some("ﬂ°quot¶ß")
++        );
++    }
++
++    #[test]
++    fn flowchart_render_context_retained_bytes_include_svg_text_projection() {
++        let meta = flowchart_test_meta("flowchart-v2");
++        let (model, sources) = parse_flowchart_model_with_render_context(
++            "flowchart LR\nA[\"ﬂ°quot¶ß\"] --> B\n",
++            &meta,
++        )
++        .expect("flowchart with Mermaid placeholder");
++        let node = model
++            .nodes
++            .iter()
++            .find(|node| node.id == "A")
++            .expect("authored node");
++        let svg_text_source = sources
++            .node_mermaid_svg_text_source_for_render(node)
++            .expect("typed SVG text source");
++        assert_eq!(svg_text_source, "ﬂ°quot¶ß");
++
++        let minimum_accounted_bytes = node.id.len() + svg_text_source.len();
++        assert!(sources.retained_bytes() >= minimum_accounted_bytes);
++    }
++
+     #[test]
+     fn flowchart_render_label_context_stays_out_of_the_public_model_contract() {
+         let parsed = crate::Engine::new()
+diff --git a/crates/merman-core/src/diagrams/flowchart/model.rs b/crates/merman-core/src/diagrams/flowchart/model.rs
+index 46025df61..dd3944421 100644
+--- a/crates/merman-core/src/diagrams/flowchart/model.rs
++++ b/crates/merman-core/src/diagrams/flowchart/model.rs
+@@ -43,20 +43,32 @@ impl FlowchartModel {
+ #[derive(Debug, Clone, Default)]
+ pub(crate) struct FlowchartRenderLabelSources {
+     nodes: FxHashMap<String, FlowchartNodeRenderLabelSource>,
+-    edges: FxHashMap<String, String>,
++    edges: FxHashMap<String, FlowchartEdgeRenderLabelSource>,
+     subgraphs: Vec<Option<FlowSubgraphRenderLabelSource>>,
+ }
+ 
+ #[derive(Debug, Clone, Default)]
+ struct FlowchartNodeRenderLabelSource {
+     source: Option<String>,
++    svg_text_source: Option<String>,
+     source_span: Option<SourceSpan>,
+ }
+ 
++/// A sanitized, inert text projection that retains Mermaid's parser-owned entity placeholders.
++///
++/// This projection is exclusively for SVG `<text>` content. It must never be used as HTML
++/// markup, a navigation attribute, or any other executable/DOM-bearing value.
++#[derive(Debug, Clone, Default)]
++struct FlowchartEdgeRenderLabelSource {
++    source: Option<String>,
++    svg_text_source: Option<String>,
++}
++
+ #[derive(Debug, Clone)]
+ struct FlowSubgraphRenderLabelSource {
+     id: String,
+-    source: String,
++    source: Option<String>,
++    svg_text_source: Option<String>,
+ }
+ 
+ impl FlowchartRenderLabelSources {
+@@ -67,6 +79,15 @@ impl FlowchartRenderLabelSources {
+             .or(node.label.as_deref())
+     }
+ 
++    pub(crate) fn node_mermaid_svg_text_source_for_render<'a>(
++        &'a self,
++        node: &FlowNode,
++    ) -> Option<&'a str> {
++        self.nodes
++            .get(&node.id)
++            .and_then(|source| source.svg_text_source.as_deref())
++    }
++
+     pub(crate) fn node_label_source_span(&self, node_id: &str) -> Option<SourceSpan> {
+         self.nodes.get(node_id)?.source_span
+     }
+@@ -101,10 +122,19 @@ impl FlowchartRenderLabelSources {
+     pub(crate) fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+         self.edges
+             .get(&edge.id)
+-            .map(String::as_str)
++            .and_then(|source| source.source.as_deref())
+             .or(edge.label.as_deref())
+     }
+ 
++    pub(crate) fn edge_mermaid_svg_text_source_for_render<'a>(
++        &'a self,
++        edge: &FlowEdge,
++    ) -> Option<&'a str> {
++        self.edges
++            .get(&edge.id)
++            .and_then(|source| source.svg_text_source.as_deref())
++    }
++
+     pub(crate) fn subgraph_title_for_render<'a>(
+         &'a self,
+         declaration_ordinal: usize,
+@@ -114,29 +144,56 @@ impl FlowchartRenderLabelSources {
+             .get(declaration_ordinal)
+             .and_then(Option::as_ref)
+             .filter(|source| source.id == subgraph.id)
+-            .map(|source| source.source.as_str())
++            .and_then(|source| source.source.as_deref())
+             .unwrap_or(subgraph.title.as_str())
+     }
+ 
++    pub(crate) fn subgraph_mermaid_svg_text_source_for_render<'a>(
++        &'a self,
++        declaration_ordinal: usize,
++        subgraph: &FlowSubgraph,
++    ) -> Option<&'a str> {
++        self.subgraphs
++            .get(declaration_ordinal)
++            .and_then(Option::as_ref)
++            .filter(|source| source.id == subgraph.id)
++            .and_then(|source| source.svg_text_source.as_deref())
++    }
++
+     pub(crate) fn insert_node(
+         &mut self,
+         id: String,
+         source: Option<String>,
++        svg_text_source: Option<String>,
+         source_span: Option<SourceSpan>,
+     ) {
+-        if source.is_some() || source_span.is_some() {
++        if source.is_some() || svg_text_source.is_some() || source_span.is_some() {
+             self.nodes.insert(
+                 id,
+                 FlowchartNodeRenderLabelSource {
+                     source,
++                    svg_text_source,
+                     source_span,
+                 },
+             );
+         }
+     }
+ 
+-    pub(crate) fn insert_edge(&mut self, id: String, source: String) {
+-        self.edges.insert(id, source);
++    pub(crate) fn insert_edge(
++        &mut self,
++        id: String,
++        source: Option<String>,
++        svg_text_source: Option<String>,
++    ) {
++        if source.is_some() || svg_text_source.is_some() {
++            self.edges.insert(
++                id,
++                FlowchartEdgeRenderLabelSource {
++                    source,
++                    svg_text_source,
++                },
++            );
++        }
+     }
+ 
+     pub(crate) fn insert_subgraph(
+@@ -144,13 +201,17 @@ impl FlowchartRenderLabelSources {
+         id: String,
+         declaration_ordinal: usize,
+         source: Option<String>,
++        svg_text_source: Option<String>,
+     ) {
+-        if let Some(source) = source {
++        if source.is_some() || svg_text_source.is_some() {
+             if self.subgraphs.len() <= declaration_ordinal {
+                 self.subgraphs.resize_with(declaration_ordinal + 1, || None);
+             }
+-            self.subgraphs[declaration_ordinal] =
+-                Some(FlowSubgraphRenderLabelSource { id, source });
++            self.subgraphs[declaration_ordinal] = Some(FlowSubgraphRenderLabelSource {
++                id,
++                source,
++                svg_text_source,
++            });
+         }
+     }
+ 
+@@ -161,10 +222,15 @@ impl FlowchartRenderLabelSources {
+                 total
+                     .saturating_add(id.len())
+                     .saturating_add(source.source.as_ref().map_or(0, String::len))
++                    .saturating_add(source.svg_text_source.as_ref().map_or(0, String::len))
+                     .saturating_add(std::mem::size_of::<FlowchartNodeRenderLabelSource>())
+             })
+-            .saturating_add(self.edges.iter().fold(0usize, |total, (id, label)| {
+-                total.saturating_add(id.len()).saturating_add(label.len())
++            .saturating_add(self.edges.iter().fold(0usize, |total, (id, source)| {
++                total
++                    .saturating_add(id.len())
++                    .saturating_add(source.source.as_ref().map_or(0, String::len))
++                    .saturating_add(source.svg_text_source.as_ref().map_or(0, String::len))
++                    .saturating_add(std::mem::size_of::<FlowchartEdgeRenderLabelSource>())
+             }))
+             .saturating_add(
+                 self.subgraphs
+@@ -173,7 +239,9 @@ impl FlowchartRenderLabelSources {
+                     .fold(0usize, |total, source| {
+                         total
+                             .saturating_add(source.id.len())
+-                            .saturating_add(source.source.len())
++                            .saturating_add(source.source.as_ref().map_or(0, String::len))
++                            .saturating_add(source.svg_text_source.as_ref().map_or(0, String::len))
++                            .saturating_add(std::mem::size_of::<FlowSubgraphRenderLabelSource>())
+                     }),
+             )
+     }
+@@ -263,6 +331,18 @@ impl FlowchartRenderContext {
+         self.labels.node_label_for_render(node)
+     }
+ 
++    /// Returns only the inert SVG text projection that retains Mermaid entity provenance.
++    ///
++    /// `None` means the source is an ordinary authored label; callers should use
++    /// [`Self::node_label_for_render`] and must not apply Mermaid's placeholder decoder.
++    #[doc(hidden)]
++    pub fn node_mermaid_svg_text_source_for_render<'a>(
++        &'a self,
++        node: &FlowNode,
++    ) -> Option<&'a str> {
++        self.labels.node_mermaid_svg_text_source_for_render(node)
++    }
++
+     /// Returns the exact authored source range corresponding to the final rendered node label.
+     ///
+     /// For a bare node whose displayed label falls back to its identifier, the range covers the
+@@ -278,6 +358,18 @@ impl FlowchartRenderContext {
+         self.labels.edge_label_for_render(edge)
+     }
+ 
++    /// Returns only the inert SVG text projection that retains Mermaid entity provenance.
++    ///
++    /// `None` means the source is an ordinary authored label; callers should use
++    /// [`Self::edge_label_for_render`] and must not apply Mermaid's placeholder decoder.
++    #[doc(hidden)]
++    pub fn edge_mermaid_svg_text_source_for_render<'a>(
++        &'a self,
++        edge: &FlowEdge,
++    ) -> Option<&'a str> {
++        self.labels.edge_mermaid_svg_text_source_for_render(edge)
++    }
++
+     #[doc(hidden)]
+     pub fn subgraph_title_for_render<'a>(
+         &'a self,
+@@ -288,6 +380,20 @@ impl FlowchartRenderContext {
+             .subgraph_title_for_render(declaration_ordinal, subgraph)
+     }
+ 
++    /// Returns only the inert SVG text projection that retains Mermaid entity provenance.
++    ///
++    /// `None` means the source is an ordinary authored title; callers should use
++    /// [`Self::subgraph_title_for_render`] and must not apply Mermaid's placeholder decoder.
++    #[doc(hidden)]
++    pub fn subgraph_mermaid_svg_text_source_for_render<'a>(
++        &'a self,
++        declaration_ordinal: usize,
++        subgraph: &FlowSubgraph,
++    ) -> Option<&'a str> {
++        self.labels
++            .subgraph_mermaid_svg_text_source_for_render(declaration_ordinal, subgraph)
++    }
++
+     #[doc(hidden)]
+     pub fn effective_subgraph_css<'a>(
+         &'a self,
+@@ -777,3 +883,29 @@ impl Default for SubgraphHeader {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::{FlowchartNodeRenderLabelSource, FlowchartRenderLabelSources};
++    use crate::SourceSpan;
++
++    #[test]
++    fn retained_bytes_count_placeholder_preserving_svg_text_source() {
++        let mut labels = FlowchartRenderLabelSources::default();
++        let id = "node".to_owned();
++        let svg_text_source = "ﬂ°quot¶ß".to_owned();
++        labels.insert_node(
++            id.clone(),
++            None,
++            Some(svg_text_source.clone()),
++            None::<SourceSpan>,
++        );
++
++        assert_eq!(
++            labels.retained_bytes(),
++            id.len()
++                + svg_text_source.len()
++                + std::mem::size_of::<FlowchartNodeRenderLabelSource>()
++        );
++    }
++}
+diff --git a/crates/merman-core/src/resources.rs b/crates/merman-core/src/resources.rs
+index 757532f58..dc7a216c8 100644
+--- a/crates/merman-core/src/resources.rs
++++ b/crates/merman-core/src/resources.rs
+@@ -2055,16 +2055,31 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn parsed_render_resource_checks_include_parser_owned_flowchart_label_sources() {
++    fn parsed_render_resource_checks_include_flowchart_svg_text_source() {
+         let parsed = crate::Engine::new()
+             .parse_diagram_for_render_model_sync(
+-                "flowchart LR\nA[\"&nbsp;entity&nbsp;\"] --> B\n",
++                "flowchart LR\nA[\"#quot; entity\"] --> B\n",
+                 crate::ParseOptions::strict(),
+             )
+             .unwrap()
+             .unwrap();
+         let model_complexity = ModelComplexity::from_render_model(parsed.model());
+         assert!(parsed.retained_render_context_bytes() > 0);
++        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
++            panic!("expected a flowchart render model");
++        };
++        let node = model
++            .nodes
++            .iter()
++            .find(|node| node.id == "A")
++            .expect("authored flowchart node");
++        assert_eq!(
++            parsed
++                .flowchart_render_context()
++                .expect("flowchart render context")
++                .node_mermaid_svg_text_source_for_render(node),
++            Some("ﬂ°quot¶ß entity")
++        );
+ 
+         let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+             .with_limit(
+diff --git a/crates/merman-render/src/entities.rs b/crates/merman-render/src/entities.rs
+index 53692e35a..7dd4d7ee8 100644
+--- a/crates/merman-render/src/entities.rs
++++ b/crates/merman-render/src/entities.rs
+@@ -25,6 +25,90 @@ pub(crate) fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
+     Cow::Owned(decode_stage1_lt_gt_amp(text))
+ }
+ 
++/// Decodes the ordinary sanitizer entities plus Mermaid preprocessing placeholders that were
++/// retained by the flowchart SVG-text projection. The placeholder path is deliberately separate
++/// from [`decode_svg_text_content_entities`]: HTML-safe sources and other diagram families must
++/// not interpret marker-shaped user text as preprocessing metadata.
++pub(crate) fn decode_flowchart_svg_text_content_entities(text: &str) -> Cow<'_, str> {
++    match decode_svg_text_content_entities(text) {
++        Cow::Borrowed(sanitized) => decode_mermaid_placeholders_only(sanitized),
++        Cow::Owned(sanitized) => match decode_mermaid_placeholders_only(&sanitized) {
++            Cow::Borrowed(_) => Cow::Owned(sanitized),
++            Cow::Owned(decoded) => Cow::Owned(decoded),
++        },
++    }
++}
++
++pub(crate) fn mermaid_preprocessor_placeholder_end(text: &str, start: usize) -> Option<usize> {
++    const OPEN: &str = "ﬂ°";
++    const NUMERIC_OPEN: &str = "ﬂ°°";
++    const CLOSE: &str = "¶ß";
++
++    let tail = text.get(start..)?;
++    if !tail.starts_with(OPEN) {
++        return None;
++    }
++    let payload_start = start
++        + if tail.starts_with(NUMERIC_OPEN) {
++            NUMERIC_OPEN.len()
++        } else {
++            OPEN.len()
++        };
++    let bytes = text.as_bytes();
++    let mut payload_end = payload_start;
++    while payload_end < bytes.len()
++        && (bytes[payload_end].is_ascii_alphanumeric() || matches!(bytes[payload_end], b'_' | b'+'))
++    {
++        payload_end += 1;
++    }
++    if payload_end == payload_start || !text.get(payload_end..)?.starts_with(CLOSE) {
++        return None;
++    }
++    Some(payload_end + CLOSE.len())
++}
++
++fn decode_mermaid_placeholders_only(text: &str) -> Cow<'_, str> {
++    const OPEN: &str = "ﬂ°";
++
++    if !text.contains(OPEN) {
++        return Cow::Borrowed(text);
++    }
++
++    let mut out = String::with_capacity(text.len());
++    let mut cursor = 0usize;
++    let mut decoded_any = false;
++
++    while let Some(relative_start) = text[cursor..].find(OPEN) {
++        let start = cursor + relative_start;
++        out.push_str(&text[cursor..start]);
++        if let Some(end) = mermaid_preprocessor_placeholder_end(text, start) {
++            let token = &text[start..end];
++            let restored = merman_core::entities::restore_mermaid_entity_spelling(token);
++            let decoded = merman_core::entities::decode_html_entities_to_unicode(restored.as_ref());
++            if decoded.as_ref() != restored.as_ref() {
++                out.push_str(decoded.as_ref());
++                decoded_any = true;
++            } else {
++                // Mermaid's own decoder restores unknown placeholders to their literal entity
++                // spelling. Keep that contract, but never leak its private sentinel bytes.
++                out.push_str(restored.as_ref());
++                decoded_any |= restored.as_ref() != token;
++            }
++            cursor = end;
++        } else {
++            out.push_str(OPEN);
++            cursor = start + OPEN.len();
++        }
++    }
++
++    out.push_str(&text[cursor..]);
++    if decoded_any {
++        Cow::Owned(out)
++    } else {
++        Cow::Borrowed(text)
++    }
++}
++
+ /// Decodes a minimal subset of entities used by Mermaid labels.
+ ///
+ /// This matches the historical replacement order used in this repo:
+@@ -104,8 +188,8 @@ fn decode_stage2_quot_apos(text: &str) -> String {
+ #[cfg(test)]
+ mod tests {
+     use super::{
+-        decode_entities_minimal, decode_mermaid_entities_for_render_text,
+-        decode_svg_text_content_entities,
++        decode_entities_minimal, decode_flowchart_svg_text_content_entities,
++        decode_mermaid_entities_for_render_text, decode_svg_text_content_entities,
+     };
+ 
+     #[test]
+@@ -156,4 +240,42 @@ mod tests {
+             "& < > &nbsp; &#160; &quot; &unknown;"
+         );
+     }
++
++    #[test]
++    fn flowchart_svg_text_decodes_only_complete_preprocessor_placeholders() {
++        let source = concat!(
++            "literal &amp;quot; ",
++            "ﬂ°quot¶ß ",
++            "ﬂ°°34¶ß ",
++            "ﬂ°eacute¶ß ",
++            "ﬂ°doesnotexist¶ß ",
++            "ﬂ°°35¶ß ",
++            "ﬂ°°128512¶ß ",
++            "eﬂ°°769¶ß ",
++            "ﬂ°bad payload¶ß ",
++            "&unknown;",
++        );
++        assert_eq!(
++            decode_flowchart_svg_text_content_entities(source),
++            "literal &quot; \" \" é &doesnotexist; # 😀 e\u{0301} ﬂ°bad payload¶ß &unknown;"
++        );
++    }
++
++    #[test]
++    fn flowchart_svg_text_preserves_long_unknown_preprocessor_entity_names() {
++        let name = "unknown".repeat(16);
++        let source = format!("ﬂ°{name}¶ß");
++
++        assert_eq!(
++            decode_flowchart_svg_text_content_entities(&source),
++            format!("&{name};")
++        );
++    }
++
++    #[test]
++    fn malformed_repeated_preprocessor_markers_are_bounded_and_preserved() {
++        let source = format!("{}¶ß", "ﬂ°".repeat(4_096));
++
++        assert_eq!(decode_flowchart_svg_text_content_entities(&source), source);
++    }
+ }
+diff --git a/crates/merman-render/src/flowchart/elk.rs b/crates/merman-render/src/flowchart/elk.rs
+index 083d60bcb..00af27240 100644
+--- a/crates/merman-render/src/flowchart/elk.rs
++++ b/crates/merman-render/src/flowchart/elk.rs
+@@ -23,11 +23,12 @@ use super::label::compute_bounds;
+ use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
+ use super::{
+     FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
+-    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
++    FlowchartSvgLabelSidecarBuilder, FlowchartSvgTextSourceMode, FlowchartSvgWidthMode,
+     flowchart_apply_html_node_class_box_metrics, flowchart_effective_edge_label_text_style,
+     flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
+-    flowchart_node_svg_width_mode, measure_flowchart_svg_label_for_layout,
+-    measure_flowchart_svg_label_for_layout_with_metrics_style,
++    flowchart_node_svg_width_mode,
++    measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode,
++    measure_flowchart_svg_label_for_layout_with_source_mode,
+ };
+ 
+ pub(crate) struct FlowchartElkLayoutExecution<'a> {
+@@ -1537,7 +1538,16 @@ fn subgraph_label(
+     ctx: &ElkMeasureContext<'_>,
+ ) -> Option<elk::Label> {
+     let label_type = sg.label_type.as_deref().unwrap_or("text");
+-    let title = ctx.model.subgraph_title_for_render(declaration_ordinal, sg);
++    let (title, source_mode) =
++        if ctx.cluster_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++            ctx.model
++                .subgraph_source_for_svg_text_render(declaration_ordinal, sg)
++        } else {
++            (
++                ctx.model.subgraph_title_for_render(declaration_ordinal, sg),
++                FlowchartSvgTextSourceMode::Sanitized,
++            )
++        };
+     let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
+     let text_style = flowchart_effective_text_style_for_classes(
+         ctx.cluster_label_base_style,
+@@ -1548,7 +1558,7 @@ fn subgraph_label(
+     // ELK's temporary subgraph node uses Flowchart wrappingWidth for layout, while Mermaid's final
+     // cluster SVG calls createLabel with an unbounded width. The exact binding can never be reused,
+     // so retaining a measured sidecar entry here would add memory and still repeat render work.
+-    let metrics = measure_flowchart_svg_label_for_layout(
++    let metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+         None,
+         None,
+         None,
+@@ -1563,6 +1573,7 @@ fn subgraph_label(
+             math_renderer: ctx.math_renderer,
+         },
+         FlowchartSvgWidthMode::Bbox,
++        source_mode,
+     );
+     Some(elk::Label {
+         width: metrics.width.max(1.0),
+@@ -1575,8 +1586,16 @@ fn node_dimensions_and_label(
+     owner: FlowchartSvgLabelOwner,
+     ctx: NodeMeasureContext<'_>,
+ ) -> (f64, f64, elk::Label) {
+-    let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
+     let label_type = node.label_type.as_deref().unwrap_or("text");
++    let (raw_label, source_mode) =
++        if ctx.node_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++            ctx.model.node_source_for_svg_text_render(node)
++        } else {
++            (
++                ctx.model.node_label_for_render(node).unwrap_or(&node.id),
++                FlowchartSvgTextSourceMode::Sanitized,
++            )
++        };
+     let node_text_style = flowchart_effective_text_style_for_node_classes(
+         ctx.node_label_base_style,
+         &ctx.model.class_defs,
+@@ -1589,7 +1608,7 @@ fn node_dimensions_and_label(
+         ctx.node_wrap_mode,
+         node.layout_shape.as_deref().unwrap_or("squareRect"),
+     );
+-    let mut metrics = measure_flowchart_svg_label_for_layout(
++    let mut metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+         ctx.svg_label_sidecar,
+         Some(owner),
+         Some(node.id.as_str()),
+@@ -1604,6 +1623,7 @@ fn node_dimensions_and_label(
+             math_renderer: ctx.math_renderer,
+         },
+         svg_width_mode,
++        source_mode,
+     );
+     if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
+         flowchart_apply_html_node_class_box_metrics(
+@@ -1642,8 +1662,16 @@ fn edge_label(
+     owner: FlowchartSvgLabelOwner,
+     ctx: EdgeMeasureContext<'_>,
+ ) -> Option<elk::Label> {
+-    let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
+     let label_type = edge.label_type.as_deref().unwrap_or("text");
++    let (label_text, source_mode) =
++        if ctx.edge_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++            ctx.model.edge_source_for_svg_text_render(edge)
++        } else {
++            (
++                ctx.model.edge_label_for_render(edge).unwrap_or_default(),
++                FlowchartSvgTextSourceMode::Sanitized,
++            )
++        };
+     if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
+         return None;
+     }
+@@ -1669,7 +1697,7 @@ fn edge_label(
+             ctx.edge_wrap_mode,
+         )
+     } else if ctx.edge_wrap_mode == WrapMode::SvgLike {
+-        measure_flowchart_svg_label_for_layout_with_metrics_style(
++        measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode(
+             ctx.svg_label_sidecar,
+             Some(owner),
+             Some(edge.id.as_str()),
+@@ -1686,9 +1714,10 @@ fn edge_label(
+             },
+             edge_text_style.as_ref(),
+             FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         )
+     } else {
+-        measure_flowchart_svg_label_for_layout(
++        measure_flowchart_svg_label_for_layout_with_source_mode(
+             ctx.svg_label_sidecar,
+             Some(owner),
+             Some(edge.id.as_str()),
+@@ -1703,6 +1732,7 @@ fn edge_label(
+                 math_renderer: ctx.math_renderer,
+             },
+             FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         )
+     };
+ 
+diff --git a/crates/merman-render/src/flowchart/label.rs b/crates/merman-render/src/flowchart/label.rs
+index 868087560..d1883a95e 100644
+--- a/crates/merman-render/src/flowchart/label.rs
++++ b/crates/merman-render/src/flowchart/label.rs
+@@ -20,6 +20,24 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
+     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+ }
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
++pub(crate) enum FlowchartSvgTextSourceMode {
++    #[default]
++    Sanitized,
++    MermaidPreprocessor,
++}
++
++impl FlowchartSvgTextSourceMode {
++    fn decode_word(self, word: &str) -> std::borrow::Cow<'_, str> {
++        match self {
++            Self::Sanitized => crate::entities::decode_svg_text_content_entities(word),
++            Self::MermaidPreprocessor => {
++                crate::entities::decode_flowchart_svg_text_content_entities(word)
++            }
++        }
++    }
++}
++
+ fn normalize_flowchart_svg_line_breaks(input: &str) -> String {
+     let mut out = String::with_capacity(input.len());
+     let mut pos = 0usize;
+@@ -80,9 +98,24 @@ fn normalize_flowchart_svg_line_breaks(input: &str) -> String {
+ /// `<span class="a b">` is therefore one source word, while an entity-authored
+ /// `&lt;span class="a b"&gt;` keeps the ordinary whitespace boundaries it had in the source.
+ pub(crate) fn flowchart_non_markdown_svg_source_word_lines(label: &str) -> Vec<Vec<String>> {
++    flowchart_non_markdown_svg_source_word_lines_with_mode(
++        label,
++        FlowchartSvgTextSourceMode::Sanitized,
++    )
++}
++
++pub(crate) fn flowchart_non_markdown_svg_source_word_lines_with_mode(
++    label: &str,
++    source_mode: FlowchartSvgTextSourceMode,
++) -> Vec<Vec<String>> {
+     let normalized = label.replace("\r\n", "\n");
+     let normalized = flowchart_decode_label_escapes(&normalized);
+     let normalized = normalize_flowchart_svg_line_breaks(&normalized);
++    let normalized = if source_mode == FlowchartSvgTextSourceMode::MermaidPreprocessor {
++        strip_raw_flowchart_formatting_tags(&normalized)
++    } else {
++        normalized
++    };
+ 
+     normalized
+         .split('\n')
+@@ -94,7 +127,171 @@ pub(crate) fn flowchart_non_markdown_svg_source_word_lines(label: &str) -> Vec<V
+         .collect()
+ }
+ 
++fn strip_raw_flowchart_formatting_tags(input: &str) -> String {
++    const FORMATTING_TAGS: [&str; 13] = [
++        "b", "strong", "i", "em", "u", "s", "strike", "del", "sub", "sup", "small", "mark", "span",
++    ];
++    const SCAN_BUDGET_MULTIPLIER: usize = 4;
++    const MIN_SCAN_BUDGET: usize = 256;
++
++    enum TagRead {
++        Recognized(usize),
++        NotRecognized,
++        BudgetExceeded,
++    }
++
++    fn try_read_tag(input: &str, start: usize, scan_budget: &mut usize) -> TagRead {
++        let bytes = input.as_bytes();
++        let mut quote = None;
++        let mut close = None;
++
++        for (offset, &byte) in bytes[start + 1..].iter().enumerate() {
++            if *scan_budget == 0 {
++                return TagRead::BudgetExceeded;
++            }
++            *scan_budget -= 1;
++
++            if let Some(active_quote) = quote {
++                if byte == active_quote {
++                    quote = None;
++                }
++                continue;
++            }
++
++            match byte {
++                b'\'' | b'"' => quote = Some(byte),
++                b'>' => {
++                    close = Some(start + 1 + offset);
++                    break;
++                }
++                _ => {}
++            }
++        }
++
++        let Some(close) = close else {
++            return TagRead::NotRecognized;
++        };
++
++        let raw_tag = &input[start + 1..close];
++        if raw_tag.len() > *scan_budget {
++            return TagRead::BudgetExceeded;
++        }
++        *scan_budget -= raw_tag.len();
++
++        if raw_tag.is_empty() || raw_tag.chars().next().is_some_and(char::is_whitespace) {
++            return TagRead::NotRecognized;
++        }
++
++        let mut tag = raw_tag;
++        if let Some(without_slash) = tag.strip_prefix('/') {
++            if without_slash
++                .chars()
++                .next()
++                .is_some_and(char::is_whitespace)
++            {
++                return TagRead::NotRecognized;
++            }
++            tag = without_slash;
++        }
++
++        if tag.ends_with('/') {
++            tag = tag[..tag.len() - 1].trim_end();
++        }
++
++        let name_length = tag
++            .as_bytes()
++            .iter()
++            .take_while(|byte| byte.is_ascii_alphabetic())
++            .count();
++        if name_length == 0
++            || tag[name_length..]
++                .chars()
++                .next()
++                .is_some_and(|character| !character.is_whitespace())
++        {
++            return TagRead::NotRecognized;
++        }
++
++        let name = &tag[..name_length];
++        if FORMATTING_TAGS
++            .iter()
++            .any(|recognized| name.eq_ignore_ascii_case(recognized))
++        {
++            TagRead::Recognized(close + 1)
++        } else {
++            TagRead::NotRecognized
++        }
++    }
++
++    let mut scan_budget = input
++        .len()
++        .saturating_mul(SCAN_BUDGET_MULTIPLIER)
++        .max(MIN_SCAN_BUDGET);
++    let mut search_from = 0usize;
++    let mut copied_through = 0usize;
++    let mut output: Option<String> = None;
++
++    while let Some(relative_marker) = input[search_from..].find('<') {
++        let marker = search_from + relative_marker;
++        match try_read_tag(input, marker, &mut scan_budget) {
++            TagRead::Recognized(end) => {
++                let output = output.get_or_insert_with(|| String::with_capacity(input.len()));
++                // Formatting wrappers are presentation, not word separators. Removing them
++                // must preserve exactly the whitespace that was authored between their contents.
++                output.push_str(&input[copied_through..marker]);
++                copied_through = end;
++                search_from = end;
++            }
++            TagRead::NotRecognized => search_from = marker + 1,
++            TagRead::BudgetExceeded => return input.to_string(),
++        }
++    }
++
++    match output {
++        Some(mut output) => {
++            output.push_str(&input[copied_through..]);
++            output
++        }
++        None => input.to_string(),
++    }
++}
++
++fn flowchart_svg_text_source_boundaries(
++    word: &str,
++    source_mode: FlowchartSvgTextSourceMode,
++) -> Vec<usize> {
++    let mut boundaries = vec![0];
++    let mut cursor = 0usize;
++    while cursor < word.len() {
++        if source_mode == FlowchartSvgTextSourceMode::MermaidPreprocessor
++            && let Some(end) = crate::entities::mermaid_preprocessor_placeholder_end(word, cursor)
++        {
++            cursor = end;
++            boundaries.push(cursor);
++            continue;
++        }
++
++        let grapheme = word[cursor..]
++            .graphemes(true)
++            .next()
++            .expect("a byte offset before the end has a grapheme");
++        cursor += grapheme.len();
++        boundaries.push(cursor);
++    }
++    boundaries
++}
++
+ pub(crate) fn flowchart_svg_source_word_lines_plain_text(lines: &[Vec<String>]) -> String {
++    flowchart_svg_source_word_lines_plain_text_with_mode(
++        lines,
++        FlowchartSvgTextSourceMode::default(),
++    )
++}
++
++pub(crate) fn flowchart_svg_source_word_lines_plain_text_with_mode(
++    lines: &[Vec<String>],
++    source_mode: FlowchartSvgTextSourceMode,
++) -> String {
+     let capacity = lines
+         .iter()
+         .flatten()
+@@ -116,7 +313,7 @@ pub(crate) fn flowchart_svg_source_word_lines_plain_text(lines: &[Vec<String>])
+             if word_index > 0 {
+                 out.push(' ');
+             }
+-            let visible = crate::entities::decode_svg_text_content_entities(word);
++            let visible = source_mode.decode_word(word);
+             out.push_str(visible.as_ref());
+         }
+     }
+@@ -156,15 +353,23 @@ pub(crate) fn flowchart_node_svg_width_mode(
+ pub(crate) struct FlowchartSvgLabelSource {
+     source_lines: Vec<Vec<String>>,
+     plain_text: String,
++    source_mode: FlowchartSvgTextSourceMode,
+ }
+ 
+ impl FlowchartSvgLabelSource {
+     pub(crate) fn new(source: &str) -> Self {
+-        let source_lines = flowchart_non_markdown_svg_source_word_lines(source);
+-        let plain_text = flowchart_svg_source_word_lines_plain_text(&source_lines);
++        Self::new_with_mode(source, FlowchartSvgTextSourceMode::Sanitized)
++    }
++
++    pub(crate) fn new_with_mode(source: &str, source_mode: FlowchartSvgTextSourceMode) -> Self {
++        let source_lines =
++            flowchart_non_markdown_svg_source_word_lines_with_mode(source, source_mode);
++        let plain_text =
++            flowchart_svg_source_word_lines_plain_text_with_mode(&source_lines, source_mode);
+         Self {
+             source_lines,
+             plain_text,
++            source_mode,
+         }
+     }
+ 
+@@ -179,12 +384,13 @@ impl FlowchartSvgLabelSource {
+         max_width_px: Option<f64>,
+         break_long_words: bool,
+     ) -> Vec<Vec<String>> {
+-        flowchart_wrap_svg_source_word_lines(
++        flowchart_wrap_svg_source_word_lines_with_mode(
+             measurer,
+             &self.source_lines,
+             style,
+             max_width_px,
+             break_long_words,
++            self.source_mode,
+         )
+     }
+ 
+@@ -228,12 +434,15 @@ impl FlowchartSvgLabelSource {
+             };
+         }
+ 
+-        let visible = flowchart_svg_source_word_lines_plain_text(wrapped);
++        let visible =
++            flowchart_svg_source_word_lines_plain_text_with_mode(wrapped, self.source_mode);
+         let mut metrics = measurer.measure_wrapped(&visible, style, None, WrapMode::SvgLike);
+         if width_mode == FlowchartSvgWidthMode::ComputedLength {
+             metrics.width = wrapped.iter().fold(0.0_f64, |width, line| {
+-                let visible =
+-                    flowchart_svg_source_word_lines_plain_text(std::slice::from_ref(line));
++                let visible = flowchart_svg_source_word_lines_plain_text_with_mode(
++                    std::slice::from_ref(line),
++                    self.source_mode,
++                );
+                 width.max(measurer.measure_svg_text_computed_length_px(&visible, style))
+             });
+         }
+@@ -247,6 +456,24 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
+     style: &TextStyle,
+     max_width_px: Option<f64>,
+     break_long_words: bool,
++) -> Vec<Vec<String>> {
++    flowchart_wrap_svg_source_word_lines_with_mode(
++        measurer,
++        lines,
++        style,
++        max_width_px,
++        break_long_words,
++        FlowchartSvgTextSourceMode::Sanitized,
++    )
++}
++
++pub(crate) fn flowchart_wrap_svg_source_word_lines_with_mode(
++    measurer: &dyn TextMeasurer,
++    lines: &[Vec<String>],
++    style: &TextStyle,
++    max_width_px: Option<f64>,
++    break_long_words: bool,
++    source_mode: FlowchartSvgTextSourceMode,
+ ) -> Vec<Vec<String>> {
+     #[derive(Clone)]
+     struct ProbeCheckpoint {
+@@ -257,15 +484,21 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
+     struct ComputedLengthProbe<'a> {
+         measurer: &'a dyn TextMeasurer,
+         style: &'a TextStyle,
++        source_mode: FlowchartSvgTextSourceMode,
+         builtin: Option<crate::environment::BuiltinSvgComputedLength>,
+         visible: String,
+     }
+ 
+     impl<'a> ComputedLengthProbe<'a> {
+-        fn new(measurer: &'a dyn TextMeasurer, style: &'a TextStyle) -> Self {
++        fn new(
++            measurer: &'a dyn TextMeasurer,
++            style: &'a TextStyle,
++            source_mode: FlowchartSvgTextSourceMode,
++        ) -> Self {
+             Self {
+                 measurer,
+                 style,
++                source_mode,
+                 builtin: measurer.begin_svg_text_computed_length(style),
+                 visible: String::new(),
+             }
+@@ -306,7 +539,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
+             if prepend_space {
+                 self.push_visible(" ");
+             }
+-            let visible = crate::entities::decode_svg_text_content_entities(word);
++            let visible = self.source_mode.decode_word(word);
+             self.push_visible(visible.as_ref());
+         }
+ 
+@@ -322,7 +555,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
+ 
+         fn measure_source(&mut self, source: &str) -> f64 {
+             self.reset();
+-            let visible = crate::entities::decode_svg_text_content_entities(source);
++            let visible = self.source_mode.decode_word(source);
+             self.push_visible(visible.as_ref());
+             self.width_px()
+         }
+@@ -333,17 +566,16 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
+         word: &str,
+         max_width_px: f64,
+     ) -> Vec<String> {
+-        let boundaries = word
+-            .grapheme_indices(true)
+-            .map(|(offset, _)| offset)
+-            .chain(std::iter::once(word.len()))
+-            .collect::<Vec<_>>();
++        let boundaries = flowchart_svg_text_source_boundaries(word, probe.source_mode);
+         if boundaries.len() <= 1 {
+             return vec![word.to_string()];
+         }
+ 
+-        let has_decoded_entities =
+-            word.contains("&lt;") || word.contains("&gt;") || word.contains("&amp;");
++        let has_decoded_entities = word.contains("&lt;")
++            || word.contains("&gt;")
++            || word.contains("&amp;")
++            || (probe.source_mode == FlowchartSvgTextSourceMode::MermaidPreprocessor
++                && (word.contains('ﬂ') || word.contains("¶ß")));
+         if probe.has_builtin() && !has_decoded_entities {
+             let mut chunks = Vec::new();
+             let mut start_index = 0usize;
+@@ -415,7 +647,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
+     };
+ 
+     let mut wrapped = Vec::new();
+-    let mut probe = ComputedLengthProbe::new(measurer, style);
++    let mut probe = ComputedLengthProbe::new(measurer, style, source_mode);
+     for source_line in lines {
+         if measurer.cancellation_requested() {
+             return Vec::new();
+@@ -1221,6 +1453,57 @@ mod tests {
+     use crate::math::MathRenderer;
+     use crate::model::{LayoutLabel, LayoutPoint};
+ 
++    #[test]
++    fn typed_flowchart_svg_source_strips_only_raw_formatting_wrappers() {
++        let source = concat!(
++            "a<b>raw</b>",
++            "ﬂ°lt¶ßbﬂ°gt¶ßencodedﬂ°lt¶ß/bﬂ°gt¶ß ",
++            "<span title=\"left > right\">span</span>",
++            " <widget>custom</widget>",
++        );
++        let lines = flowchart_non_markdown_svg_source_word_lines_with_mode(
++            source,
++            FlowchartSvgTextSourceMode::MermaidPreprocessor,
++        );
++        let visible = flowchart_svg_source_word_lines_plain_text_with_mode(
++            &lines,
++            FlowchartSvgTextSourceMode::MermaidPreprocessor,
++        );
++
++        assert_eq!(visible, "araw<b>encoded</b> span <widget> custom </widget>");
++    }
++
++    #[test]
++    fn typed_flowchart_svg_source_preserves_unknown_and_malformed_raw_tags() {
++        let cases = [
++            ("<custom>", "<custom>"),
++            ("<b x=\"unterminated> After", "<b x=\"unterminated> After"),
++            ("< b> <b!> <bizarre>", "< b> <b!> <bizarre>"),
++            ("<b title=\"x > y\">label</b>", "label"),
++        ];
++        for (input, expected) in cases {
++            assert_eq!(strip_raw_flowchart_formatting_tags(input), expected);
++        }
++
++        let hostile = "<b ".repeat(1_024);
++        assert_eq!(strip_raw_flowchart_formatting_tags(&hostile), hostile);
++    }
++
++    #[test]
++    fn typed_flowchart_svg_source_keeps_encoded_break_literal_and_raw_break_structural() {
++        let source = "raw<br>break ﬂ°lt¶ßbrﬂ°gt¶ßencoded";
++        let lines = flowchart_non_markdown_svg_source_word_lines_with_mode(
++            source,
++            FlowchartSvgTextSourceMode::MermaidPreprocessor,
++        );
++        let visible = flowchart_svg_source_word_lines_plain_text_with_mode(
++            &lines,
++            FlowchartSvgTextSourceMode::MermaidPreprocessor,
++        );
++
++        assert_eq!(visible, "raw\nbreak <br>encoded");
++    }
++
+     #[derive(Debug)]
+     struct PreciseMathRenderer;
+ 
+diff --git a/crates/merman-render/src/flowchart/layout.rs b/crates/merman-render/src/flowchart/layout.rs
+index 38bc39fc4..4472a9c89 100644
+--- a/crates/merman-render/src/flowchart/layout.rs
++++ b/crates/merman-render/src/flowchart/layout.rs
+@@ -27,11 +27,11 @@ use super::{
+ };
+ use super::{
+     FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+-    FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
++    FlowchartSvgTextSourceMode, FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
+     flowchart_effective_edge_label_text_style, flowchart_effective_text_style_for_classes,
+     flowchart_effective_text_style_for_node_classes, flowchart_node_svg_width_mode,
+-    measure_flowchart_svg_label_for_layout,
+-    measure_flowchart_svg_label_for_layout_with_metrics_style,
++    measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode,
++    measure_flowchart_svg_label_for_layout_with_source_mode,
+ };
+ 
+ type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
+@@ -1640,8 +1640,16 @@ fn layout_flowchart_with_model(
+         if subgraph_ids.contains(n.id.as_str()) {
+             continue;
+         }
+-        let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
+         let label_type = n.label_type.as_deref().unwrap_or("text");
++        let (raw_label, source_mode) =
++            if node_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++                model.node_source_for_svg_text_render(n)
++            } else {
++                (
++                    model.node_label_for_render(n).unwrap_or(&n.id),
++                    FlowchartSvgTextSourceMode::Sanitized,
++                )
++            };
+         let node_text_style = flowchart_effective_text_style_for_node_classes(
+             node_label_base_style,
+             &model.class_defs,
+@@ -1654,7 +1662,7 @@ fn layout_flowchart_with_model(
+             node_wrap_mode,
+             n.layout_shape.as_deref().unwrap_or("squareRect"),
+         );
+-        let mut metrics = measure_flowchart_svg_label_for_layout(
++        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+             svg_label_sidecar,
+             Some(FlowchartSvgLabelOwner::Node(node_index)),
+             Some(n.id.as_str()),
+@@ -1669,6 +1677,7 @@ fn layout_flowchart_with_model(
+                 math_renderer,
+             },
+             svg_width_mode,
++            source_mode,
+         );
+         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+             flowchart_apply_html_node_class_box_metrics(
+@@ -1716,12 +1725,20 @@ fn layout_flowchart_with_model(
+             classes,
+             styles,
+         );
+-        let title = model.subgraph_title_for_render(subgraph_index, sg);
++        let (title, source_mode) =
++            if node_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++                model.subgraph_source_for_svg_text_render(subgraph_index, sg)
++            } else {
++                (
++                    model.subgraph_title_for_render(subgraph_index, sg),
++                    FlowchartSvgTextSourceMode::Sanitized,
++                )
++            };
+         // Mermaid renders an empty subgraph through the ordinary node `labelHelper`: wrapping
+         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
+         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
+         // per-line measurement pass that is absent upstream.
+-        let mut metrics = measure_flowchart_svg_label_for_layout(
++        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+             svg_label_sidecar,
+             Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
+             Some(sg.id.as_str()),
+@@ -1736,6 +1753,7 @@ fn layout_flowchart_with_model(
+                 math_renderer,
+             },
+             FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         );
+         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+             flowchart_apply_html_node_class_box_metrics(
+@@ -1992,8 +2010,16 @@ fn layout_flowchart_with_model(
+         let to = e.to.clone();
+ 
+         if edge_label_is_non_empty(model, e) {
+-            let label_text = model.edge_label_for_render(e).unwrap_or_default();
+             let label_type = e.label_type.as_deref().unwrap_or("text");
++            let (label_text, source_mode) =
++                if edge_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++                    model.edge_source_for_svg_text_render(e)
++                } else {
++                    (
++                        model.edge_label_for_render(e).unwrap_or_default(),
++                        FlowchartSvgTextSourceMode::Sanitized,
++                    )
++                };
+             let edge_text_style = flowchart_effective_edge_label_text_style(
+                 edge_label_base_style,
+                 &model.class_defs,
+@@ -2013,7 +2039,7 @@ fn layout_flowchart_with_model(
+                 let render_id = self_loop_meta
+                     .as_ref()
+                     .map_or(e.id.as_str(), |meta| meta.logical_edge_id.as_str());
+-                measure_flowchart_svg_label_for_layout_with_metrics_style(
++                measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode(
+                     svg_label_sidecar,
+                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
+                     Some(render_id),
+@@ -2030,9 +2056,10 @@ fn layout_flowchart_with_model(
+                     },
+                     edge_text_style.as_ref(),
+                     FlowchartSvgWidthMode::Bbox,
++                    source_mode,
+                 )
+             } else {
+-                measure_flowchart_svg_label_for_layout(
++                measure_flowchart_svg_label_for_layout_with_source_mode(
+                     svg_label_sidecar,
+                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
+                     Some(e.id.as_str()),
+@@ -2047,6 +2074,7 @@ fn layout_flowchart_with_model(
+                         math_renderer,
+                     },
+                     FlowchartSvgWidthMode::Bbox,
++                    source_mode,
+                 )
+             };
+             let (label_width, label_height) = if edge_html_labels {
+@@ -2189,8 +2217,17 @@ fn layout_flowchart_with_model(
+     ) -> Option<(f64, f64)> {
+         let sg = ctx.subgraphs_by_id.get(id)?;
+         let subgraph_index = ctx.subgraph_index_by_id.get(id).copied()?;
+-        let title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
+         let label_type = sg.label_type.as_deref().unwrap_or("text");
++        let (title, source_mode) = if ctx.wrap_mode == WrapMode::SvgLike && label_type != "markdown"
++        {
++            ctx.model
++                .subgraph_source_for_svg_text_render(subgraph_index, sg)
++        } else {
++            (
++                ctx.model.subgraph_title_for_render(subgraph_index, sg),
++                FlowchartSvgTextSourceMode::Sanitized,
++            )
++        };
+         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
+         let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+             ctx.html_label_text_style
+@@ -2205,7 +2242,7 @@ fn layout_flowchart_with_model(
+             .get(id)
+             .copied()
+             .map(FlowchartSvgLabelOwner::SubgraphTitle);
+-        let metrics = measure_flowchart_svg_label_for_layout(
++        let metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+             ctx.svg_label_sidecar,
+             owner,
+             Some(id),
+@@ -2220,6 +2257,7 @@ fn layout_flowchart_with_model(
+                 math_renderer: ctx.math_renderer,
+             },
+             FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         );
+         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
+     }
+@@ -3304,7 +3342,16 @@ fn layout_flowchart_with_model(
+                 .ok_or_else(|| Error::InvalidModel {
+                     message: format!("missing canonical subgraph index for {}", frame.id),
+                 })?;
+-            let title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
++            let (title, source_mode) =
++                if ctx.wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++                    ctx.model
++                        .subgraph_source_for_svg_text_render(subgraph_index, sg)
++                } else {
++                    (
++                        ctx.model.subgraph_title_for_render(subgraph_index, sg),
++                        FlowchartSvgTextSourceMode::Sanitized,
++                    )
++                };
+             let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
+             let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+                 ctx.html_label_text_style
+@@ -3323,7 +3370,7 @@ fn layout_flowchart_with_model(
+                 .get(frame.id.as_str())
+                 .copied()
+                 .map(FlowchartSvgLabelOwner::SubgraphTitle);
+-            let title_metrics = measure_flowchart_svg_label_for_layout(
++            let title_metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+                 ctx.svg_label_sidecar,
+                 owner,
+                 Some(frame.id.as_str()),
+@@ -3338,6 +3385,7 @@ fn layout_flowchart_with_model(
+                     math_renderer: ctx.math_renderer,
+                 },
+                 FlowchartSvgWidthMode::Bbox,
++                source_mode,
+             );
+             let mut rect = if let Some(r) = content {
+                 r
+@@ -3420,6 +3468,7 @@ fn layout_flowchart_with_model(
+         declaration_ordinal: usize,
+         sg: &FlowSubgraph,
+         title: &str,
++        source_mode: FlowchartSvgTextSourceMode,
+         label_type: &str,
+         add_title_total_margin: bool,
+         ctx: &ClusterTitleAdjustContext<'_>,
+@@ -3438,7 +3487,7 @@ fn layout_flowchart_with_model(
+             .get(sg.id.as_str())
+             .copied()
+             .map(FlowchartSvgLabelOwner::SubgraphTitle);
+-        let title_metrics = measure_flowchart_svg_label_for_layout(
++        let title_metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+             ctx.svg_label_sidecar,
+             owner,
+             Some(sg.id.as_str()),
+@@ -3453,6 +3502,7 @@ fn layout_flowchart_with_model(
+                 math_renderer: ctx.math_renderer,
+             },
+             FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         );
+         let title_w = title_metrics.width.max(1.0);
+         let title_h = title_metrics.height.max(1.0);
+@@ -3525,7 +3575,16 @@ fn layout_flowchart_with_model(
+         if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
+             continue;
+         }
+-        let title = model.subgraph_title_for_render(subgraph_index, sg);
++        let label_type = sg.label_type.as_deref().unwrap_or("text");
++        let (title, source_mode) =
++            if cluster_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
++                model.subgraph_source_for_svg_text_render(subgraph_index, sg)
++            } else {
++                (
++                    model.subgraph_title_for_render(subgraph_index, sg),
++                    FlowchartSvgTextSourceMode::Sanitized,
++                )
++            };
+ 
+         let (rect, base_width) = if extracted_graphs.contains_key(&sg.id) {
+             // For extracted (recursive) clusters, match Mermaid's `updateNodeBounds(...)` intent by
+@@ -3548,7 +3607,8 @@ fn layout_flowchart_with_model(
+                 subgraph_index,
+                 sg,
+                 title,
+-                sg.label_type.as_deref().unwrap_or("text"),
++                source_mode,
++                label_type,
+                 false,
+                 &title_adjust_ctx,
+             );
+@@ -3560,7 +3620,8 @@ fn layout_flowchart_with_model(
+                 subgraph_index,
+                 sg,
+                 title,
+-                sg.label_type.as_deref().unwrap_or("text"),
++                source_mode,
++                label_type,
+                 true,
+                 &title_adjust_ctx,
+             );
+@@ -3584,7 +3645,7 @@ fn layout_flowchart_with_model(
+             classes,
+             styles,
+         );
+-        let title_metrics = measure_flowchart_svg_label_for_layout(
++        let title_metrics = measure_flowchart_svg_label_for_layout_with_source_mode(
+             svg_label_sidecar,
+             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
+             Some(sg.id.as_str()),
+@@ -3599,6 +3660,7 @@ fn layout_flowchart_with_model(
+                 math_renderer,
+             },
+             FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         );
+         let title_label = LayoutLabel {
+             x: cx,
+diff --git a/crates/merman-render/src/flowchart/mod.rs b/crates/merman-render/src/flowchart/mod.rs
+index 55a6a892e..70bc0a230 100644
+--- a/crates/merman-render/src/flowchart/mod.rs
++++ b/crates/merman-render/src/flowchart/mod.rs
+@@ -35,6 +35,28 @@ impl<'a> FlowchartRenderModelRef<'a> {
+         self.render_context.node_label_for_render(node)
+     }
+ 
++    pub(crate) fn node_mermaid_svg_text_source_for_render<'b>(
++        &'b self,
++        node: &'b FlowNode,
++    ) -> Option<&'b str> {
++        self.render_context
++            .node_mermaid_svg_text_source_for_render(node)
++    }
++
++    pub(crate) fn node_source_for_svg_text_render<'b>(
++        &'b self,
++        node: &'b FlowNode,
++    ) -> (&'b str, FlowchartSvgTextSourceMode) {
++        self.node_mermaid_svg_text_source_for_render(node)
++            .map(|source| (source, FlowchartSvgTextSourceMode::MermaidPreprocessor))
++            .unwrap_or_else(|| {
++                (
++                    self.node_label_for_render(node).unwrap_or(&node.id),
++                    FlowchartSvgTextSourceMode::Sanitized,
++                )
++            })
++    }
++
+     /// Returns the exact source range for an authored node label when the parser retained one.
+     ///
+     /// This range is carried by canonical node identity from the final merged model. Renderers
+@@ -51,6 +73,28 @@ impl<'a> FlowchartRenderModelRef<'a> {
+         self.render_context.edge_label_for_render(edge)
+     }
+ 
++    pub(crate) fn edge_mermaid_svg_text_source_for_render<'b>(
++        &'b self,
++        edge: &'b FlowEdge,
++    ) -> Option<&'b str> {
++        self.render_context
++            .edge_mermaid_svg_text_source_for_render(edge)
++    }
++
++    pub(crate) fn edge_source_for_svg_text_render<'b>(
++        &'b self,
++        edge: &'b FlowEdge,
++    ) -> (&'b str, FlowchartSvgTextSourceMode) {
++        self.edge_mermaid_svg_text_source_for_render(edge)
++            .map(|source| (source, FlowchartSvgTextSourceMode::MermaidPreprocessor))
++            .unwrap_or_else(|| {
++                (
++                    self.edge_label_for_render(edge).unwrap_or_default(),
++                    FlowchartSvgTextSourceMode::Sanitized,
++                )
++            })
++    }
++
+     pub(crate) fn subgraph_title_for_render<'b>(
+         &'b self,
+         declaration_ordinal: usize,
+@@ -60,6 +104,30 @@ impl<'a> FlowchartRenderModelRef<'a> {
+             .subgraph_title_for_render(declaration_ordinal, subgraph)
+     }
+ 
++    pub(crate) fn subgraph_mermaid_svg_text_source_for_render<'b>(
++        &'b self,
++        declaration_ordinal: usize,
++        subgraph: &'b FlowSubgraph,
++    ) -> Option<&'b str> {
++        self.render_context
++            .subgraph_mermaid_svg_text_source_for_render(declaration_ordinal, subgraph)
++    }
++
++    pub(crate) fn subgraph_source_for_svg_text_render<'b>(
++        &'b self,
++        declaration_ordinal: usize,
++        subgraph: &'b FlowSubgraph,
++    ) -> (&'b str, FlowchartSvgTextSourceMode) {
++        self.subgraph_mermaid_svg_text_source_for_render(declaration_ordinal, subgraph)
++            .map(|source| (source, FlowchartSvgTextSourceMode::MermaidPreprocessor))
++            .unwrap_or_else(|| {
++                (
++                    self.subgraph_title_for_render(declaration_ordinal, subgraph),
++                    FlowchartSvgTextSourceMode::Sanitized,
++                )
++            })
++    }
++
+     pub(crate) fn effective_subgraph_css<'b>(
+         &'b self,
+         declaration_ordinal: usize,
+@@ -100,10 +168,11 @@ pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_work_meter_
+ 
+ pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
+ pub(crate) use label::{
+-    FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
+-    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
+-    flowchart_label_text_is_empty_for_mode, flowchart_node_svg_width_mode,
+-    flowchart_non_markdown_label_for_html, flowchart_trim_html_collapsible_whitespace,
++    FlowchartLabelMetricsRequest, FlowchartSvgTextSourceMode, FlowchartSvgWidthMode,
++    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
++    flowchart_label_plain_text_for_layout, flowchart_label_text_is_empty_for_mode,
++    flowchart_node_svg_width_mode, flowchart_non_markdown_label_for_html,
++    flowchart_trim_html_collapsible_whitespace,
+ };
+ #[cfg(test)]
+ pub(crate) use label::{
+@@ -126,5 +195,6 @@ pub(crate) use style::{
+ pub(crate) use svg_label_artifact::{
+     FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar,
+     FlowchartSvgLabelSidecarBuilder, measure_flowchart_svg_label_for_layout,
+-    measure_flowchart_svg_label_for_layout_with_metrics_style,
++    measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode,
++    measure_flowchart_svg_label_for_layout_with_source_mode,
+ };
+diff --git a/crates/merman-render/src/flowchart/svg_label_artifact.rs b/crates/merman-render/src/flowchart/svg_label_artifact.rs
+index 25b7cfcdd..3bbd838b3 100644
+--- a/crates/merman-render/src/flowchart/svg_label_artifact.rs
++++ b/crates/merman-render/src/flowchart/svg_label_artifact.rs
+@@ -13,8 +13,8 @@ use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurement
+ use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+ 
+ use super::label::{
+-    FlowchartLabelMetricsRequest, FlowchartSvgLabelSource, FlowchartSvgWidthMode,
+-    flowchart_label_metrics_for_layout,
++    FlowchartLabelMetricsRequest, FlowchartSvgLabelSource, FlowchartSvgTextSourceMode,
++    FlowchartSvgWidthMode, flowchart_label_metrics_for_layout,
+ };
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+@@ -329,19 +329,21 @@ pub(crate) struct PreparedFlowchartSvgLabel {
+ #[derive(Debug)]
+ struct FlowchartSvgLabelSourceEntry {
+     raw_source: Box<str>,
++    source_mode: FlowchartSvgTextSourceMode,
+     source: FlowchartSvgLabelSource,
+ }
+ 
+ impl FlowchartSvgLabelSourceEntry {
+-    fn new(raw_source: &str) -> Self {
++    fn new(raw_source: &str, source_mode: FlowchartSvgTextSourceMode) -> Self {
+         Self {
+             raw_source: raw_source.into(),
+-            source: FlowchartSvgLabelSource::new(raw_source),
++            source_mode,
++            source: FlowchartSvgLabelSource::new_with_mode(raw_source, source_mode),
+         }
+     }
+ 
+-    fn matches(&self, raw_source: &str) -> bool {
+-        self.raw_source.as_ref() == raw_source
++    fn matches(&self, raw_source: &str, source_mode: FlowchartSvgTextSourceMode) -> bool {
++        self.raw_source.as_ref() == raw_source && self.source_mode == source_mode
+     }
+ }
+ 
+@@ -387,15 +389,35 @@ impl FlowchartSvgLabelSidecarBuilder {
+         request: FlowchartLabelMetricsRequest<'_>,
+         break_long_words: bool,
+         width_mode: FlowchartSvgWidthMode,
++    ) -> TextMetrics {
++        self.measure_for_layout_with_source_mode(
++            owner,
++            render_id,
++            request,
++            break_long_words,
++            width_mode,
++            FlowchartSvgTextSourceMode::Sanitized,
++        )
++    }
++
++    pub(crate) fn measure_for_layout_with_source_mode(
++        &self,
++        owner: FlowchartSvgLabelOwner,
++        render_id: &str,
++        request: FlowchartLabelMetricsRequest<'_>,
++        break_long_words: bool,
++        width_mode: FlowchartSvgWidthMode,
++        source_mode: FlowchartSvgTextSourceMode,
+     ) -> TextMetrics {
+         let metrics_style = request.style;
+-        self.measure_for_layout_with_metrics_style(
++        self.measure_for_layout_with_metrics_style_and_source_mode(
+             owner,
+             render_id,
+             request,
+             metrics_style,
+             break_long_words,
+             width_mode,
++            source_mode,
+         )
+     }
+ 
+@@ -408,6 +430,28 @@ impl FlowchartSvgLabelSidecarBuilder {
+         metrics_style: &TextStyle,
+         break_long_words: bool,
+         width_mode: FlowchartSvgWidthMode,
++    ) -> TextMetrics {
++        self.measure_for_layout_with_metrics_style_and_source_mode(
++            owner,
++            render_id,
++            request,
++            metrics_style,
++            break_long_words,
++            width_mode,
++            FlowchartSvgTextSourceMode::Sanitized,
++        )
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    pub(crate) fn measure_for_layout_with_metrics_style_and_source_mode(
++        &self,
++        owner: FlowchartSvgLabelOwner,
++        render_id: &str,
++        request: FlowchartLabelMetricsRequest<'_>,
++        metrics_style: &TextStyle,
++        break_long_words: bool,
++        width_mode: FlowchartSvgWidthMode,
++        source_mode: FlowchartSvgTextSourceMode,
+     ) -> TextMetrics {
+         if !supports_svg_source_preparation(&request) {
+             return flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+@@ -432,7 +476,7 @@ impl FlowchartSvgLabelSidecarBuilder {
+                 .get(owner)
+                 .filter(|pending_render_id| pending_render_id.as_ref() == render_id)
+                 .and_then(|_| pending.sources.get(owner))
+-                .filter(|source| source.matches(request.raw_label));
++                .filter(|source| source.matches(request.raw_label, source_mode));
+ 
+             if let (Some(_), Some(binding)) = (source, binding.as_ref())
+                 && let Some(metrics) = pending
+@@ -466,7 +510,7 @@ impl FlowchartSvgLabelSidecarBuilder {
+ 
+         let (new_source, wrapped_lines, metrics) = measured_from_existing_source.map_or_else(
+             || {
+-                let source = FlowchartSvgLabelSourceEntry::new(request.raw_label);
++                let source = FlowchartSvgLabelSourceEntry::new(request.raw_label, source_mode);
+                 let wrapped_lines = source.source.wrapped_lines(
+                     request.measurer,
+                     request.style,
+@@ -527,12 +571,37 @@ pub(crate) fn measure_flowchart_svg_label_for_layout(
+     render_id: Option<&str>,
+     request: FlowchartLabelMetricsRequest<'_>,
+     width_mode: FlowchartSvgWidthMode,
++) -> TextMetrics {
++    measure_flowchart_svg_label_for_layout_with_source_mode(
++        sidecar,
++        owner,
++        render_id,
++        request,
++        width_mode,
++        FlowchartSvgTextSourceMode::Sanitized,
++    )
++}
++
++pub(crate) fn measure_flowchart_svg_label_for_layout_with_source_mode(
++    sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
++    owner: Option<FlowchartSvgLabelOwner>,
++    render_id: Option<&str>,
++    request: FlowchartLabelMetricsRequest<'_>,
++    width_mode: FlowchartSvgWidthMode,
++    source_mode: FlowchartSvgTextSourceMode,
+ ) -> TextMetrics {
+     match sidecar.zip(owner).zip(render_id) {
+-        Some(((sidecar, owner), render_id)) => {
+-            sidecar.measure_for_layout(owner, render_id, request, true, width_mode)
++        Some(((sidecar, owner), render_id)) => sidecar.measure_for_layout_with_source_mode(
++            owner,
++            render_id,
++            request,
++            true,
++            width_mode,
++            source_mode,
++        ),
++        None => {
++            measure_svg_label_without_sidecar_with_source_mode(request, width_mode, source_mode)
+         }
+-        None => measure_svg_label_without_sidecar(request, width_mode),
+     }
+ }
+ 
+@@ -544,19 +613,45 @@ pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_style(
+     request: FlowchartLabelMetricsRequest<'_>,
+     metrics_style: &TextStyle,
+     width_mode: FlowchartSvgWidthMode,
++) -> TextMetrics {
++    measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode(
++        sidecar,
++        owner,
++        render_id,
++        request,
++        metrics_style,
++        width_mode,
++        FlowchartSvgTextSourceMode::Sanitized,
++    )
++}
++
++#[allow(clippy::too_many_arguments)]
++pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_style_and_source_mode(
++    sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
++    owner: Option<FlowchartSvgLabelOwner>,
++    render_id: Option<&str>,
++    request: FlowchartLabelMetricsRequest<'_>,
++    metrics_style: &TextStyle,
++    width_mode: FlowchartSvgWidthMode,
++    source_mode: FlowchartSvgTextSourceMode,
+ ) -> TextMetrics {
+     match sidecar.zip(owner).zip(render_id) {
+-        Some(((sidecar, owner), render_id)) => sidecar.measure_for_layout_with_metrics_style(
+-            owner,
+-            render_id,
++        Some(((sidecar, owner), render_id)) => sidecar
++            .measure_for_layout_with_metrics_style_and_source_mode(
++                owner,
++                render_id,
++                request,
++                metrics_style,
++                true,
++                width_mode,
++                source_mode,
++            ),
++        None => measure_svg_label_without_sidecar_with_metrics_style_and_source_mode(
+             request,
+             metrics_style,
+-            true,
+             width_mode,
++            source_mode,
+         ),
+-        None => {
+-            measure_svg_label_without_sidecar_with_metrics_style(request, metrics_style, width_mode)
+-        }
+     }
+ }
+ 
+@@ -569,13 +664,46 @@ fn measure_svg_label_without_sidecar(
+     width_mode: FlowchartSvgWidthMode,
+ ) -> TextMetrics {
+     let metrics_style = request.style;
+-    measure_svg_label_without_sidecar_with_metrics_style(request, metrics_style, width_mode)
++    measure_svg_label_without_sidecar_with_metrics_style_and_source_mode(
++        request,
++        metrics_style,
++        width_mode,
++        FlowchartSvgTextSourceMode::Sanitized,
++    )
+ }
+ 
+ fn measure_svg_label_without_sidecar_with_metrics_style(
+     request: FlowchartLabelMetricsRequest<'_>,
+     metrics_style: &TextStyle,
+     width_mode: FlowchartSvgWidthMode,
++) -> TextMetrics {
++    measure_svg_label_without_sidecar_with_metrics_style_and_source_mode(
++        request,
++        metrics_style,
++        width_mode,
++        FlowchartSvgTextSourceMode::Sanitized,
++    )
++}
++
++fn measure_svg_label_without_sidecar_with_source_mode(
++    request: FlowchartLabelMetricsRequest<'_>,
++    width_mode: FlowchartSvgWidthMode,
++    source_mode: FlowchartSvgTextSourceMode,
++) -> TextMetrics {
++    let metrics_style = request.style;
++    measure_svg_label_without_sidecar_with_metrics_style_and_source_mode(
++        request,
++        metrics_style,
++        width_mode,
++        source_mode,
++    )
++}
++
++fn measure_svg_label_without_sidecar_with_metrics_style_and_source_mode(
++    request: FlowchartLabelMetricsRequest<'_>,
++    metrics_style: &TextStyle,
++    width_mode: FlowchartSvgWidthMode,
++    source_mode: FlowchartSvgTextSourceMode,
+ ) -> TextMetrics {
+     if !supports_svg_source_preparation(&request) {
+         return flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+@@ -583,7 +711,7 @@ fn measure_svg_label_without_sidecar_with_metrics_style(
+             ..request
+         });
+     }
+-    let source = FlowchartSvgLabelSource::new(request.raw_label);
++    let source = FlowchartSvgLabelSource::new_with_mode(request.raw_label, source_mode);
+     let wrapped_lines =
+         source.wrapped_lines(request.measurer, request.style, request.max_width_px, true);
+     source.metrics_from_wrapped(request.measurer, metrics_style, &wrapped_lines, width_mode)
+@@ -680,12 +808,13 @@ impl FlowchartSvgLabelSidecar {
+         &self,
+         owner: FlowchartSvgLabelOwner,
+         raw_source: &str,
++        source_mode: FlowchartSvgTextSourceMode,
+         binding: &FlowchartSvgLabelBindingRequest<'_>,
+     ) -> Option<(&FlowchartSvgLabelSource, &PreparedFlowchartSvgLabel)> {
+         let source = self
+             .sources
+             .get(owner)
+-            .filter(|source| source.matches(raw_source));
++            .filter(|source| source.matches(raw_source, source_mode));
+         let prepared = source.map(|source| &source.source).zip(
+             self.prepared
+                 .get(owner)
+@@ -707,10 +836,11 @@ impl FlowchartSvgLabelSidecar {
+         &self,
+         owner: FlowchartSvgLabelOwner,
+         raw_source: &str,
++        source_mode: FlowchartSvgTextSourceMode,
+     ) -> Option<&FlowchartSvgLabelSource> {
+         self.sources
+             .get(owner)
+-            .filter(|source| source.matches(raw_source))
++            .filter(|source| source.matches(raw_source, source_mode))
+             .map(|source| &source.source)
+     }
+ 
+@@ -734,6 +864,30 @@ impl FlowchartSvgLabelSidecar {
+         max_width_px: Option<f64>,
+         break_long_words: bool,
+         width_mode: FlowchartSvgWidthMode,
++    ) -> Option<TextMetrics> {
++        self.prepared_metrics_with_source_mode(
++            owner,
++            raw_source,
++            measurer,
++            style,
++            max_width_px,
++            break_long_words,
++            width_mode,
++            FlowchartSvgTextSourceMode::Sanitized,
++        )
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    pub(crate) fn prepared_metrics_with_source_mode(
++        &self,
++        owner: FlowchartSvgLabelOwner,
++        raw_source: &str,
++        measurer: &dyn TextMeasurer,
++        style: &TextStyle,
++        max_width_px: Option<f64>,
++        break_long_words: bool,
++        width_mode: FlowchartSvgWidthMode,
++        source_mode: FlowchartSvgTextSourceMode,
+     ) -> Option<TextMetrics> {
+         let binding = FlowchartSvgLabelBindingRequest::for_measurer(
+             measurer,
+@@ -743,7 +897,7 @@ impl FlowchartSvgLabelSidecar {
+             break_long_words,
+             width_mode,
+         )?;
+-        self.prepared(owner, raw_source, &binding)
++        self.prepared(owner, raw_source, source_mode, &binding)
+             .map(|(_, prepared)| prepared.metrics())
+     }
+ }
+@@ -795,7 +949,32 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
+         break_long_words: bool,
+         width_mode: FlowchartSvgWidthMode,
+     ) -> Self {
+-        Self::new_with_metrics_style(
++        Self::new_with_source_mode(
++            sidecar,
++            owner,
++            raw_source,
++            measurer,
++            style,
++            max_width_px,
++            break_long_words,
++            width_mode,
++            FlowchartSvgTextSourceMode::Sanitized,
++        )
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    pub(crate) fn new_with_source_mode(
++        sidecar: Option<&'a FlowchartSvgLabelSidecar>,
++        owner: Option<FlowchartSvgLabelOwner>,
++        raw_source: &str,
++        measurer: &'a dyn TextMeasurer,
++        style: &'a TextStyle,
++        max_width_px: Option<f64>,
++        break_long_words: bool,
++        width_mode: FlowchartSvgWidthMode,
++        source_mode: FlowchartSvgTextSourceMode,
++    ) -> Self {
++        Self::new_with_metrics_style_and_source_mode(
+             sidecar,
+             owner,
+             raw_source,
+@@ -805,6 +984,7 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
+             max_width_px,
+             break_long_words,
+             width_mode,
++            source_mode,
+         )
+     }
+ 
+@@ -819,6 +999,33 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
+         max_width_px: Option<f64>,
+         break_long_words: bool,
+         width_mode: FlowchartSvgWidthMode,
++    ) -> Self {
++        Self::new_with_metrics_style_and_source_mode(
++            sidecar,
++            owner,
++            raw_source,
++            measurer,
++            wrap_style,
++            metrics_style,
++            max_width_px,
++            break_long_words,
++            width_mode,
++            FlowchartSvgTextSourceMode::Sanitized,
++        )
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    pub(crate) fn new_with_metrics_style_and_source_mode(
++        sidecar: Option<&'a FlowchartSvgLabelSidecar>,
++        owner: Option<FlowchartSvgLabelOwner>,
++        raw_source: &str,
++        measurer: &'a dyn TextMeasurer,
++        wrap_style: &'a TextStyle,
++        metrics_style: &TextStyle,
++        max_width_px: Option<f64>,
++        break_long_words: bool,
++        width_mode: FlowchartSvgWidthMode,
++        source_mode: FlowchartSvgTextSourceMode,
+     ) -> Self {
+         let binding = FlowchartSvgLabelBindingRequest::for_measurer(
+             measurer,
+@@ -828,18 +1035,26 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
+             break_long_words,
+             width_mode,
+         );
+-        if let Some((source, measured)) = sidecar
+-            .zip(owner)
+-            .zip(binding.as_ref())
+-            .and_then(|((sidecar, owner), binding)| sidecar.prepared(owner, raw_source, binding))
++        if let Some((source, measured)) =
++            sidecar
++                .zip(owner)
++                .zip(binding.as_ref())
++                .and_then(|((sidecar, owner), binding)| {
++                    sidecar.prepared(owner, raw_source, source_mode, binding)
++                })
+         {
+             Self::Prepared { source, measured }
+         } else {
+             let source = sidecar
+                 .zip(owner)
+-                .and_then(|(sidecar, owner)| sidecar.source(owner, raw_source))
++                .and_then(|(sidecar, owner)| sidecar.source(owner, raw_source, source_mode))
+                 .map_or_else(
+-                    || Cow::Owned(FlowchartSvgLabelSource::new(raw_source)),
++                    || {
++                        Cow::Owned(FlowchartSvgLabelSource::new_with_mode(
++                            raw_source,
++                            source_mode,
++                        ))
++                    },
+                     Cow::Borrowed,
+                 );
+             Self::Source {
+diff --git a/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs b/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs
+index 38d47548e..2fe7fd6b8 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs
+@@ -727,11 +727,18 @@ fn compute_node_label_metrics_for_intersection(
+     node_id: &str,
+ ) -> Option<crate::text::TextMetrics> {
+     let flow_node = ctx.nodes_by_id.get(node_id)?;
+-    let label_text = ctx
+-        .model
+-        .node_label_for_render(flow_node)
+-        .unwrap_or_default();
+     let label_type = flow_node.label_type.as_deref().unwrap_or("text");
++    let (label_text, source_mode) =
++        if ctx.node_wrap_mode == crate::text::WrapMode::SvgLike && label_type != "markdown" {
++            ctx.model.node_source_for_svg_text_render(flow_node)
++        } else {
++            (
++                ctx.model
++                    .node_label_for_render(flow_node)
++                    .unwrap_or_default(),
++                crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++            )
++        };
+ 
+     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+         &ctx.html_label_text_style
+@@ -746,7 +753,7 @@ fn compute_node_label_metrics_for_intersection(
+     );
+     if let Some(metrics) = ctx.svg_label_sidecar.and_then(|sidecar| {
+         let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
+-        sidecar.prepared_metrics(
++        sidecar.prepared_metrics_with_source_mode(
+             owner,
+             label_text,
+             ctx.measurer,
+@@ -754,11 +761,15 @@ fn compute_node_label_metrics_for_intersection(
+             Some(ctx.wrapping_width),
+             true,
+             crate::flowchart::FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         )
+     }) {
+         return Some(metrics);
+     }
+-    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
++    let metrics = crate::flowchart::measure_flowchart_svg_label_for_layout_with_source_mode(
++        None,
++        None,
++        None,
+         crate::flowchart::FlowchartLabelMetricsRequest {
+             measurer: ctx.measurer,
+             raw_label: label_text,
+@@ -769,6 +780,8 @@ fn compute_node_label_metrics_for_intersection(
+             config: ctx.config,
+             math_renderer: ctx.math_renderer,
+         },
++        crate::flowchart::FlowchartSvgWidthMode::Bbox,
++        source_mode,
+     );
+ 
+     Some(metrics)
+diff --git a/crates/merman-render/src/svg/parity/flowchart/label.rs b/crates/merman-render/src/svg/parity/flowchart/label.rs
+index f9d797e5d..a0567264c 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/label.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/label.rs
+@@ -408,6 +408,20 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
+     crate::svg::parity::label::write_svg_text_source_word_lines(out, lines, include_style, false);
+ }
+ 
++pub(in crate::svg::parity) fn write_flowchart_svg_preprocessor_source_word_lines(
++    out: &mut String,
++    lines: &[Vec<String>],
++    include_style: bool,
++    center_text: bool,
++) {
++    crate::svg::parity::label::write_svg_text_flowchart_source_word_lines(
++        out,
++        lines,
++        include_style,
++        center_text,
++    );
++}
++
+ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_with_style(
+     out: &mut String,
+     lines: &[Vec<String>],
+@@ -416,6 +430,16 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_wit
+     crate::svg::parity::label::write_svg_text_source_word_lines_with_style(out, lines, style, true);
+ }
+ 
++pub(in crate::svg::parity) fn write_flowchart_svg_preprocessor_source_word_lines_centered_with_style(
++    out: &mut String,
++    lines: &[Vec<String>],
++    style: &str,
++) {
++    crate::svg::parity::label::write_svg_text_flowchart_source_word_lines_with_style(
++        out, lines, style, true,
++    );
++}
++
+ #[cfg(test)]
+ pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
+     measurer: &dyn crate::text::TextMeasurer,
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs b/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs
+index 493f534d1..217552bc5 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs
+@@ -181,7 +181,15 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
+     ctx.checkpoint_emit()?;
+ 
+     let label_type = sg.label_type.as_deref().unwrap_or("text");
+-    let render_title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
++    let (render_title, source_mode) = if !ctx.edge_html_labels && label_type != "markdown" {
++        ctx.model
++            .subgraph_source_for_svg_text_render(subgraph_index, sg)
++    } else {
++        (
++            ctx.model.subgraph_title_for_render(subgraph_index, sg),
++            crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++        )
++    };
+ 
+     let mut class_attr = String::new();
+     for c in classes {
+@@ -239,7 +247,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
+             let owner = ctx
+                 .svg_label_sidecar
+                 .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
+-            let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
++            let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_source_mode(
+                 ctx.svg_label_sidecar,
+                 owner,
+                 render_title,
+@@ -248,9 +256,19 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
+                 None,
+                 true,
+                 crate::flowchart::FlowchartSvgWidthMode::Bbox,
++                source_mode,
+             );
+             let source_lines = prepared.wrapped_lines();
+-            write_flowchart_svg_source_word_lines(out, &source_lines, true);
++            if source_mode == crate::flowchart::FlowchartSvgTextSourceMode::MermaidPreprocessor {
++                crate::svg::parity::flowchart::write_flowchart_svg_preprocessor_source_word_lines(
++                    out,
++                    &source_lines,
++                    true,
++                    false,
++                );
++            } else {
++                write_flowchart_svg_source_word_lines(out, &source_lines, true);
++            }
+         }
+         out.push_str("</g></g></g>");
+         return Ok(());
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs b/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs
+index 7c095d7df..b5d4ccb4b 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs
+@@ -4,6 +4,21 @@ use super::super::*;
+ use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
+ use std::borrow::Cow;
+ 
++fn write_flowchart_edge_svg_source_words(
++    out: &mut String,
++    lines: &[Vec<String>],
++    style: &str,
++    source_mode: crate::flowchart::FlowchartSvgTextSourceMode,
++) {
++    if source_mode == crate::flowchart::FlowchartSvgTextSourceMode::MermaidPreprocessor {
++        crate::svg::parity::flowchart::write_flowchart_svg_preprocessor_source_word_lines_centered_with_style(
++            out, lines, style,
++        );
++    } else {
++        write_flowchart_svg_source_word_lines_centered_with_style(out, lines, style);
++    }
++}
++
+ fn padded_html_edge_label_background(padding: f64, width: f64, height: f64) -> String {
+     if padding <= 0.0 || width <= 0.0 || height <= 0.0 {
+         return String::new();
+@@ -126,8 +141,15 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
+     origin_y: f64,
+     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
+ ) {
+-    let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
+     let label_type = edge.label_type.as_deref().unwrap_or("text");
++    let (label_text, source_mode) = if !ctx.edge_html_labels && label_type != "markdown" {
++        ctx.model.edge_source_for_svg_text_render(edge)
++    } else {
++        (
++            ctx.model.edge_label_for_render(edge).unwrap_or_default(),
++            crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++        )
++    };
+     let compiled_label_styles = flowchart_compile_styles(
+         ctx.class_defs,
+         &edge.classes,
+@@ -151,7 +173,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
+         let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
+             sidecar.edge_owner(edge.id.as_str(), ctx.swimlane_direction.is_some())
+         });
+-        crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_metrics_style(
++        crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_metrics_style_and_source_mode(
+             ctx.svg_label_sidecar,
+             owner,
+             label_text,
+@@ -161,6 +183,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
+             Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+             true,
+             crate::flowchart::FlowchartSvgWidthMode::Bbox,
++            source_mode,
+         )
+     });
+     let label_text_plain: Cow<'_, str> = prepared_svg_label.as_ref().map_or_else(
+@@ -244,10 +267,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
+                                 .as_ref()
+                                 .expect("non-Markdown SVG edge labels are prepared before emission")
+                                 .wrapped_lines();
+-                            write_flowchart_svg_source_word_lines_centered_with_style(
++                            write_flowchart_edge_svg_source_words(
+                                 out,
+                                 &wrapped,
+                                 svg_edge_label_text_style.as_ref(),
++                                source_mode,
+                             );
+                         }
+                         out.push_str("</g></g></g>");
+@@ -289,10 +313,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
+                             .as_ref()
+                             .expect("non-Markdown SVG edge labels are prepared before emission")
+                             .wrapped_lines();
+-                        write_flowchart_svg_source_word_lines_centered_with_style(
++                        write_flowchart_edge_svg_source_words(
+                             out,
+                             &wrapped,
+                             svg_edge_label_text_style.as_ref(),
++                            source_mode,
+                         );
+                     }
+                     out.push_str("</g></g></g>");
+@@ -343,10 +368,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
+                         .as_ref()
+                         .expect("non-Markdown SVG edge labels are prepared before emission")
+                         .wrapped_lines();
+-                    write_flowchart_svg_source_word_lines_centered_with_style(
++                    write_flowchart_edge_svg_source_words(
+                         out,
+                         &wrapped,
+                         svg_edge_label_text_style.as_ref(),
++                        source_mode,
+                     );
+                 }
+                 out.push_str("</g></g></g>");
+@@ -510,7 +536,14 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
+         return;
+     };
+ 
+-    let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
++    let (label_text, source_mode) = if !ctx.node_html_labels {
++        ctx.model.edge_source_for_svg_text_render(edge)
++    } else {
++        (
++            ctx.model.edge_label_for_render(edge).unwrap_or_default(),
++            crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++        )
++    };
+     // Mermaid's Swimlane adapter creates a fresh `labelRect` without copying `edge.labelType`.
+     // The node renderer therefore follows ordinary non-Markdown createText semantics.
+     let label_type = "text";
+@@ -584,7 +617,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
+     let owner = ctx
+         .svg_label_sidecar
+         .and_then(|sidecar| sidecar.edge_owner(edge.id.as_str(), true));
+-    let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
++    let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_source_mode(
+         ctx.svg_label_sidecar,
+         owner,
+         label_text,
+@@ -593,9 +626,16 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
+         Some(ctx.wrapping_width),
+         true,
+         crate::flowchart::FlowchartSvgWidthMode::Bbox,
++        source_mode,
+     );
+     let wrapped = prepared.wrapped_lines();
+-    write_flowchart_svg_source_word_lines(out, &wrapped, true);
++    if source_mode == crate::flowchart::FlowchartSvgTextSourceMode::MermaidPreprocessor {
++        crate::svg::parity::flowchart::write_flowchart_svg_preprocessor_source_word_lines(
++            out, &wrapped, true, false,
++        );
++    } else {
++        write_flowchart_svg_source_word_lines(out, &wrapped, true);
++    }
+     out.push_str("</g></g></g>");
+ }
+ 
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node.rs b/crates/merman-render/src/svg/parity/flowchart/render/node.rs
+index a2a77680a..b8cc3ceb0 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node.rs
+@@ -71,6 +71,7 @@ fn flowchart_hand_drawn_shape_group_style(inline_styles: &[String]) -> String {
+ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a> {
+     pub text: &'a str,
+     pub label_type: &'a str,
++    pub source_mode: crate::flowchart::FlowchartSvgTextSourceMode,
+     pub dx: f64,
+     pub dy: f64,
+ }
+@@ -215,13 +216,42 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
+         wrapped_in_a,
+         timing,
+     };
+-    let mut label = FlowchartNodeLabelState {
+-        text: if resolved.label_text_is_node_id {
+-            node_id
++    let fallback_label_text = if resolved.label_text_is_node_id {
++        node_id
++    } else {
++        resolved.label_text
++    };
++    let (label_text, source_mode) = if !ctx.node_html_labels && resolved.label_type != "markdown" {
++        if let Some(subgraph) = ctx.subgraphs_by_id.get(node_id) {
++            let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied();
++            subgraph_index.map_or(
++                (
++                    fallback_label_text,
++                    crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++                ),
++                |index| {
++                    ctx.model
++                        .subgraph_source_for_svg_text_render(index, subgraph)
++                },
++            )
++        } else if let Some(node) = ctx.nodes_by_id.get(node_id) {
++            ctx.model.node_source_for_svg_text_render(node)
+         } else {
+-            resolved.label_text
+-        },
++            (
++                fallback_label_text,
++                crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++            )
++        }
++    } else {
++        (
++            fallback_label_text,
++            crate::flowchart::FlowchartSvgTextSourceMode::Sanitized,
++        )
++    };
++    let mut label = FlowchartNodeLabelState {
++        text: label_text,
+         label_type: resolved.label_type,
++        source_mode,
+         dx: 0.0,
+         dy: 0.0,
+     };
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
+index 9fe923242..9c98e3e46 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
+@@ -36,7 +36,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
+         let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
+             sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
+         });
+-        crate::flowchart::FlowchartSvgLabelRenderPlan::new(
++        crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_source_mode(
+             ctx.svg_label_sidecar,
+             owner,
+             label.text,
+@@ -50,6 +50,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
+                 ctx.node_wrap_mode,
+                 common.shape,
+             ),
++            label.source_mode,
+         )
+     });
+     let label_text_plain = prepared_svg_label.as_ref().map_or_else(
+@@ -152,7 +153,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
+                 .as_ref()
+                 .expect("non-Markdown SVG labels are prepared before emission")
+                 .wrapped_lines();
+-            write_flowchart_svg_source_word_lines(out, &wrapped, true);
++            if label.source_mode
++                == crate::flowchart::FlowchartSvgTextSourceMode::MermaidPreprocessor
++            {
++                crate::svg::parity::flowchart::write_flowchart_svg_preprocessor_source_word_lines(
++                    out, &wrapped, true, false,
++                );
++            } else {
++                write_flowchart_svg_source_word_lines(out, &wrapped, true);
++            }
+         }
+         out.push_str("</g></g></g>");
+     } else {
+diff --git a/crates/merman-render/src/svg/parity/label.rs b/crates/merman-render/src/svg/parity/label.rs
+index 644aadac5..71fa5da89 100644
+--- a/crates/merman-render/src/svg/parity/label.rs
++++ b/crates/merman-render/src/svg/parity/label.rs
+@@ -7,6 +7,7 @@ use crate::svg::parity::util::escape_xml_raw_into;
+ enum SvgTextEntityMode {
+     DecodedModel,
+     CreateTextSource,
++    FlowchartPreprocessorSource,
+ }
+ 
+ fn write_svg_text_inner_word(
+@@ -59,7 +60,28 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
+     include_style: bool,
+     center_text: bool,
+ ) {
+-    write_svg_text_source_word_lines_impl(out, lines, include_style.then_some(""), center_text);
++    write_svg_text_source_word_lines_impl(
++        out,
++        lines,
++        include_style.then_some(""),
++        center_text,
++        SvgTextEntityMode::CreateTextSource,
++    );
++}
++
++pub(in crate::svg::parity) fn write_svg_text_flowchart_source_word_lines(
++    out: &mut String,
++    lines: &[Vec<String>],
++    include_style: bool,
++    center_text: bool,
++) {
++    write_svg_text_source_word_lines_impl(
++        out,
++        lines,
++        include_style.then_some(""),
++        center_text,
++        SvgTextEntityMode::FlowchartPreprocessorSource,
++    );
+ }
+ 
+ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
+@@ -68,7 +90,28 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
+     style: &str,
+     center_text: bool,
+ ) {
+-    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text);
++    write_svg_text_source_word_lines_impl(
++        out,
++        lines,
++        Some(style),
++        center_text,
++        SvgTextEntityMode::CreateTextSource,
++    );
++}
++
++pub(in crate::svg::parity) fn write_svg_text_flowchart_source_word_lines_with_style(
++    out: &mut String,
++    lines: &[Vec<String>],
++    style: &str,
++    center_text: bool,
++) {
++    write_svg_text_source_word_lines_impl(
++        out,
++        lines,
++        Some(style),
++        center_text,
++        SvgTextEntityMode::FlowchartPreprocessorSource,
++    );
+ }
+ 
+ fn write_svg_text_source_word_lines_impl(
+@@ -76,8 +119,14 @@ fn write_svg_text_source_word_lines_impl(
+     lines: &[Vec<String>],
+     style: Option<&str>,
+     center_text: bool,
++    entity_mode: SvgTextEntityMode,
+ ) {
+-    open_svg_text(out, style, center_text);
++    open_svg_text(
++        out,
++        style,
++        center_text,
++        matches!(entity_mode, SvgTextEntityMode::FlowchartPreprocessorSource),
++    );
+ 
+     if lines.len() == 1 && lines[0].is_empty() {
+         write_empty_tspan(out, center_text, true);
+@@ -88,7 +137,7 @@ fn write_svg_text_source_word_lines_impl(
+     for (line_index, words) in lines.iter().enumerate() {
+         open_tspan(out, line_index, center_text, true);
+         for (word_index, word) in words.iter().enumerate() {
+-            write_svg_text_inner_word(out, word_index, word, SvgTextEntityMode::CreateTextSource);
++            write_svg_text_inner_word(out, word_index, word, entity_mode);
+         }
+         out.push_str("</tspan>");
+     }
+@@ -96,24 +145,39 @@ fn write_svg_text_source_word_lines_impl(
+     out.push_str("</text>");
+ }
+ 
+-fn open_svg_text(out: &mut String, style: Option<&str>, center_text: bool) {
++fn open_svg_text(out: &mut String, style: Option<&str>, center_text: bool, final_text: bool) {
++    let final_text_attr = if final_text {
++        r#" data-mmir-final-text="true""#
++    } else {
++        ""
++    };
+     match (style, center_text) {
+         (Some(style), true) => {
+             let _ = write!(
+                 out,
+-                r#"<text y="-10.1" style="{}" text-anchor="middle">"#,
+-                escape_xml_display(style)
++                r#"<text y="-10.1" style="{}" text-anchor="middle"{}>"#,
++                escape_xml_display(style),
++                final_text_attr,
+             );
+         }
+         (Some(style), false) => {
+             let _ = write!(
+                 out,
+-                r#"<text y="-10.1" style="{}">"#,
+-                escape_xml_display(style)
++                r#"<text y="-10.1" style="{}"{}>"#,
++                escape_xml_display(style),
++                final_text_attr,
+             );
+         }
+-        (None, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
+-        (None, false) => out.push_str(r#"<text y="-10.1">"#),
++        (None, true) => {
++            let _ = write!(
++                out,
++                r#"<text y="-10.1" text-anchor="middle"{}>"#,
++                final_text_attr
++            );
++        }
++        (None, false) => {
++            let _ = write!(out, r#"<text y="-10.1"{}>"#, final_text_attr);
++        }
+     }
+ }
+ 
+@@ -177,7 +241,7 @@ fn write_svg_text_impl(
+     include_row_class: bool,
+     entity_mode: SvgTextEntityMode,
+ ) {
+-    open_svg_text(out, include_style.then_some(""), center_text);
++    open_svg_text(out, include_style.then_some(""), center_text, false);
+ 
+     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
+     if lines.len() == 1 && lines[0].is_empty() {
+@@ -204,6 +268,10 @@ fn write_svg_text_word(out: &mut String, word: &str, entity_mode: SvgTextEntityM
+             let visible = crate::entities::decode_svg_text_content_entities(word);
+             escape_xml_raw_into(out, visible.as_ref());
+         }
++        SvgTextEntityMode::FlowchartPreprocessorSource => {
++            let visible = crate::entities::decode_flowchart_svg_text_content_entities(word);
++            escape_xml_raw_into(out, visible.as_ref());
++        }
+     }
+ }
+ 
+@@ -263,7 +331,7 @@ fn write_svg_text_markdown_lines(
+     include_row_class: bool,
+     entity_mode: SvgTextEntityMode,
+ ) {
+-    open_svg_text(out, include_style.then_some(""), center_text);
++    open_svg_text(out, include_style.then_some(""), center_text, false);
+ 
+     if lines.len() == 1 && lines[0].is_empty() {
+         write_empty_tspan(out, center_text, include_row_class);
+@@ -395,7 +463,33 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::{write_svg_text_centered, write_svg_text_source_word_lines};
++    use super::{
++        write_svg_text_centered, write_svg_text_flowchart_source_word_lines,
++        write_svg_text_source_word_lines,
++    };
++
++    #[test]
++    fn flowchart_preprocessor_text_is_marked_final_and_keeps_decoded_tags_literal() {
++        let mut out = String::new();
++        write_svg_text_flowchart_source_word_lines(
++            &mut out,
++            &[vec!["ﬂ°lt¶ßbﬂ°gt¶ßliteralﬂ°lt¶ß/bﬂ°gt¶ß".to_string()]],
++            true,
++            false,
++        );
++
++        assert!(out.contains(r#"data-mmir-final-text="true""#));
++        assert!(out.contains("&lt;b>literal&lt;/b>"), "{out}");
++
++        let mut ordinary = String::new();
++        write_svg_text_source_word_lines(
++            &mut ordinary,
++            &[vec!["ordinary".to_string()]],
++            true,
++            false,
++        );
++        assert!(!ordinary.contains("data-mmir-final-text"));
++    }
+ 
+     #[test]
+     fn non_markdown_svg_text_uses_ecmascript_whitespace_boundaries() {
+diff --git a/crates/merman-render/tests/flowchart_svg_test.rs b/crates/merman-render/tests/flowchart_svg_test.rs
+index 1f2105040..0316be129 100644
+--- a/crates/merman-render/tests/flowchart_svg_test.rs
++++ b/crates/merman-render/tests/flowchart_svg_test.rs
+@@ -448,7 +448,7 @@ MarkdownLead["`&nbsp;M`"] -- "`M<br>&nbsp;`" --> MarkdownTail["`A<br>&nbsp;`"]
+ }
+ 
+ #[test]
+-fn flowchart_svg_labels_preserve_entity_spelling_when_html_labels_are_disabled() {
++fn flowchart_svg_labels_decode_preprocessor_entities_when_html_labels_are_disabled() {
+     let nbsp = '\u{00A0}';
+     let nel = '\u{0085}';
+     let source = format!(
+@@ -491,12 +491,14 @@ end
+                 .collect::<String>()
+         })
+         .collect::<Vec<_>>();
++    let hash_entity_text = format!("{nbsp}Hash{nbsp}");
++    let numeric_entity_text = format!("{nbsp}Numeric{nbsp}");
+ 
+     for expected in [
+         "Direct",
+         "&nbsp;Entity&nbsp;",
+-        "&nbsp;Hash&nbsp;",
+-        "&#160;Numeric&#160;",
++        hash_entity_text.as_str(),
++        numeric_entity_text.as_str(),
+         "&Amp&",
+         "<Less<",
+         "&lt;Nested&gt;",

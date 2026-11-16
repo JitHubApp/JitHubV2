@@ -1,0 +1,1360 @@
+diff --git a/crates/merman-core/src/tests/flowchart.rs b/crates/merman-core/src/tests/flowchart.rs
+index a8045428..cad51dea 100644
+--- a/crates/merman-core/src/tests/flowchart.rs
++++ b/crates/merman-core/src/tests/flowchart.rs
+@@ -614,6 +614,52 @@ fn flowchart_render_source_span_does_not_keep_a_label_replaced_by_shape_data() {
+     );
+ }
+ 
++#[test]
++fn flowchart_shape_data_entity_labels_keep_the_public_semantic_and_render_projections() {
++    for (text, expected_label_type, expect_svg_entity_source) in [
++        (
++            "flowchart LR\nA@{ shape: rect, label: \"#quot;\" }\n",
++            "markdown",
++            false,
++        ),
++        (
++            "flowchart LR\nA@{ shape: rect, label: \"#quot;\", labelType: string }\n",
++            "string",
++            true,
++        ),
++    ] {
++        let parsed = parse_flowchart_render(text);
++        let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
++            panic!("expected flowchart model for {text:?}");
++        };
++        let node = model
++            .nodes
++            .iter()
++            .find(|node| node.id == "A")
++            .expect("shapeData node");
++        assert_eq!(
++            node.label_type.as_deref(),
++            Some(expected_label_type),
++            "{text:?}"
++        );
++        assert_eq!(node.label.as_deref(), Some("\""), "{text:?}");
++
++        let context = parsed
++            .flowchart_render_context()
++            .expect("flowchart render context");
++        assert_eq!(
++            context.node_label_for_render(node),
++            Some("&quot;"),
++            "{text:?}"
++        );
++        assert_eq!(
++            context.node_mermaid_svg_text_source_for_render(node),
++            expect_svg_entity_source.then_some("ﬂ°quot¶ß"),
++            "{text:?}"
++        );
++    }
++}
++
+ #[test]
+ fn parse_diagram_flowchart_preserves_typed_edge_marker_stroke_and_visibility_semantics() {
+     use crate::diagrams::flowchart::{
+diff --git a/crates/merman-render/src/flowchart/layout.rs b/crates/merman-render/src/flowchart/layout.rs
+index 4472a9c8..aebdb29f 100644
+--- a/crates/merman-render/src/flowchart/layout.rs
++++ b/crates/merman-render/src/flowchart/layout.rs
+@@ -2011,12 +2011,20 @@ fn layout_flowchart_with_model(
+ 
+         if edge_label_is_non_empty(model, e) {
+             let label_type = e.label_type.as_deref().unwrap_or("text");
++            // Dagre self-loop layout expands one logical edge into synthetic helper edges. Keep
++            // label provenance bound to the original model edge rather than looking it up by a
++            // synthetic helper ID; the owner index is the canonical source identity used by the
++            // label sidecar below.
++            let source_edge = self_loop_meta
++                .as_ref()
++                .and_then(|_| model.edges.get(*edge_owner_index))
++                .unwrap_or_else(|| e.as_ref());
+             let (label_text, source_mode) =
+                 if edge_wrap_mode == WrapMode::SvgLike && label_type != "markdown" {
+-                    model.edge_source_for_svg_text_render(e)
++                    model.edge_source_for_svg_text_render(source_edge)
+                 } else {
+                     (
+-                        model.edge_label_for_render(e).unwrap_or_default(),
++                        model.edge_label_for_render(source_edge).unwrap_or_default(),
+                         FlowchartSvgTextSourceMode::Sanitized,
+                     )
+                 };
+diff --git a/crates/merman-render/src/svg/parity/flowchart/label.rs b/crates/merman-render/src/svg/parity/flowchart/label.rs
+index a0567264..f3edffa0 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/label.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/label.rs
+@@ -462,7 +462,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
+     markdown: &str,
+     include_style: bool,
+ ) {
+-    crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
++    crate::svg::parity::label::write_svg_text_markdown_from_final_text_source(
+         out,
+         markdown,
+         include_style,
+@@ -477,7 +477,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
+     style: &crate::text::TextStyle,
+     max_width_px: Option<f64>,
+ ) {
+-    crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
++    crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_from_final_text_source(
+         out,
+         markdown,
+         include_style,
+@@ -495,7 +495,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
+     style: &crate::text::TextStyle,
+     max_width_px: Option<f64>,
+ ) {
+-    crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
++    crate::svg::parity::label::write_svg_text_markdown_wrapped_from_final_text_source(
+         out,
+         markdown,
+         include_style,
+diff --git a/crates/merman-render/src/svg/parity/label.rs b/crates/merman-render/src/svg/parity/label.rs
+index 71fa5da8..36ab1b13 100644
+--- a/crates/merman-render/src/svg/parity/label.rs
++++ b/crates/merman-render/src/svg/parity/label.rs
+@@ -8,6 +8,10 @@ enum SvgTextEntityMode {
+     DecodedModel,
+     CreateTextSource,
+     FlowchartPreprocessorSource,
++    /// Markdown tokenization and entity decoding have already produced the final visible text.
++    /// XML escaping is still required, but the downstream SVG pipeline must not classify decoded
++    /// tag-shaped text as markup or run another entity pass.
++    MarkdownFinalText,
+ }
+ 
+ fn write_svg_text_inner_word(
+@@ -125,7 +129,10 @@ fn write_svg_text_source_word_lines_impl(
+         out,
+         style,
+         center_text,
+-        matches!(entity_mode, SvgTextEntityMode::FlowchartPreprocessorSource),
++        matches!(
++            entity_mode,
++            SvgTextEntityMode::FlowchartPreprocessorSource | SvgTextEntityMode::MarkdownFinalText
++        ),
+     );
+ 
+     if lines.len() == 1 && lines[0].is_empty() {
+@@ -264,6 +271,10 @@ fn write_svg_text_impl(
+ fn write_svg_text_word(out: &mut String, word: &str, entity_mode: SvgTextEntityMode) {
+     match entity_mode {
+         SvgTextEntityMode::DecodedModel => escape_xml_into(out, word),
++        // Markdown tokenization and entity decoding already produced final visible text. Avoid
++        // the legacy Mermaid placeholder decode here so literal marker-shaped user text remains
++        // literal; only XML escaping is still required.
++        SvgTextEntityMode::MarkdownFinalText => escape_xml_raw_into(out, word),
+         SvgTextEntityMode::CreateTextSource => {
+             let visible = crate::entities::decode_svg_text_content_entities(word);
+             escape_xml_raw_into(out, visible.as_ref());
+@@ -282,41 +293,56 @@ fn normalized_markdown_label(markdown: &str) -> &str {
+         .unwrap_or(markdown)
+ }
+ 
+-fn markdown_to_svg_word_lines(markdown: &str) -> Vec<Vec<(String, bool, bool)>> {
++fn markdown_to_svg_word_lines(markdown: &str) -> Vec<Vec<(String, bool, bool, bool)>> {
+     crate::text::mermaid_markdown_to_lines(markdown, true)
+         .into_iter()
+         .map(|line| {
+             line.into_iter()
+-                .map(|(word, kind)| {
++                .enumerate()
++                .map(|(index, (word, kind))| {
+                     let is_strong = kind == crate::text::MermaidMarkdownWordType::Strong;
+                     let is_em = kind == crate::text::MermaidMarkdownWordType::Em;
+-                    (word, is_strong, is_em)
++                    (word, is_strong, is_em, index > 0)
+                 })
+                 .collect()
+         })
+         .collect()
+ }
+ 
+-fn markdown_to_wrapped_svg_word_lines(
++fn markdown_to_final_svg_word_lines(markdown: &str) -> Vec<Vec<(String, bool, bool, bool)>> {
++    crate::text::mermaid_markdown_to_svg_final_text_words(markdown, true)
++        .into_iter()
++        .map(|line| {
++            line.into_iter()
++                .map(|word| {
++                    let is_strong = word.word_type == crate::text::MermaidMarkdownWordType::Strong;
++                    let is_em = word.word_type == crate::text::MermaidMarkdownWordType::Em;
++                    (word.text, is_strong, is_em, word.separator_before)
++                })
++                .collect()
++        })
++        .collect()
++}
++
++fn markdown_to_wrapped_final_svg_word_lines(
+     measurer: &dyn crate::text::TextMeasurer,
+     markdown: &str,
+     style: &crate::text::TextStyle,
+     max_width_px: Option<f64>,
+-) -> Vec<Vec<(String, bool, bool)>> {
+-    crate::text::mermaid_markdown_to_wrapped_word_lines(
++) -> Vec<Vec<(String, bool, bool, bool)>> {
++    crate::text::mermaid_markdown_to_wrapped_final_svg_text_word_lines(
+         measurer,
+         markdown,
+         style,
+         max_width_px,
+-        crate::text::WrapMode::SvgLike,
+     )
+     .into_iter()
+     .map(|line| {
+         line.into_iter()
+-            .map(|(word, kind)| {
+-                let is_strong = kind == crate::text::MermaidMarkdownWordType::Strong;
+-                let is_em = kind == crate::text::MermaidMarkdownWordType::Em;
+-                (word, is_strong, is_em)
++            .map(|word| {
++                let is_strong = word.word_type == crate::text::MermaidMarkdownWordType::Strong;
++                let is_em = word.word_type == crate::text::MermaidMarkdownWordType::Em;
++                (word.text, is_strong, is_em, word.separator_before)
+             })
+             .collect()
+     })
+@@ -325,13 +351,21 @@ fn markdown_to_wrapped_svg_word_lines(
+ 
+ fn write_svg_text_markdown_lines(
+     out: &mut String,
+-    lines: &[Vec<(String, bool, bool)>],
++    lines: &[Vec<(String, bool, bool, bool)>],
+     include_style: bool,
+     center_text: bool,
+     include_row_class: bool,
+     entity_mode: SvgTextEntityMode,
+ ) {
+-    open_svg_text(out, include_style.then_some(""), center_text, false);
++    open_svg_text(
++        out,
++        include_style.then_some(""),
++        center_text,
++        matches!(
++            entity_mode,
++            SvgTextEntityMode::FlowchartPreprocessorSource | SvgTextEntityMode::MarkdownFinalText
++        ),
++    );
+ 
+     if lines.len() == 1 && lines[0].is_empty() {
+         write_empty_tspan(out, center_text, include_row_class);
+@@ -342,7 +376,7 @@ fn write_svg_text_markdown_lines(
+     for (index, words) in lines.iter().enumerate() {
+         open_tspan(out, index, center_text, include_row_class);
+ 
+-        for (word_index, (word, is_strong, is_em)) in words.iter().enumerate() {
++        for (word, is_strong, is_em, separator_before) in words {
+             let font_style = if *is_em { "italic" } else { "normal" };
+             let font_weight = if *is_strong { "bold" } else { "normal" };
+             let _ = write!(
+@@ -350,12 +384,10 @@ fn write_svg_text_markdown_lines(
+                 r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                 font_style, font_weight
+             );
+-            if word_index == 0 {
+-                write_svg_text_word(out, word, entity_mode);
+-            } else {
++            if *separator_before {
+                 out.push(' ');
+-                write_svg_text_word(out, word, entity_mode);
+             }
++            write_svg_text_word(out, word, entity_mode);
+             out.push_str("</tspan>");
+         }
+ 
+@@ -397,23 +429,23 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
+     );
+ }
+ 
+-pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
++pub(in crate::svg::parity) fn write_svg_text_markdown_from_final_text_source(
+     out: &mut String,
+     markdown: &str,
+     include_style: bool,
+ ) {
+-    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
++    let lines = markdown_to_final_svg_word_lines(normalized_markdown_label(markdown));
+     write_svg_text_markdown_lines(
+         out,
+         &lines,
+         include_style,
+         false,
+         true,
+-        SvgTextEntityMode::CreateTextSource,
++        SvgTextEntityMode::MarkdownFinalText,
+     );
+ }
+ 
+-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_create_text_source(
++pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_final_text_source(
+     out: &mut String,
+     markdown: &str,
+     include_style: bool,
+@@ -421,7 +453,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_crea
+     style: &crate::text::TextStyle,
+     max_width_px: Option<f64>,
+ ) {
+-    let lines = markdown_to_wrapped_svg_word_lines(
++    let lines = markdown_to_wrapped_final_svg_word_lines(
+         measurer,
+         normalized_markdown_label(markdown),
+         style,
+@@ -433,11 +465,11 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_crea
+         include_style,
+         true,
+         true,
+-        SvgTextEntityMode::CreateTextSource,
++        SvgTextEntityMode::MarkdownFinalText,
+     );
+ }
+ 
+-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source(
++pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_final_text_source(
+     out: &mut String,
+     markdown: &str,
+     include_style: bool,
+@@ -445,7 +477,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
+     style: &crate::text::TextStyle,
+     max_width_px: Option<f64>,
+ ) {
+-    let lines = markdown_to_wrapped_svg_word_lines(
++    let lines = markdown_to_wrapped_final_svg_word_lines(
+         measurer,
+         normalized_markdown_label(markdown),
+         style,
+@@ -457,7 +489,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
+         include_style,
+         false,
+         true,
+-        SvgTextEntityMode::CreateTextSource,
++        SvgTextEntityMode::MarkdownFinalText,
+     );
+ }
+ 
+@@ -465,7 +497,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
+ mod tests {
+     use super::{
+         write_svg_text_centered, write_svg_text_flowchart_source_word_lines,
+-        write_svg_text_source_word_lines,
++        write_svg_text_markdown_from_final_text_source, write_svg_text_source_word_lines,
+     };
+ 
+     #[test]
+@@ -491,6 +523,79 @@ mod tests {
+         assert!(!ordinary.contains("data-mmir-final-text"));
+     }
+ 
++    #[test]
++    fn markdown_final_text_entities_are_decoded_once_then_xml_escaped() {
++        let mut out = String::new();
++        write_svg_text_markdown_from_final_text_source(
++            &mut out,
++            "**bold**&lt;b&gt;literal&lt;/b&gt; &amp;quot; &#35; &#x1F642; e&#x301; &unknown; ﬂ°quot¶ß",
++            true,
++        );
++
++        assert!(out.contains(r#"data-mmir-final-text="true""#), "{out}");
++        assert!(
++            out.contains(
++                r#"font-weight="bold">bold</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">&lt;b>literal"#
++            ),
++            "{out}"
++        );
++        assert!(out.contains("> &amp;quot;</tspan>"), "{out}");
++        assert!(out.contains("> #</tspan>"), "{out}");
++        assert!(out.contains("> 🙂</tspan>"), "{out}");
++        assert!(out.contains("> e\u{301}</tspan>"), "{out}");
++        assert!(out.contains("> &amp;unknown;</tspan>"), "{out}");
++        assert!(out.contains("> ﬂ°quot¶ß</tspan>"), "{out}");
++    }
++
++    #[test]
++    fn markdown_final_text_measurement_uses_the_same_decoded_content() {
++        use crate::text::{
++            DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode,
++            measure_wrapped_markdown_with_inline_styles,
++        };
++
++        let measurer = DeterministicTextMeasurer::default();
++        let style = TextStyle::default();
++        let actual = measure_wrapped_markdown_with_inline_styles(
++            &measurer,
++            "&quot; &#35; &#x1F642; e&#x301; &amp;quot; &unknown;",
++            &style,
++            None,
++            WrapMode::SvgLike,
++        );
++        let expected = measurer.measure_wrapped(
++            "\" # 🙂 e\u{301} &quot; &unknown;",
++            &style,
++            None,
++            WrapMode::SvgLike,
++        );
++
++        assert_eq!(actual.width, crate::text::round_to_1_64_px(expected.width));
++        assert_eq!(actual.height, expected.height);
++        assert_eq!(actual.line_count, expected.line_count);
++    }
++
++    #[test]
++    fn markdown_full_delimiter_fallback_preserves_authored_adjacency() {
++        let mut contiguous = String::new();
++        write_svg_text_markdown_from_final_text_source(&mut contiguous, "**bold**_italic_", false);
++        assert!(
++            contiguous.contains(
++                r#"font-weight="bold">bold</tspan><tspan font-style="italic" class="text-inner-tspan" font-weight="normal">italic"#
++            ),
++            "{contiguous}"
++        );
++
++        let mut spaced = String::new();
++        write_svg_text_markdown_from_final_text_source(&mut spaced, "**bold** _italic_", false);
++        assert!(
++            spaced.contains(
++                r#"font-weight="bold">bold</tspan><tspan font-style="italic" class="text-inner-tspan" font-weight="normal"> italic"#
++            ),
++            "{spaced}"
++        );
++    }
++
+     #[test]
+     fn non_markdown_svg_text_uses_ecmascript_whitespace_boundaries() {
+         let expected = [
+diff --git a/crates/merman-render/src/text.rs b/crates/merman-render/src/text.rs
+index 23bacf9b..78f8dece 100644
+--- a/crates/merman-render/src/text.rs
++++ b/crates/merman-render/src/text.rs
+@@ -20,8 +20,9 @@ pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
+ pub use icons::replace_fontawesome_icons;
+ pub(crate) use line_break::html_has_soft_break_opportunity;
+ pub(crate) use markdown::{
+-    MermaidMarkdownAnalysis, MermaidMarkdownWordType, analyze_mermaid_markdown,
+-    mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
++    MermaidMarkdownAnalysis, MermaidMarkdownWord, MermaidMarkdownWordType,
++    analyze_mermaid_markdown, mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
++    mermaid_markdown_to_svg_final_text_words,
+ };
+ pub(crate) use markdown_label::{
+     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
+@@ -36,7 +37,7 @@ pub(crate) use measure::{
+ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
+ pub(crate) use metrics::{
+     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
+-    mermaid_markdown_to_wrapped_word_lines,
++    mermaid_markdown_to_wrapped_final_svg_text_word_lines, mermaid_markdown_to_wrapped_word_lines,
+ };
+ pub(crate) use svg_metrics::{
+     svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
+diff --git a/crates/merman-render/src/text/markdown.rs b/crates/merman-render/src/text/markdown.rs
+index 231d4e12..544b40b9 100644
+--- a/crates/merman-render/src/text/markdown.rs
++++ b/crates/merman-render/src/text/markdown.rs
+@@ -9,6 +9,17 @@ pub(crate) enum MermaidMarkdownWordType {
+     Em,
+ }
+ 
++/// A parsed Markdown text fragment with its formatting and authored word separator.
++///
++/// `separator_before` is part of the parsed representation, not inferred later from text values.
++/// It lets SVG output preserve adjacency across formatting boundaries such as `**bold**<i>`.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub(crate) struct MermaidMarkdownWord {
++    pub(crate) text: String,
++    pub(crate) word_type: MermaidMarkdownWordType,
++    pub(crate) separator_before: bool,
++}
++
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub(crate) struct MermaidMarkdownAnalysis {
+     pub(crate) lines: Vec<Vec<(String, MermaidMarkdownWordType)>>,
+@@ -47,6 +58,20 @@ pub(crate) fn mermaid_markdown_to_lines(
+     markdown: &str,
+     markdown_auto_wrap: bool,
+ ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
++    mermaid_markdown_to_word_tokens(markdown, markdown_auto_wrap)
++        .into_iter()
++        .map(|line| {
++            line.into_iter()
++                .map(|word| (word.text, word.word_type))
++                .collect()
++        })
++        .collect()
++}
++
++fn mermaid_markdown_to_word_tokens(
++    markdown: &str,
++    markdown_auto_wrap: bool,
++) -> Vec<Vec<MermaidMarkdownWord>> {
+     fn preprocess_mermaid_markdown(markdown: &str, markdown_auto_wrap: bool) -> String {
+         let markdown = markdown.replace("\r\n", "\n");
+ 
+@@ -251,11 +276,11 @@ pub(crate) fn mermaid_markdown_to_lines(
+         })
+     }
+ 
+-    fn resolve_full_delimiter_runs(markdown: &str) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
++    fn resolve_full_delimiter_runs(markdown: &str) -> Vec<Vec<MermaidMarkdownWord>> {
+         fn line_mut(
+-            out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
++            out: &mut Vec<Vec<MermaidMarkdownWord>>,
+             line_idx: usize,
+-        ) -> &mut Vec<(String, MermaidMarkdownWordType)> {
++        ) -> &mut Vec<MermaidMarkdownWord> {
+             if out.len() <= line_idx {
+                 out.resize_with(line_idx + 1, Vec::new);
+             }
+@@ -263,11 +288,12 @@ pub(crate) fn mermaid_markdown_to_lines(
+         }
+ 
+         fn append_text(
+-            out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
++            out: &mut Vec<Vec<MermaidMarkdownWord>>,
+             line_idx: &mut usize,
+             text: &str,
+             word_type: MermaidMarkdownWordType,
+             join_first_word: bool,
++            first_word_separator_before: bool,
+         ) {
+             for (part_index, part) in text.split('\n').enumerate() {
+                 if part_index != 0 {
+@@ -280,14 +306,23 @@ pub(crate) fn mermaid_markdown_to_lines(
+                     }
+                     let word = word.replace("&#39;", "'");
+                     let can_join = join_first_word && part_index == 0 && word_index == 0;
++                    let separator_before = if word_index == 0 {
++                        first_word_separator_before
++                    } else {
++                        true
++                    };
+                     let line = line_mut(out, *line_idx);
+                     if can_join
+-                        && let Some((previous, previous_type)) = line.last_mut()
+-                        && *previous_type == word_type
++                        && let Some(previous) = line.last_mut()
++                        && previous.word_type == word_type
+                     {
+-                        previous.push_str(&word);
++                        previous.text.push_str(&word);
+                     } else {
+-                        line.push((word, word_type));
++                        line.push(MermaidMarkdownWord {
++                            text: word,
++                            word_type,
++                            separator_before: separator_before && !line.is_empty(),
++                        });
+                     }
+                 }
+             }
+@@ -342,8 +377,11 @@ pub(crate) fn mermaid_markdown_to_lines(
+                 }
+                 pulldown_cmark::Event::Start(_) => {
+                     if let Some(raw) = markdown.get(range) {
+-                        line_mut(&mut out, line_idx)
+-                            .push((raw.to_string(), MermaidMarkdownWordType::Normal));
++                        line_mut(&mut out, line_idx).push(MermaidMarkdownWord {
++                            text: raw.to_string(),
++                            word_type: MermaidMarkdownWordType::Normal,
++                            separator_before: false,
++                        });
+                     }
+                     skipped_block_depth = 1;
+                     previous_text = None;
+@@ -392,12 +430,16 @@ pub(crate) fn mermaid_markdown_to_lines(
+                             .chars()
+                             .next()
+                             .is_some_and(|character| !is_ecmascript_whitespace(character));
++                    let separator_before = previous_text
++                        .and_then(|(end, _): (usize, bool)| markdown.get(end..range.start))
++                        .is_some_and(|gap| gap.chars().any(is_ecmascript_whitespace));
+                     append_text(
+                         &mut out,
+                         &mut line_idx,
+                         source_text,
+                         word_type,
+                         join_first_word,
++                        separator_before,
+                     );
+                     previous_text = Some((
+                         range.end,
+@@ -414,8 +456,11 @@ pub(crate) fn mermaid_markdown_to_lines(
+                     if skipped_inline_depth == 0 =>
+                 {
+                     let raw = markdown.get(range).unwrap_or(html.as_ref());
+-                    line_mut(&mut out, line_idx)
+-                        .push((raw.to_string(), MermaidMarkdownWordType::Normal));
++                    line_mut(&mut out, line_idx).push(MermaidMarkdownWord {
++                        text: raw.to_string(),
++                        word_type: MermaidMarkdownWordType::Normal,
++                        separator_before: false,
++                    });
+                     previous_text = None;
+                 }
+                 pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak
+@@ -427,8 +472,11 @@ pub(crate) fn mermaid_markdown_to_lines(
+                 }
+                 pulldown_cmark::Event::Rule if skipped_inline_depth == 0 => {
+                     if let Some(raw) = markdown.get(range) {
+-                        line_mut(&mut out, line_idx)
+-                            .push((raw.to_string(), MermaidMarkdownWordType::Normal));
++                        line_mut(&mut out, line_idx).push(MermaidMarkdownWord {
++                            text: raw.to_string(),
++                            word_type: MermaidMarkdownWordType::Normal,
++                            separator_before: false,
++                        });
+                     }
+                     previous_text = None;
+                 }
+@@ -448,28 +496,31 @@ pub(crate) fn mermaid_markdown_to_lines(
+ 
+     let chars: Vec<char> = pre.chars().collect();
+ 
+-    let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = vec![Vec::new()];
++    let mut out: Vec<Vec<MermaidMarkdownWord>> = vec![Vec::new()];
+     let mut line_idx: usize = 0;
+ 
+     let mut stack: Vec<MermaidMarkdownWordType> = vec![MermaidMarkdownWordType::Normal];
+     let mut word = String::new();
+     let mut word_ty = MermaidMarkdownWordType::Normal;
++    let mut word_separator_before = false;
++    let mut pending_separator = false;
+     let mut in_code_span = false;
+ 
+     fn line_mut(
+-        out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
++        out: &mut Vec<Vec<MermaidMarkdownWord>>,
+         line_idx: usize,
+-    ) -> &mut Vec<(String, MermaidMarkdownWordType)> {
++    ) -> &mut Vec<MermaidMarkdownWord> {
+         if out.len() <= line_idx {
+             out.resize_with(line_idx + 1, Vec::new);
+         }
+         &mut out[line_idx]
+     }
+ 
+-    let flush_word = |out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
++    let flush_word = |out: &mut Vec<Vec<MermaidMarkdownWord>>,
+                       line_idx: &mut usize,
+                       word: &mut String,
+-                      word_ty: MermaidMarkdownWordType| {
++                      word_ty: MermaidMarkdownWordType,
++                      separator_before: &mut bool| {
+         if word.is_empty() {
+             return;
+         }
+@@ -477,7 +528,14 @@ pub(crate) fn mermaid_markdown_to_lines(
+         if w.contains("&#39;") {
+             w = w.replace("&#39;", "'");
+         }
+-        line_mut(out, *line_idx).push((w, word_ty));
++        let line = line_mut(out, *line_idx);
++        let word_separator_before = *separator_before && !line.is_empty();
++        line.push(MermaidMarkdownWord {
++            text: w,
++            word_type: word_ty,
++            separator_before: word_separator_before,
++        });
++        *separator_before = false;
+     };
+ 
+     let mut i = 0usize;
+@@ -485,16 +543,30 @@ pub(crate) fn mermaid_markdown_to_lines(
+         let ch = chars[i];
+ 
+         if ch == '\n' {
+-            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
++            flush_word(
++                &mut out,
++                &mut line_idx,
++                &mut word,
++                word_ty,
++                &mut word_separator_before,
++            );
+             word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+             line_idx += 1;
+             out.push(Vec::new());
++            pending_separator = false;
+             i += 1;
+             continue;
+         }
+         if ch == ' ' {
+-            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
++            flush_word(
++                &mut out,
++                &mut line_idx,
++                &mut word,
++                word_ty,
++                &mut word_separator_before,
++            );
+             word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
++            pending_separator = true;
+             i += 1;
+             continue;
+         }
+@@ -504,7 +576,13 @@ pub(crate) fn mermaid_markdown_to_lines(
+         {
+             let end = i + end;
+             let html: String = chars[i..=end].iter().collect();
+-            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
++            flush_word(
++                &mut out,
++                &mut line_idx,
++                &mut word,
++                word_ty,
++                &mut word_separator_before,
++            );
+             if html.eq_ignore_ascii_case("<br>")
+                 || html.eq_ignore_ascii_case("<br/>")
+                 || html.eq_ignore_ascii_case("<br />")
+@@ -516,8 +594,13 @@ pub(crate) fn mermaid_markdown_to_lines(
+                 word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                 line_idx += 1;
+                 out.push(Vec::new());
++                pending_separator = false;
+             } else {
+-                line_mut(&mut out, line_idx).push((html, MermaidMarkdownWordType::Normal));
++                line_mut(&mut out, line_idx).push(MermaidMarkdownWord {
++                    text: html,
++                    word_type: MermaidMarkdownWordType::Normal,
++                    separator_before: std::mem::take(&mut pending_separator),
++                });
+                 word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+             }
+             i = end + 1;
+@@ -538,6 +621,8 @@ pub(crate) fn mermaid_markdown_to_lines(
+             if in_code_span {
+                 if word.is_empty() {
+                     word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
++                    word_separator_before = pending_separator;
++                    pending_separator = false;
+                 }
+                 word.push(ch);
+                 i += 1;
+@@ -565,14 +650,26 @@ pub(crate) fn mermaid_markdown_to_lines(
+             let cur_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+ 
+             if can_close && cur_ty == want_ty {
+-                flush_word(&mut out, &mut line_idx, &mut word, word_ty);
++                flush_word(
++                    &mut out,
++                    &mut line_idx,
++                    &mut word,
++                    word_ty,
++                    &mut word_separator_before,
++                );
+                 stack.pop();
+                 word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                 i += run_len;
+                 continue;
+             }
+             if can_open && mermaid_delim_has_closer(&chars, i + run_len, ch, run_len) {
+-                flush_word(&mut out, &mut line_idx, &mut word, word_ty);
++                flush_word(
++                    &mut out,
++                    &mut line_idx,
++                    &mut word,
++                    word_ty,
++                    &mut word_separator_before,
++                );
+                 stack.push(want_ty);
+                 word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                 i += run_len;
+@@ -584,6 +681,8 @@ pub(crate) fn mermaid_markdown_to_lines(
+             // `a__b` must remain literal, not split into `a_` + `_b_`).
+             if word.is_empty() {
+                 word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
++                word_separator_before = pending_separator;
++                pending_separator = false;
+             }
+             for _ in 0..run_len {
+                 word.push(ch);
+@@ -594,12 +693,20 @@ pub(crate) fn mermaid_markdown_to_lines(
+ 
+         if word.is_empty() {
+             word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
++            word_separator_before = pending_separator;
++            pending_separator = false;
+         }
+         word.push(ch);
+         i += 1;
+     }
+ 
+-    flush_word(&mut out, &mut line_idx, &mut word, word_ty);
++    flush_word(
++        &mut out,
++        &mut line_idx,
++        &mut word,
++        word_ty,
++        &mut word_separator_before,
++    );
+ 
+     if out.is_empty() {
+         out.push(Vec::new());
+@@ -610,6 +717,30 @@ pub(crate) fn mermaid_markdown_to_lines(
+     out
+ }
+ 
++/// Parses Markdown before decoding the entities that represent its final text content.
++///
++/// This order is important for SVG Markdown labels: an encoded `<b>` is authored text, not a
++/// formatting tag. Markdown tokenization must classify the source first; only then may the
++/// resulting text fragments be decoded for display. The returned strings are final text and must
++/// not be entity-decoded again.
++pub(crate) fn mermaid_markdown_to_svg_final_text_words(
++    markdown: &str,
++    markdown_auto_wrap: bool,
++) -> Vec<Vec<MermaidMarkdownWord>> {
++    mermaid_markdown_to_word_tokens(markdown, markdown_auto_wrap)
++        .into_iter()
++        .map(|line| {
++            line.into_iter()
++                .map(|mut word| {
++                    word.text = merman_core::entities::decode_html_entities_to_unicode(&word.text)
++                        .into_owned();
++                    word
++                })
++                .collect()
++        })
++        .collect()
++}
++
+ pub(crate) fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
+     pulldown_cmark::Parser::new_ext(
+         markdown,
+@@ -923,4 +1054,70 @@ mod tests {
+         assert_eq!(multiline.line_count, 2);
+         assert!(multiline.all_runs_normal());
+     }
++
++    #[test]
++    fn svg_markdown_decodes_entities_once_after_markdown_classification() {
++        use MermaidMarkdownWordType::{Normal, Strong};
++
++        let words = mermaid_markdown_to_svg_final_text_words(
++            "**bold**&lt;b&gt;literal&lt;/b&gt; &#35; &#x1F642; e&#x301; &amp;quot; &unknown; ﬂ°quot¶ß",
++            true,
++        );
++        assert_eq!(
++            words,
++            vec![vec![
++                MermaidMarkdownWord {
++                    text: "bold".to_string(),
++                    word_type: Strong,
++                    separator_before: false,
++                },
++                MermaidMarkdownWord {
++                    text: "<b>literal</b>".to_string(),
++                    word_type: Normal,
++                    separator_before: false,
++                },
++                MermaidMarkdownWord {
++                    text: "#".to_string(),
++                    word_type: Normal,
++                    separator_before: true,
++                },
++                MermaidMarkdownWord {
++                    text: "🙂".to_string(),
++                    word_type: Normal,
++                    separator_before: true,
++                },
++                MermaidMarkdownWord {
++                    text: "e\u{301}".to_string(),
++                    word_type: Normal,
++                    separator_before: true,
++                },
++                MermaidMarkdownWord {
++                    text: "&quot;".to_string(),
++                    word_type: Normal,
++                    separator_before: true,
++                },
++                MermaidMarkdownWord {
++                    text: "&unknown;".to_string(),
++                    word_type: Normal,
++                    separator_before: true,
++                },
++                MermaidMarkdownWord {
++                    text: "ﬂ°quot¶ß".to_string(),
++                    word_type: Normal,
++                    separator_before: true,
++                },
++            ]]
++        );
++
++        let spaced = mermaid_markdown_to_svg_final_text_words("**bold** &lt;b&gt;literal", true);
++        assert!(spaced[0][1].separator_before);
++
++        let mixed_contiguous = mermaid_markdown_to_svg_final_text_words("**bold**_italic_", true);
++        assert_eq!(mixed_contiguous[0][0].text, "bold");
++        assert_eq!(mixed_contiguous[0][1].text, "italic");
++        assert!(!mixed_contiguous[0][1].separator_before);
++
++        let mixed_spaced = mermaid_markdown_to_svg_final_text_words("**bold** _italic_", true);
++        assert!(mixed_spaced[0][1].separator_before);
++    }
+ }
+diff --git a/crates/merman-render/src/text/metrics.rs b/crates/merman-render/src/text/metrics.rs
+index 13213b79..e572526d 100644
+--- a/crates/merman-render/src/text/metrics.rs
++++ b/crates/merman-render/src/text/metrics.rs
+@@ -2,8 +2,8 @@
+ 
+ use super::line_break::html_break_spaces_segments;
+ use super::{
+-    MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode, ceil_to_1_64_px,
+-    is_html_collapsible_ascii_whitespace, mermaid_markdown_to_lines,
++    MermaidMarkdownWord, MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode,
++    ceil_to_1_64_px, is_html_collapsible_ascii_whitespace, mermaid_markdown_to_lines,
+     mermaid_xhtml_label_plain_text, round_to_1_64_px, trim_html_collapsible_ascii_whitespace, wrap,
+ };
+ use crate::environment::{
+@@ -11,6 +11,16 @@ use crate::environment::{
+     TextMeasurementOperation,
+ };
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++enum MarkdownTokenTextState {
++    /// Tokens still contain the authored/sanitized entity spellings. Measurement applies the
++    /// existing HTML- or SVG-source decoding rules.
++    EncodedSource,
++    /// Markdown parsing has already classified tokens and entity decoding has happened exactly
++    /// once. Measurement must consume these strings verbatim.
++    FinalText,
++}
++
+ // This input has already passed through the lightweight HTML parser. Do not use the generic text
+ // normalizer here: its Unicode trim would erase a final NBSP-only line before inline measurement.
+ fn normalized_preparsed_html_text_lines(text: &str) -> Vec<String> {
+@@ -2774,24 +2784,30 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
+ 
+ fn markdown_word_line_plain_text_and_width_px(
+     measurer: &dyn TextMeasurer,
+-    words: &[(String, MermaidMarkdownWordType)],
++    words: &[MermaidMarkdownWord],
+     style: &TextStyle,
+     wrap_mode: WrapMode,
++    text_state: MarkdownTokenTextState,
+ ) -> (String, f64) {
+     let mut plain = String::new();
+     let mut runs = Vec::new();
+ 
+-    for (word_idx, (word, ty)) in words.iter().enumerate() {
+-        let visible_word = match wrap_mode {
+-            WrapMode::HtmlLike => merman_core::entities::decode_html_entities_to_unicode(word),
+-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
+-                crate::entities::decode_svg_text_content_entities(word)
+-            }
++    for word in words {
++        let visible_word = match text_state {
++            MarkdownTokenTextState::FinalText => std::borrow::Cow::Borrowed(word.text.as_str()),
++            MarkdownTokenTextState::EncodedSource => match wrap_mode {
++                WrapMode::HtmlLike => {
++                    merman_core::entities::decode_html_entities_to_unicode(&word.text)
++                }
++                WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
++                    crate::entities::decode_svg_text_content_entities(&word.text)
++                }
++            },
+         };
+-        let bold = *ty == MermaidMarkdownWordType::Strong;
+-        let italic = *ty == MermaidMarkdownWordType::Em;
++        let bold = word.word_type == MermaidMarkdownWordType::Strong;
++        let italic = word.word_type == MermaidMarkdownWordType::Em;
+ 
+-        if word_idx > 0 {
++        if word.separator_before {
+             plain.push(' ');
+             push_inline_text_char(&mut runs, ' ', false, false, false);
+         }
+@@ -2807,11 +2823,12 @@ fn markdown_word_line_plain_text_and_width_px(
+ 
+ fn measure_markdown_word_line_width_px(
+     measurer: &dyn TextMeasurer,
+-    words: &[(String, MermaidMarkdownWordType)],
++    words: &[MermaidMarkdownWord],
+     style: &TextStyle,
+     wrap_mode: WrapMode,
++    text_state: MarkdownTokenTextState,
+ ) -> f64 {
+-    markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
++    markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode, text_state).1
+ }
+ 
+ fn split_markdown_word_to_width_px(
+@@ -2821,6 +2838,7 @@ fn split_markdown_word_to_width_px(
+     ty: MermaidMarkdownWordType,
+     max_width_px: f64,
+     wrap_mode: WrapMode,
++    text_state: MarkdownTokenTextState,
+ ) -> (String, String) {
+     if max_width_px <= 0.0 {
+         return (word.to_string(), String::new());
+@@ -2833,8 +2851,17 @@ fn split_markdown_word_to_width_px(
+     let mut split_at = 1usize;
+     for idx in 1..=chars.len() {
+         let head = chars[..idx].iter().collect::<String>();
+-        let width =
+-            measure_markdown_word_line_width_px(measurer, &[(head.clone(), ty)], style, wrap_mode);
++        let width = measure_markdown_word_line_width_px(
++            measurer,
++            &[MermaidMarkdownWord {
++                text: head.clone(),
++                word_type: ty,
++                separator_before: false,
++            }],
++            style,
++            wrap_mode,
++            text_state,
++        );
+         if width.is_finite() && width <= max_width_px {
+             split_at = idx;
+         } else {
+@@ -2847,19 +2874,38 @@ fn split_markdown_word_to_width_px(
+     (head, tail)
+ }
+ 
++fn legacy_markdown_words(
++    lines: Vec<Vec<(String, MermaidMarkdownWordType)>>,
++) -> Vec<Vec<MermaidMarkdownWord>> {
++    lines
++        .into_iter()
++        .map(|line| {
++            line.into_iter()
++                .enumerate()
++                .map(|(index, (text, word_type))| MermaidMarkdownWord {
++                    text,
++                    word_type,
++                    separator_before: index > 0,
++                })
++                .collect()
++        })
++        .collect()
++}
++
+ fn wrap_markdown_word_lines(
+     measurer: &dyn TextMeasurer,
+-    parsed: &[Vec<(String, MermaidMarkdownWordType)>],
++    parsed: &[Vec<MermaidMarkdownWord>],
+     style: &TextStyle,
+     max_width_px: Option<f64>,
+     wrap_mode: WrapMode,
+     break_long_words: bool,
+-) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
++    text_state: MarkdownTokenTextState,
++) -> Vec<Vec<MermaidMarkdownWord>> {
+     let Some(max_width_px) = max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
+         return parsed.to_vec();
+     };
+ 
+-    let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = Vec::new();
++    let mut out: Vec<Vec<MermaidMarkdownWord>> = Vec::new();
+     for line in parsed {
+         if line.is_empty() {
+             out.push(Vec::new());
+@@ -2867,13 +2913,14 @@ fn wrap_markdown_word_lines(
+         }
+ 
+         let mut tokens = std::collections::VecDeque::from(line.clone());
+-        let mut cur: Vec<(String, MermaidMarkdownWordType)> = Vec::new();
++        let mut cur: Vec<MermaidMarkdownWord> = Vec::new();
+ 
+-        while let Some((word, ty)) = tokens.pop_front() {
++        while let Some(word) = tokens.pop_front() {
+             let mut candidate = cur.clone();
+-            candidate.push((word.clone(), ty));
+-            if measure_markdown_word_line_width_px(measurer, &candidate, style, wrap_mode)
+-                <= max_width_px
++            candidate.push(word.clone());
++            if measure_markdown_word_line_width_px(
++                measurer, &candidate, style, wrap_mode, text_state,
++            ) <= max_width_px
+             {
+                 cur = candidate;
+                 continue;
+@@ -2882,32 +2929,45 @@ fn wrap_markdown_word_lines(
+             if !cur.is_empty() {
+                 out.push(cur);
+                 cur = Vec::new();
+-                tokens.push_front((word, ty));
++                tokens.push_front(MermaidMarkdownWord {
++                    separator_before: false,
++                    ..word
++                });
+                 continue;
+             }
+ 
+             let single_word_width = measure_markdown_word_line_width_px(
+                 measurer,
+-                &[(word.clone(), ty)],
++                std::slice::from_ref(&word),
+                 style,
+                 wrap_mode,
++                text_state,
+             );
+             if single_word_width <= max_width_px || !break_long_words {
+-                out.push(vec![(word, ty)]);
++                out.push(vec![word]);
+                 continue;
+             }
+ 
+             let (head, tail) = split_markdown_word_to_width_px(
+                 measurer,
+                 style,
+-                &word,
+-                ty,
++                &word.text,
++                word.word_type,
+                 max_width_px,
+                 wrap_mode,
++                text_state,
+             );
+-            out.push(vec![(head, ty)]);
++            out.push(vec![MermaidMarkdownWord {
++                text: head,
++                word_type: word.word_type,
++                separator_before: word.separator_before,
++            }]);
+             if !tail.is_empty() {
+-                tokens.push_front((tail, ty));
++                tokens.push_front(MermaidMarkdownWord {
++                    text: tail,
++                    word_type: word.word_type,
++                    separator_before: false,
++                });
+             }
+         }
+ 
+@@ -2930,8 +2990,41 @@ pub(crate) fn mermaid_markdown_to_wrapped_word_lines(
+     max_width_px: Option<f64>,
+     wrap_mode: WrapMode,
+ ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+-    let parsed = mermaid_markdown_to_lines(markdown, true);
+-    wrap_markdown_word_lines(measurer, &parsed, style, max_width_px, wrap_mode, true)
++    let parsed = legacy_markdown_words(mermaid_markdown_to_lines(markdown, true));
++    wrap_markdown_word_lines(
++        measurer,
++        &parsed,
++        style,
++        max_width_px,
++        wrap_mode,
++        true,
++        MarkdownTokenTextState::EncodedSource,
++    )
++    .into_iter()
++    .map(|line| {
++        line.into_iter()
++            .map(|word| (word.text, word.word_type))
++            .collect()
++    })
++    .collect()
++}
++
++pub(crate) fn mermaid_markdown_to_wrapped_final_svg_text_word_lines(
++    measurer: &dyn TextMeasurer,
++    markdown: &str,
++    style: &TextStyle,
++    max_width_px: Option<f64>,
++) -> Vec<Vec<MermaidMarkdownWord>> {
++    let parsed = crate::text::mermaid_markdown_to_svg_final_text_words(markdown, true);
++    wrap_markdown_word_lines(
++        measurer,
++        &parsed,
++        style,
++        max_width_px,
++        WrapMode::SvgLike,
++        true,
++        MarkdownTokenTextState::FinalText,
++    )
+ }
+ 
+ fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
+@@ -2969,6 +3062,7 @@ fn measure_markdown_with_inline_styles_impl(
+     max_width: Option<f64>,
+     wrap_mode: WrapMode,
+     manually_wrap_words: bool,
++    finalize_svg_markdown_text: bool,
+ ) -> TextMetrics {
+     // Mermaid's flowchart HTML labels support inline Markdown images. These affect layout even
+     // when the label has no textual content (e.g. `![](...)`).
+@@ -3119,14 +3213,34 @@ fn measure_markdown_with_inline_styles_impl(
+         }
+     }
+ 
+-    let raw_parsed = mermaid_markdown_to_lines(markdown, true);
++    let (raw_parsed, token_text_state) = if finalize_svg_markdown_text
++        && matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
++    {
++        (
++            crate::text::mermaid_markdown_to_svg_final_text_words(markdown, true),
++            MarkdownTokenTextState::FinalText,
++        )
++    } else {
++        (
++            legacy_markdown_words(mermaid_markdown_to_lines(markdown, true)),
++            MarkdownTokenTextState::EncodedSource,
++        )
++    };
+     let html_paragraph_gap_lines = if wrap_mode == WrapMode::HtmlLike {
+         html_markdown_paragraph_gap_lines(markdown)
+     } else {
+         0
+     };
+     let parsed = if manually_wrap_words {
+-        wrap_markdown_word_lines(measurer, &raw_parsed, style, max_width, wrap_mode, true)
++        wrap_markdown_word_lines(
++            measurer,
++            &raw_parsed,
++            style,
++            max_width,
++            wrap_mode,
++            true,
++            token_text_state,
++        )
+     } else {
+         raw_parsed.clone()
+     };
+@@ -3134,8 +3248,13 @@ fn measure_markdown_with_inline_styles_impl(
+     let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
+     let mut styled_width_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
+     for words in &parsed {
+-        let (plain, width) =
+-            markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode);
++        let (plain, width) = markdown_word_line_plain_text_and_width_px(
++            measurer,
++            words,
++            style,
++            wrap_mode,
++            token_text_state,
++        );
+         plain_lines.push(plain);
+         styled_width_px_by_line.push(width);
+     }
+@@ -3171,7 +3290,14 @@ fn measure_markdown_with_inline_styles_impl(
+         let raw_w = raw_parsed
+             .iter()
+             .map(|words| {
+-                markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
++                markdown_word_line_plain_text_and_width_px(
++                    measurer,
++                    words,
++                    style,
++                    wrap_mode,
++                    token_text_state,
++                )
++                .1
+             })
+             .fold(0.0_f64, f64::max);
+         let needs_wrap = raw_w > w;
+@@ -3200,7 +3326,9 @@ pub fn measure_markdown_with_inline_styles(
+     max_width: Option<f64>,
+     wrap_mode: WrapMode,
+ ) -> TextMetrics {
+-    measure_markdown_with_inline_styles_impl(measurer, markdown, style, max_width, wrap_mode, false)
++    measure_markdown_with_inline_styles_impl(
++        measurer, markdown, style, max_width, wrap_mode, false, false,
++    )
+ }
+ 
+ pub(crate) fn measure_wrapped_markdown_with_inline_styles(
+@@ -3210,5 +3338,13 @@ pub(crate) fn measure_wrapped_markdown_with_inline_styles(
+     max_width: Option<f64>,
+     wrap_mode: WrapMode,
+ ) -> TextMetrics {
+-    measure_markdown_with_inline_styles_impl(measurer, markdown, style, max_width, wrap_mode, true)
++    measure_markdown_with_inline_styles_impl(
++        measurer,
++        markdown,
++        style,
++        max_width,
++        wrap_mode,
++        true,
++        wrap_mode != WrapMode::HtmlLike,
++    )
+ }
+diff --git a/crates/merman-render/tests/flowchart_svg_test.rs b/crates/merman-render/tests/flowchart_svg_test.rs
+index 0316be12..d39d2f5c 100644
+--- a/crates/merman-render/tests/flowchart_svg_test.rs
++++ b/crates/merman-render/tests/flowchart_svg_test.rs
+@@ -563,6 +563,79 @@ end
+     assert_eq!(node_text("ShapeMarkdownOnly"), nbsp.to_string());
+ }
+ 
++#[test]
++fn self_loop_flowchart_entity_keeps_logical_source_for_layout_and_svg() {
++    let source = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
++flowchart LR
++A -->|#quot;| A
++B -->|#quot;| C
++"#;
++    let engine = Engine::new();
++    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
++        .expect("parse succeeds")
++        .expect("detects flowchart");
++    let model = flowchart_model(&parsed);
++    let self_loop_id = model
++        .edges
++        .iter()
++        .find(|edge| edge.from == "A" && edge.to == "A")
++        .expect("self-loop edge")
++        .id
++        .clone();
++    let ordinary_id = model
++        .edges
++        .iter()
++        .find(|edge| edge.from == "B" && edge.to == "C")
++        .expect("ordinary edge")
++        .id
++        .clone();
++    let layout = layout_flowchart_render_model(
++        parsed,
++        &LayoutOptions::default(),
++        RenderEnvironment::deterministic()
++            .begin_session()
++            .expect("begin layout session"),
++    )
++    .expect("layout succeeds");
++    let edge_label_width = |id: &str| {
++        layout
++            .edges
++            .iter()
++            .find(|edge| edge.id == id)
++            .and_then(|edge| edge.label.as_ref())
++            .expect("edge label geometry")
++            .width
++    };
++    assert_eq!(
++        edge_label_width(&self_loop_id),
++        edge_label_width(&ordinary_id),
++        "identical typed labels must have identical layout widths"
++    );
++
++    let svg = render_flowchart_svg_from_text(source);
++    let document = roxmltree::Document::parse(&svg).expect("valid flowchart SVG");
++    let final_texts = document
++        .descendants()
++        .filter(|node| {
++            node.has_tag_name("text") && node.attribute("data-mmir-final-text") == Some("true")
++        })
++        .map(|node| {
++            node.descendants()
++                .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
++                .collect::<String>()
++        })
++        .collect::<Vec<_>>();
++    assert_eq!(
++        final_texts.len(),
++        2,
++        "both edge labels retain final-text mode: {svg}"
++    );
++    assert!(
++        final_texts.iter().all(|text| text == "\""),
++        "the self-loop and ordinary edge render the same decoded quote: {final_texts:?}\n{svg}"
++    );
++}
++
+ #[test]
+ fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
+     let svg = render_flowchart_svg_from_text(

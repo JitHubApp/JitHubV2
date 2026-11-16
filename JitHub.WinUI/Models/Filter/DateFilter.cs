@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Models.Filter
+namespace JitHub.WinUI.Models.Filter
 {
     [WinRT.GeneratedBindableCustomProperty]
     public partial class DateFilter : FilterUnit

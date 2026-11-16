@@ -1,74 +1,114 @@
 # Release checklist
 
-Use this checklist before publishing 1.0 packages.
+MarkdownRenderer remains a preview. A package build is evidence for one gate,
+not proof that the full 1.0 bar has passed. Browser-performance and size targets
+are tracked separately from correctness.
 
-## Build and test matrix
+Checked entries are automated checks that already run. Unchecked entries remain
+release gates; an automated result never substitutes for the physical,
+assistive-technology, packaging, signing, or publishing work named below.
 
-```powershell
-dotnet test MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -c Debug
-dotnet test MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj -c Debug
+## API and documentation
 
-dotnet build MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj -c Debug -p:Platform=x86
-dotnet build MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj -c Debug -p:Platform=x64
-dotnet build MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj -c Debug -p:Platform=ARM64
+- [x] Build with the public API analyzer: each shipping assembly's
+  `PublicAPI.*.txt` files must match its public surface. Run
+  `MarkdownRenderer.PublicApi.Tests` for the design rules those files cannot
+  express.
+- [ ] At the first release, move every `PublicAPI.Unshipped.txt` entry to
+  `PublicAPI.Shipped.txt`. From then on, set `EnablePackageValidation` and
+  `PackageValidationBaselineVersion` to the last shipped version in
+  `MarkdownRenderer/src/Directory.Build.props`, so `dotnet pack` fails on a
+  binary-breaking change.
+- [ ] Approve the immutable engine/document API and explicit viewport types.
+- [ ] Confirm `MarkdownRendererControl` and its builder `Build()` path remain
+  obsolete compatibility surface.
+- [ ] Give the automated public surface its final human compatibility review;
+  test success is not API approval or 1.0 certification.
+- [ ] Check every README and quick start for `MarkdownScrollView` versus
+  `MarkdownDocumentView`, package composition, Fluent defaults, GitHub
+  opt-in, and rendered-text plus `CF_HTML` default copy.
+- [ ] Describe implemented safe HTML, native vector Math, Mermaid and declarative
+  adapters accurately; record syntax limitations and unverified release gates
+  separately from implementation status.
 
-dotnet build MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj -c Debug -p:Platform=x86
-dotnet build MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj -c Debug -p:Platform=x64
-dotnet build MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj -c Debug -p:Platform=ARM64
+## Package matrix
 
-dotnet build MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -c Debug -p:Platform=x86
-dotnet build MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -c Debug -p:Platform=x64
-dotnet build MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -c Debug -p:Platform=ARM64
+- [ ] Inspect the `MarkdownRenderer` package: one AnyCPU `MarkdownRenderer.dll`
+  with its filtered XML documentation, the embedded Primer profile CSS, and no
+  native payload of its own.
+- [ ] Inspect each selected Math, Mermaid, resvg, TextMate, and grammar pack
+  independently.
+- [ ] Confirm `MarkdownRenderer.All` is the only deliberate all-feature/all-payload
+  dependency path.
+- [ ] Verify README, license, icon, repository metadata, symbols, source link, XML
+  documentation, lock files, and dependency closure.
+- [ ] When resvg is selected, validate the signed x86, x64, and ARM64 RID workers,
+  worker isolation/fault recovery, package size, SBOM/license closure, and
+  matching PE machine types. Run
+  `eng/Invoke-SvgResvgReleaseEvidence.ps1 -Mode Release` with every required
+  evidence input and keep its output. The base package must not contain those
+  assets.
+- [ ] Confirm the lean TextMate integration does not silently contain the complete
+  grammar set. Run `eng/Invoke-TextMateReleaseEvidence.ps1` and keep its
+  contract-test, provenance, reproducibility, SBOM/notice, selected-RID size,
+  managed-architecture, trim, single-file, and NativeAOT output.
 
-dotnet build MarkdownRenderer\MarkdownRenderer.Sample.Automation\MarkdownRenderer.Sample.Automation.csproj -c Debug -p:Platform=x64
-```
+## Correctness and conformance
 
-Run sample automation against the x64 sample app:
+- [ ] Run the opt-in full-corpus test in `MarkdownRenderer.Conformance.Tests`
+  over the official CommonMark 0.31.2 and GFM 0.29 examples
+  (`MARKDOWN_RENDERER_CONFORMANCE=1`, `--filter Category=Conformance`) and
+  confirm every example passes.
+- [x] Keep `conformance-exceptions.v1.json` empty; any new entry needs an issue
+  link and is reported as stale once the example passes.
+- [ ] Validate immutable source, diagnostic, semantic-query, and half-open UTF-16
+  source-map invariants.
+- [ ] Test normal Copy as rendered text plus `CF_HTML`, and Copy Markdown as the
+  explicit source path.
 
-```powershell
-dotnet run --project MarkdownRenderer\MarkdownRenderer.Sample.Automation\MarkdownRenderer.Sample.Automation.csproj -c Debug -p:Platform=x64 --no-build -- --app-path MarkdownRenderer\MarkdownRenderer.Sample\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\MarkdownRenderer.Sample.exe
-```
+## Native and app validation
 
-## Package commands
+- [x] Build the x64 Release configuration and consume the renderer from
+  JitHub WinUI in CI.
+- [ ] Run the x64 live sample automation and Sandbox UI runners, and confirm
+  renderer disposal on close.
+- [ ] Physically execute and install the supported x86 and ARM64 combinations;
+  cross-builds and PE-machine inspection are not execution evidence.
+- [ ] Install the produced x64 packages into a clean consumer environment; a
+  developer-machine build is not clean-install evidence.
+- [ ] Run trim and Native AOT analysis for every promised package combination;
+  package-specific console smokes are not the complete installed-app matrix.
+- [x] Run the benchmark and allocation gates (`eng/Test-MarkdownBenchmarkGates.ps1`)
+  and the external performance-gate fixture tests in CI.
+- [ ] Obtain a passing full schema-12 same-machine baseline/candidate harness
+  run on a qualified, stable foreground display cadence. A quick run does not
+  prove the release regression budget.
+- [ ] Compare separately built reference and candidate revisions with schema 12.
+  A same-binary comparison shows repeatability only.
+- [ ] Exercise actual graphics-device loss/recovery and review ETW traces on
+  representative hardware; simulated invalidation and unit tests are not this gate.
+- [ ] Run Narrator, keyboard, every built-in and a customized Windows contrast
+  theme, text scaling, real system-language changes, mixed RTL/LTR,
+  link, image, table, code, and hosted-element smoke.
+- [ ] Run `eng/Test-TouchSelectionSampleUi.ps1` on physical x86, x64, and ARM64
+  processes at 100%, 150%, and 200% display scaling. Pass
+  `-ExpectedArchitecture` and `-ExpectedDpiScale` so a mislabeled run fails.
+- [ ] At every required display scale, repeat the touch run with a Windows system
+  contrast theme enabled and pass `-RequireSystemHighContrast`. Forced sample
+  colors and 200% text scaling are supplemental coverage, not DPI/contrast evidence.
+- [ ] Collect the run directories beneath one root and run
+  `eng/Test-TouchSelectionReleaseMatrix.ps1`. The validator requires all passing
+  interaction results, normal and system-contrast results at every scale, all
+  supported process architectures, and the Light/Dark/contrast/RTL screenshots.
+- [ ] Verify unavailable/invalid optional capabilities fall back safely in the
+  final produced-package matrix.
 
-```powershell
-dotnet pack MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj -c Release -p:Platform=x64
-dotnet pack MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj -c Release -p:Platform=x64
-```
+## Publishing
 
-## Package inspection
-
-Inspect both packages for:
-
-- package IDs: `MarkdownRenderer` and `MarkdownRenderer.Gfm`;
-- author, MIT license expression, repository URL, project URL, tags, README, and icon;
-- XML documentation files with `CS1591` enabled;
-- symbols/source package expectations for the release channel;
-- no accidental public layout/rendering internals in the consumer path;
-- ThorVG native assets at `runtimes/win-x86/native`, `runtimes/win-x64/native`, and `runtimes/win-arm64/native`;
-- matching PE machine type for each ThorVG asset.
-
-## Manual smoke
-
-Run these on a real Windows machine before publishing:
-
-- Narrator phrasing for headings, lists, tables, links, images, embeds,
-  footnotes, definitions, abbreviations, figures, fragments, and copy behavior;
-- every built-in Windows contrast theme plus one customized contrast theme;
-- light/dark app theme switching during scroll, selection, image/SVG load, and
-  hosted-control realization;
-- mixed LTR/RTL paragraphs under at least one RTL system language;
-- monitor disconnect/reconnect, sleep/resume, or graphics-device-reset smoke;
-- x86, x64, and ARM64 sample launch where hardware is available;
-- clipboard paste into Notepad, Word, Outlook, browser fields, and at least one
-  host app using the control;
-- long-document scroll, selection auto-scroll, image load, theme switch, and
-  rebuild cancellation under stress.
-
-## Publish rehearsal
-
-- Publish to a private feed or local package source first.
-- Install the packages into a clean WinUI app.
-- Verify SVG rendering without project-reference paths.
-- Verify the GFM helper and builder APIs compile from package references.
-- Verify docs links in the package README resolve to the repository docs.
+- [ ] Rehearse signed NuGet publishing to a staging feed.
+- [ ] Install only from the produced packages into a clean consumer app.
+- [ ] Complete release signing and the approved staging/production publish steps.
+- [ ] Archive exact commands, package hashes, test reports, approved exceptions,
+  and manual results.
+- [ ] Publish 1.0 only after every required gate is closed; otherwise publish a
+  preview with explicit limitations.

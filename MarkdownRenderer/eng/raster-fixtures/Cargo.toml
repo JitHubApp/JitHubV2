@@ -1,0 +1,11 @@
+[package]
+name = "markdown-renderer-raster-fixtures"
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Already pinned in the resvg worker's transitive dependency/license corpus.
+# This test-only generator does not enter a shipping renderer package.
+image-webp = "=0.2.4"

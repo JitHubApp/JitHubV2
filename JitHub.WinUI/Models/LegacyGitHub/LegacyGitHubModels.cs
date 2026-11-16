@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Models.Accounts;
 
-namespace JitHub.Models.LegacyGitHub;
+namespace JitHub.WinUI.Models.LegacyGitHub;
 
 internal static class CompatValueReader
 {

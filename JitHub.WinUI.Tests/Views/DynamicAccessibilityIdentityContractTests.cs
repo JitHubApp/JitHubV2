@@ -39,10 +39,10 @@ public sealed class DynamicAccessibilityIdentityContractTests
     [Fact]
     public void EmojiLauncherAndReactionIdsIncludeHostAndReactionScopes()
     {
-        string button = Read("JitHub.WinUI", "Views", "Controls", "Common", "EmojiButton.xaml.cs");
-        string panel = Read("JitHub.WinUI", "Views", "Controls", "Common", "EmojiPanelButton.xaml");
-        string comment = Read("JitHub.WinUI", "Views", "Controls", "UserCommentBlock.xaml");
-        string viewModel = Read("JitHub.WinUI", "ViewModels", "UserViewModel", "UserCommentBlockViewModel.cs");
+        string button = Read("JitHub.WinUI", "Views", "Controls", "Emoji", "EmojiButton.xaml.cs");
+        string panel = Read("JitHub.WinUI", "Views", "Controls", "Emoji", "EmojiPanelButton.xaml");
+        string comment = Read("JitHub.WinUI", "Views", "Controls", "Comments", "UserCommentBlock.xaml");
+        string viewModel = Read("JitHub.WinUI", "ViewModels", "Comments", "UserCommentBlockViewModel.cs");
 
         Assert.Contains("CreateScopedId(\n                \"EmojiReactionButton\",\n                automationInstanceId,\n                reaction.ToString())", button.Replace("\r", string.Empty), StringComparison.Ordinal);
         Assert.Equal(8, panel.Split("AutomationInstanceId=\"{x:Bind AutomationInstanceId", StringSplitOptions.None).Length - 1);
@@ -59,7 +59,7 @@ public sealed class DynamicAccessibilityIdentityContractTests
         string card = Read("JitHub.WinUI", "Views", "Controls", "App", "ActivityCard.xaml.cs");
         string sentence = Read("JitHub.WinUI", "Views", "Controls", "App", "ActivitySentenceLine.xaml.cs");
         string timeline = Read("JitHub.WinUI", "Views", "Controls", "PullRequest", "Conversation", "PullRequestTimelineItem.xaml.cs");
-        string timelineModel = Read("JitHub.WinUI", "ViewModels", "PullRequestViewModels", "ConversationViewModels", "PullRequestTimelineItemViewModel.cs");
+        string timelineModel = Read("JitHub.WinUI", "ViewModels", "PullRequests", "Conversation", "PullRequestTimelineItemViewModel.cs");
 
         Assert.Contains("ActivityScope()", card, StringComparison.Ordinal);
         Assert.Contains("ActivityScope()", sentence, StringComparison.Ordinal);

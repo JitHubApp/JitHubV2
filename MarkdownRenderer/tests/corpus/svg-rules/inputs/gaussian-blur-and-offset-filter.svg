@@ -1,0 +1,1 @@
+<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feGaussianBlur stdDeviation='5 7'/><feOffset dx='-3' dy='4'/></filter><rect width='1' height='1' filter='url(#f)'/></svg>

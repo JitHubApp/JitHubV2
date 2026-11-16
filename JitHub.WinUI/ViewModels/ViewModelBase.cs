@@ -1,6 +1,6 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
-using JitHub.Services;
+using JitHub.Core.Services.Localization;
 
 namespace JitHub.WinUI.ViewModels;
 

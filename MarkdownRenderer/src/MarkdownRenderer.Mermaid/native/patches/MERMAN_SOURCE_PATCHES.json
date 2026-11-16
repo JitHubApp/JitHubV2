@@ -1,0 +1,822 @@
+{
+  "schemaVersion": 2,
+  "repository": "https://github.com/Latias94/merman.git",
+  "baseCommit": "ac53f21ba97e5bd8da7f849fbcdffe64695171e6",
+  "baseTree": "d15030d6fbc09b0e4b82409cec74a7ad3d994e24",
+  "patches": [
+    {
+      "path": "0001-final-node-source-provenance.patch",
+      "sha256": "0462b167a27507aa4fc8f93c9ec19054afb84589ab50ee354551f5139137c21a"
+    },
+    {
+      "path": "0002-flowchart-svg-text-entities.patch",
+      "sha256": "653b355a18561801310361c64a6ba5d7e6ede9b715d4067fff68a3c5fc957fb1"
+    },
+    {
+      "path": "0003-final-markdown-text-and-self-loop-labels.patch",
+      "sha256": "514fe9600c258e904f38b06e0a328b5c4aa57fd3c8a3b7da5264ab26ba23a569"
+    },
+    {
+      "path": "0004-final-markdown-entity-whitespace.patch",
+      "sha256": "ec5b494b7c51adbe47cb233ef6d7becdd146dc14286734b08c01807dfa05dec4"
+    },
+    {
+      "path": "0005-generated-entity-origin-projection.patch",
+      "sha256": "89431192103991613400a47b722e352a8f9e8faad30949469ae74641e3eb2ec5"
+    }
+  ],
+  "files": [
+    {
+      "path": "crates/merman-bindings-core/src/render.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f098d0a5d7c1b796f6b02c7d1359535be96d6ade60aea156422f719baa1dd734",
+      "patchedSha256": "309cbb6b796f50a770e9b6fe0bc180bff2e914578ceaf0187611595d93306522"
+    },
+    {
+      "path": "crates/merman-core/src/diagram/entity_label_origins.rs",
+      "changeKind": "add",
+      "upstreamSha256": null,
+      "patchedSha256": "fd50949e22310f873e902e295a90380840de23ca14e8ebdd252508a6275099d8"
+    },
+    {
+      "path": "crates/merman-core/src/diagram/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "5d98bbd6aa033f0404af8603c9a2eec0719d58e68ac68a31b15544a208612e8d",
+      "patchedSha256": "2c590e59bb016e4578c1e7fd252a308e72ddc8fcb6e5f0d8eb4e16126b45e9d9"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/class/ast.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "dcf80e3f0a65f06da4d7328122df8bd220089d972003032a9c28a97540c13e96",
+      "patchedSha256": "b6020d9eb51c3691048e8df3040cf93876752990bcbc94547f09faff12444b4d"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/class/db.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "651921476dd295d3f6cf52ddff79d7b0d1953fd05d83413b9636b4251b963930",
+      "patchedSha256": "436e1453725582f63b42c6d5859b55541929670dd1cf8ae44135629ba99fc2b8"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/class/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "244e4599cb53e05fd8e26646c539edc4f845026d7975d0c3293fff1e6fcaa99f",
+      "patchedSha256": "60fae7251a50511f16092bef66216abd40f680c0ec393380adebf68f25448747"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/class/parse.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "a32a40f659b8cd6ec92bda133bb5d7e4a21bd434ee10d4adf161e0193009d2f9",
+      "patchedSha256": "6bdd9da9efca9c14c8dbde83a5b87c245370733dd713f843f3d2892dad4d5b55"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/class/tests.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "6e60cb9df921b82a973df340f56ad7bdcd2e86f1f7c6a67181b0f9859f374a82",
+      "patchedSha256": "badc0c7974229350ef2bbcf6b3739dc58aaa3aff85ec27142bb191143e58b480"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/class_grammar.lalrpop",
+      "changeKind": "modify",
+      "upstreamSha256": "27194b21d65b2c4955939196f79caa602047b6b449de2cd8a2048b827178c7a2",
+      "patchedSha256": "cc8773aa6e320f86245e484c0d1e3c1e0a4546f797a8fc30ae8ace67c8a3e4ed"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "37205c97d76275d60bee36af20ebbe4be5694f3c5b3e052be47c117e3c889242",
+      "patchedSha256": "ccb4f1ad4897e3ba9c7320d0ab4f0b8c4616a3a62a06344460a6d341d2795d22"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/ast.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "60441ffdc6a355dacc6060ab9fe6d5fcceb1e59fbeaad1e4687cb8252a7d53a6",
+      "patchedSha256": "2070a3f26d1b387184181ed6e889813f17c644ae49150d755ddc93d39e2dec85"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/build.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "113137d45845f981208402c3ab24512e1b539eab41b3c0d90ce714e688100469",
+      "patchedSha256": "cee46b19a4386c47071170739013a35d2a7588b537c9aa9cd8c46d3e87ab59d4"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/lex.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "092cff37c0eda27e07f5f0955ea5c91ceaa1d34a9e728c46f63687f418d9ba9e",
+      "patchedSha256": "edc651b2ace8155719220d59182a65198243eb63c7c17dd8627775ea5a4d160c"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/lexer.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "6e99bd10f73e9485371d45aa8f399e00fd5d8d07f0100ff91d6d6a564b9759ec",
+      "patchedSha256": "b5528c76588895adf65818e5466019d2b77a6be29953892b4960ebe0674df235"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/model.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "fc81d18a7bc779921ce3a1bf6e38f73452a9f1200228381940beedf78e953dd9",
+      "patchedSha256": "4c46cd1dca77b704b56e608e5dbee3a0f16aa64e6da02d72ddc0ffad2d5457ea"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/semantic.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "7546f889afd06c59af573a353dba47724e78e119e25239d52bf636f8eca4b64d",
+      "patchedSha256": "a5fdc8dd9b9ea2930b3a81bfb502574559ad0587486b719a6cd79034a9d8fe8a"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/shape_data.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "622babc102eca4ab7c7a34b55c884f85a0d190a9fb9affab404d7a270ea10508",
+      "patchedSha256": "05ed43a7423ff455c43e557f90aa3220a4345b46b7b228293dea34e5483fd3af"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/subgraph.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "2871bdfa6b352b50d3e41debc34c16c2192e92d9dee13573a0c1b354974823bc",
+      "patchedSha256": "edefbd09abf9462acd36fb263056fe432a734d3f10f89fe0fa74f9e7d661124d"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart/tokens.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "ee4d6b08107210298a25a4e7892f825a12eec0b416946c96fc313f64f814fc3f",
+      "patchedSha256": "69356b4fa8f6fb94b1131bddb454e87fdf20c22d26145315771d6f3347a464d5"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/flowchart_grammar.lalrpop",
+      "changeKind": "modify",
+      "upstreamSha256": "9ca97411a928eef6caf35b1666cf4bf3a99d1f153c467244b6b20beca101a972",
+      "patchedSha256": "cd1c3ebab94f0f63e3d71c9dd8658b7f0fc61c8047e70e1f9d0ebb088ad16961"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/mindmap/db.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "0bcfdc1d7baf75945d33dc1c9141419d11cb3a5bc3d5742d8cfc0836227989e6",
+      "patchedSha256": "f87e11cde57a9cf2f2cb27b7e10d3869eba0082d14d048d74a9fd645f8b3f38b"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/mindmap/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "522463c6f85087ff8a319470f0730191acf28bc6d3fcc2a4ec9863add150570b",
+      "patchedSha256": "cae6b9e133efacf87bbf277e37aad098495ade96cf07448010d8bbc9aa77eed2"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/mindmap/parse.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "a1efbe497e64ca6cedfb6b128304d2e591f4009c4fc2b94849ab641988f25a41",
+      "patchedSha256": "beb4440e8edc40ebb7b550fd90f0f91c2ea3f4a74f93892d5a128dc262ad8798"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/sequence/ast.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "1b710ad19accc6fbee4563cfc7aa5371fbbaa7ffc69a7cad688288251a4379af",
+      "patchedSha256": "26778b7bd2775caf2e56bd20a0a7ec98ee1fba4b50c76e4925c139e6954f10a5"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/sequence/db.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f4602241d3b3a4e7e4d2ecd0d34077820164691d41f699887953f613e3d32cee",
+      "patchedSha256": "517db744e2e3360f914ef5148dbc6bbf8abab48894f2a264f9ebb65c3e538ab8"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/sequence/lexer.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "7c70a7425d4785b75f0784881e773edf08130258ce5a1a5d9c7f79d76a4b80b3",
+      "patchedSha256": "0de3a81f7d4e479bc3271918af9c725fe8d5cb6eeb8e473dbf8d2d8d5378f5b7"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/sequence/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "ca01c7c09fab76473df555565bf5582faf599ae2cdd2c2b2fe90435f7a661350",
+      "patchedSha256": "963995f898c94fd4eae1a6b017d8fb4ed586c0f68c9a11a4478d192b9c273535"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/sequence/parse.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "dbbfaef8a572d67d8edd865c5a5dcc3d4e007769cc9149254842e9ef41930623",
+      "patchedSha256": "9183a0a6b104d9a5297b8b0bdc9f53712274fbbf4338f4db919acfe52dcd3143"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/sequence_grammar.lalrpop",
+      "changeKind": "modify",
+      "upstreamSha256": "ed648a3adf190802a0a1e7c108563b3d7fe03800cb60295af8deb04715fd20e2",
+      "patchedSha256": "6c98755d18d118ee0b1abc0cdb637f539d8e6e769c9c3a529b9e879b67259c19"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/state/ast.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "282a0af224aed6f8b210b4d3039671f8aba9e2a8e5268db0c934972b96db5dfa",
+      "patchedSha256": "87f63960c32eb096608f81618f468dae22360f5124b8270990e930d337a18598"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/state/db.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "c12becc138eaf7c4b284408c3042193d2f04ec493be4bb5203beffd9616d5ba0",
+      "patchedSha256": "3d44b009d6804865964feede6ae89979f1a1094a11ab8f6d65e6812bf8665e49"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/state/entity_label_origin_tests.rs",
+      "changeKind": "add",
+      "upstreamSha256": null,
+      "patchedSha256": "7f5886ab3a49f5d71154a4ddb7993fda3925bd14cadf7d5a44d7e1f111341dde"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/state/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "61a004147dac1ffb1486f998dfa713949dbb6bdb92a948f19257368a59df387a",
+      "patchedSha256": "82c2f9ce03073025f215eaa02275aa12c5232898791ba5351fca9d6093d9121c"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/state/parse.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "3591939d56dd84c11814e88043c01701b69e6ea42b833372d3ede1cfd38f619f",
+      "patchedSha256": "d9893f466be7d06ea0e292da9f84dfebd96aff9bae8688736a3c5cf1d3e93dc3"
+    },
+    {
+      "path": "crates/merman-core/src/diagrams/state_grammar.lalrpop",
+      "changeKind": "modify",
+      "upstreamSha256": "cfbe6f678e4619f85666c19a11ceb15cac55f80baf8c220874e1131883b59c11",
+      "patchedSha256": "5b965ce8339a6f2c7146a06a87ebeae330f0e239a71a1a5dfdc693ad2718ef00"
+    },
+    {
+      "path": "crates/merman-core/src/entities.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "e4297650be03722317b6a20affaa0796e54171bd29048eb1544d5f903d0398c7",
+      "patchedSha256": "2c27b95177d9ffee20c2c553c6fe5c4afe7762c8ff6d4e56b183d44e5b582b6c"
+    },
+    {
+      "path": "crates/merman-core/src/family.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "03efad7f50e5ba808f5f67fc73ab55f21cbc7d204880260d7da6de7c27918005",
+      "patchedSha256": "656b74378f1b63bf6de653bb88039e180706d09c741cfe1e941b92fe7eca923e"
+    },
+    {
+      "path": "crates/merman-core/src/generated/lalrpop/class_grammar.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "6539f23d2303c90d014e129045f3ebc1b9d4fd65d4b03a83e22a29e696741262",
+      "patchedSha256": "9bdbc6be6c5211e667cc9e681fa1f199f882975ae220f5ce3e8cdaa120603ba1"
+    },
+    {
+      "path": "crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "6e611d3fd1600cef7e163f5edde257c6437830ed380fa0c25b587ab376cdbf17",
+      "patchedSha256": "192716ae65b41f0a49c6bf988a4996acd0ee274c066460fb344c89d913aa9882"
+    },
+    {
+      "path": "crates/merman-core/src/generated/lalrpop/sequence_grammar.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "e87c939307d3a50cad8b3f0c969e559760c74ac67c8a1e3040640a00b286363e",
+      "patchedSha256": "a54e58f3f89b4285da34cedc108f46328aaf441a5d3aee2151a52dc2370147a0"
+    },
+    {
+      "path": "crates/merman-core/src/generated/lalrpop/state_grammar.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "b048ecb4600b4543f5b51e0991cc6251de59cca29f6246d9affcfa10f334116d",
+      "patchedSha256": "792ae8eb7ec2ff944f9e9de33bdfd1019c1d80eea1da205c96643e7c63ef45ba"
+    },
+    {
+      "path": "crates/merman-core/src/inline_config.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "98759f831ed530b169171bb5981e66fadee30bb875f4e473db9cedb0d3ac1da0",
+      "patchedSha256": "91d7bcd238d253436178882bb707ac3b54c2977116fdb6b18a55499e45c6bb4e"
+    },
+    {
+      "path": "crates/merman-core/src/lib.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "762e8e8feae1df878aeee6b5d64daa2ee7197888cf27c2c2203f23447c566e0b",
+      "patchedSha256": "814ca38b7d39c32e3986d71c31b4c213aa11afb6298e191ec247e15a1baa0827"
+    },
+    {
+      "path": "crates/merman-core/src/parse_pipeline.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "94736781c66d760b912d61ab249ac75ce4abea5036c86bdd7d512b06e4f595e0",
+      "patchedSha256": "5edeaff114cae8816d1b66b6829a77f29a58f9a68b4d473e2c22e1468ff4ff9f"
+    },
+    {
+      "path": "crates/merman-core/src/preprocess/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "82332e00c32ed9657b1bdd0effb65eed85a71c0f268998f0013e5102e6f4d58a",
+      "patchedSha256": "64d398cddeaec65cc88d043067d9a50b000e99e47731c7a8d19a6790e98f4538"
+    },
+    {
+      "path": "crates/merman-core/src/preprocess/source_edit_map.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "49652475b658067417c36c6465958e51c327b8c097738432cf0141f7f4b94e55",
+      "patchedSha256": "5747e7d6f9ae3f84f1ed8a457451795baa1e430b6740fb49b8f3475c3d082340"
+    },
+    {
+      "path": "crates/merman-core/src/resources.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "52df2761f4d8d6805506bf71708aecef47dc541e568ffb403c42bc0ac0e6436d",
+      "patchedSha256": "bd5017fc018fe53b48aca5489dc35c03bbac5671f2e0ae5967c155ada8d06839"
+    },
+    {
+      "path": "crates/merman-core/src/tests/flowchart.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "d31a8c3c4786c87b207cb572d54ff2830db1dfb8bf763e9e78a679ae681f14cb",
+      "patchedSha256": "cc16cb23ce69faf13be03e116f98191b19b7e62851db8079448732b3a61570f3"
+    },
+    {
+      "path": "crates/merman-core/src/yaml_config.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "39e5a9d2e60e472f3af4cae158dfec1fb92f78576081443ba1f8b6b53b2ee0cb",
+      "patchedSha256": "8b4cf86d2bcb631c5bbb7e6c31c9837b9d50bc49337411964c27ff0458e2b4de"
+    },
+    {
+      "path": "crates/merman-render/src/class.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "74a73288c5cab103d04a1904b155c4edc766b6296ffbc8a596e15be1a2545d0c",
+      "patchedSha256": "9f8a262a253abf5c2d2be4582cd357657cea22dc6fd17fd205dfc599674a27cd"
+    },
+    {
+      "path": "crates/merman-render/src/entities.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f5b038535f68e928ff3861df4e7c2fb3c9cd8b42122b3e3b6de499c3100c4e01",
+      "patchedSha256": "cc7074f471c8b03007aa34e7cd0bfde93de79a58d99f437df25bbaee20035fa8"
+    },
+    {
+      "path": "crates/merman-render/src/family.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "234df3b74165ca1b08b112b973ab7d82add4201df3330a5f9c597ef1609c4bf5",
+      "patchedSha256": "8db4d1807db434cafecca0046dc59f1f90dc27c813525dffc87a88711cbc36c2"
+    },
+    {
+      "path": "crates/merman-render/src/flowchart/elk.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "3c9fcf4393765ee6dc30cbddd9b8745abd2ecce9893ab3f8a9f05c2dc98a2f70",
+      "patchedSha256": "f68d9f4c3413e78ecb94e1172a45c6389c30cbbeaac80a50f4b9e782678ac91f"
+    },
+    {
+      "path": "crates/merman-render/src/flowchart/label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f9b454c1884e141f1579cc4ffec0a58cb8d07af89fe53da57ffd80a4f06fadc3",
+      "patchedSha256": "9233c10a270a9edb0592365f72778ec87c481b1eb3e5c22cd158f1ae94e10d97"
+    },
+    {
+      "path": "crates/merman-render/src/flowchart/layout.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "198d271bf1c98ac761c1417d84f6338c32c09aea59c6abd82c8db1e1bc837ed7",
+      "patchedSha256": "9b63626ba7d5328c8bf26bda43a91efd21333d5e049924ee230af74bd30be947"
+    },
+    {
+      "path": "crates/merman-render/src/flowchart/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "a6cef424e98728c7543f08f706b546d47df6b426c4862bcba1fa2c8aa28dd075",
+      "patchedSha256": "b20888b486dae8319508351c50deef085c911439df6e3e8944f6d9c3c323fee8"
+    },
+    {
+      "path": "crates/merman-render/src/flowchart/svg_label_artifact.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "2aa170b18f3663dae5e4ae0d9d29ae52d76d70faba1e1bc80ac322ed860b1996",
+      "patchedSha256": "58ace31a382f86272d8705d57a80c5137b8e76f995be5dee8abdcba8b7d7367a"
+    },
+    {
+      "path": "crates/merman-render/src/lib.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "67364bbe3a0d976991a5e4cf0a8abc021e40b6e989e68b68e4f2185a0d5d4e88",
+      "patchedSha256": "5620e95738ac3f5f2ccdce1c9fe8e92affed96caece7306370ef70d772959428"
+    },
+    {
+      "path": "crates/merman-render/src/mindmap.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "a31b5ac2e19271e2265e80dc62786f92b67291492609de634c004eb777eec85f",
+      "patchedSha256": "bd32b8c7eb093c83d9b1e7419a06707ecd263eb6c1f8914a9a03cddaf5e16cbc"
+    },
+    {
+      "path": "crates/merman-render/src/sequence.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "21e642d715577fc5f8930244c520ac9c0467b5b04ff6b8d84d6d9bc73a478d95",
+      "patchedSha256": "95c40e57b61c7f593fc777cec3b5e94a9aa44e0f36ecf0b1e04b6cc152c1484f"
+    },
+    {
+      "path": "crates/merman-render/src/sequence/metrics.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "442407b02126f3667a6c8b6360e12d83479472379dd0a25b6f72cd5a0bd0c90b",
+      "patchedSha256": "728af37fdd04f5e299135775f44bf559040954b7a7320d5751ec8b50014d710c"
+    },
+    {
+      "path": "crates/merman-render/src/state.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "497236c92f3dd28c90b0979e3ffb409f70ff53c9800826a4c4b3b28ca7d61584",
+      "patchedSha256": "2325704c12dc71c6c6ced4f52808c05fa27a363588b9dd545b78a9ec87741dfd"
+    },
+    {
+      "path": "crates/merman-render/src/state/label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "ec387b8eba9d24d6220a583e982d021700f57546fab148cf48e329438eac4c25",
+      "patchedSha256": "3c0a4e8a4f0df0ab9c599d9702a8cf181572224fafdbe468e12b64a369c8ff98"
+    },
+    {
+      "path": "crates/merman-render/src/state/layout.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "44f6a787b1504c2856957abd4fefdb8653acc62736f9dd6277a4460191a4463b",
+      "patchedSha256": "e2937972a9bb2c1b52f9e417f164dbc342c1bca006c5d1c33928c9e7204cf0b6"
+    },
+    {
+      "path": "crates/merman-render/src/svg/fallback.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "9e1d1e7f463f522277eab5adda234cddd80133b7d678abb02676fe02f565f035",
+      "patchedSha256": "33fe549fdce6e0e130019e8f854a73ac59a26f7378d3f800ec8d0a3e5b99e62c"
+    },
+    {
+      "path": "crates/merman-render/src/svg/fallback/context.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "6906fd0b03a9ca0cf2107232f5bf9fe3411ae9a2381051bb19acf2e4f6c04af6",
+      "patchedSha256": "6a8a3271eae70cf3beba1db013a268f0e09a536ea5186571880e82e13e40c8ed"
+    },
+    {
+      "path": "crates/merman-render/src/svg/fallback/html.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "d8f5e387601c2d2517426cf2801f2c87af7bcf1a19fabcb1286dc8c4366571a2",
+      "patchedSha256": "09b6c5804de0698ed7a714793678b22069c67754aadcefc748431ca6629f1349"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "2354b5f42fc1aeb18fb7313b5751439b36c943a8cc6336f667b624d325266109",
+      "patchedSha256": "58e8ca72d53ed7d8eb815d90e55961c9e8c527d1234eed1e9686609ace39bf08"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/class/edge.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "7f800f17bb3064f3290cbbca2cf21e31f09c8372e610e01147ed211acd0accf6",
+      "patchedSha256": "4d1266c8893b241e1686cb5fcd3e1ced8f8b0f283f19c6c1c96291cba3713fc5"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/class/groups.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "38fd676939bda62b76e1ea10be3a9d7f687b907a281c6d78e9b440930b3d8292",
+      "patchedSha256": "9faee4ba41facd37cd2ecfd2b616ec79ccfd6d97569ddf48eef81492024610f7"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/class/label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "c3b3ee31e4a2f70d802f2624b0692fc935e0f51ada5b7bab5bedf827618ac2a6",
+      "patchedSha256": "9930cfdefb8302568315faa6e3f7fd2a6a30cd9d7e91f30a694d137e2f61b497"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/class/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "d38d9e300d6fe99efee2ab7a55e53ca2e4b3084c292b663ce2570f4e243ea335",
+      "patchedSha256": "b0c2640175480ca400ef71f20ad4abfa40a5c8e417140fb240dcb31d44a6eaed"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/class/nodes.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "77c41df549c59ac448e16b996d2d8a409cb3ee045ec0befc53fae0f30e578d47",
+      "patchedSha256": "84848a7e7f665e7777a76028dd75f8b24158e03cc728dc7cc638b69cdb933e99"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/class/render.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "0d3883e5c0f84c2600c9b16f48aaa3db54b2ff48e58416f33b9277c94235828e",
+      "patchedSha256": "d030dea238405381ab35d72240fde3542fbe3b22be1d65977a5b6199a639cf3f"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "337014e4824a3854b170145b3c655613e25e1a1e843d9ec76cac19ba512a2536",
+      "patchedSha256": "c1acc94c619a1d34a57666399f3c850bd1b2151773fe1a7c6d6c604b9bf201c5"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "ff59cd9cf162cbbc32e7c67e13dd9cb5474785b52c7b01507f36736fbc0a55c4",
+      "patchedSha256": "3a2c6bbb8b0488031d563599483788f71480b85c551d43e2fd834a192448abeb"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/cluster.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "0110b92d6c0fc616331c2de5245ed29a3be9854f492f4c118b18ad3e7766e8e4",
+      "patchedSha256": "8339eb57be5c0829a839455c91d867c7b041d7baaa39cf209e10c5ad0a159439"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "e9c8858cacbb5f33fed1b62e573d407205646d58cbcd113e4b9f632564cd0ddf",
+      "patchedSha256": "b1c12e29b34f1b39f961f7cad016d5a7f7ab421b462f0d53ab8f2c4472b05138"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "0da83f30d08682d5ed865ea4affd3f0e4e9d80fad758837172b4a5bd07cc44d7",
+      "patchedSha256": "4f8b47015293c6adf0b8b3b99062ea8d5c73292b55a097adb23e6787dd8f9831"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f5db2213db1510aababfaa98eefb083d799d8e85ab8d3ec1a0a3612a00240b8a",
+      "patchedSha256": "d1bb232ae5c20709ff8b7df4b75f7ba8312c829ff3e3167af980eb9da36a1147"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "306d5b31ca3e700ef0f0748f9919718894989ebd00f2b1fddc94747c3dc7f6e5",
+      "patchedSha256": "8b0435a5d3cdcd77a2735f062ccaa6825509814ec1eb3bfa1849732f5fe7f1fe"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/bow_tie_rect.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "3900651b19c878465d8ae8b0827e3594726d87cd4a590de527fab4f591b3a2f9",
+      "patchedSha256": "9052dd9bac7f90555ad07424fa25d45b9f25556e6db1542f8e27bcd17997d218"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/curly_braces.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "cd97d7323b4e49cf7d483e48d2bd213513d72d8628692c91ffaf8f567f88d882",
+      "patchedSha256": "363be5be7a2266d770a9ef159101baa96c63eba9e8f45065bff146ba47a69a0f"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/curved_trapezoid.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "2a7643716362b2b05861cd718ba001f48771ac815c85d5b66bbe26c9c9ae6856",
+      "patchedSha256": "eb8ebea113ff96f80f9a9e6bd192c613eebce65629014079b7fee050b4462b94"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/cylinders.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "aaf849445fac8079a13817afbc794b2366972e7dd64a2554542b3ef15037f440",
+      "patchedSha256": "69c2c6bb98defb9abed6da026fa837451bf2eb9cf5bf986508d7deae27adebf8"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/delay.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "77a5ae3f8a5082e809cc43c6a3750fede8341f2330170ce1a23428d9f818da30",
+      "patchedSha256": "8a9335aeebb44f3858986c6aabfb08a3399820bbd568235f78c70fd82e3f27f5"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "6baf25d6818d60d9ffb5ccb3b1e309cd8a435362ab7cbba428cec4fb74c5e950",
+      "patchedSha256": "8f6f4dbb10f3ad4e974176979acedd665569743896ba2f2d0a3ac6bc4aa26dab"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_circle.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "3948c14dea0ebf8f8d3aab481f6143d9575e4844b940e124f917bf327fe983aa",
+      "patchedSha256": "5db30839df2c1a1cdffb39de2b6e45769dae169768217ba3e59ce9aba07bfd90"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_square.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "21166dc203139ead0c259ba36352ca875fdcf4fc98cea0535a4bb0b99b31c297",
+      "patchedSha256": "dd996aca4085012c2c45ff0ea8e2c5ac1fd7ae4d9e2fce2f42221a62a83979e6"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/image_square.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "21924d026b6841635e199752eee9dc1cf6947ae3f58f53524b3a0dfff7ce08f9",
+      "patchedSha256": "436c8a05315cedb675a85cb49fad2ef03d3b6bd73a5a70c43152d4173e5e98cf"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/lined_wave_document.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "b3f10340ce77bf23a4d4dbd3389eb4626b2c331ab7a0c8a1ff751963732eeb50",
+      "patchedSha256": "6a54ddd38a031bd2d0499623371df9fc83cee077255f8fabd5c400557d1d44e0"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/manuals.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "faa871791af8a6235ba6a23db7b0395df9dd64be0a644c18408958b93901e451",
+      "patchedSha256": "e5bb97c6d3a1214d04239b6626b71ffd75c841b5753999eb65e13c3b282ec4ea"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/notched_pentagon.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f92e8024794adce1912aa437813210f4c0831c4d5d2c178673d9a3e9ad053af2",
+      "patchedSha256": "20ba4bdca399a429a34ce30d8a159fee0263a2652289aa1dd9921b21a90fd274"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/paper_tape.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "5efba8f67025919ff57e265ceb8a6fee724020553ad131ad01856a9513b2dd2f",
+      "patchedSha256": "ce5142db21807b348a985c10948f36730dc9daa3b38df03cfe455cf95fb6f03b"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/stacked_document.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f01b1ebbe74977149f989d9caeaad28c84fcb0a7a16958f67240e2dbd74ccc59",
+      "patchedSha256": "1240ebd831c9a52def4d90dd63f77e3701431e6a0917c53e0b24a4b5ba741b77"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/stadium.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "057a490e28efc2fd4015220fde97af2aceb4ee55c2e81867371ab2ae46c2bf1f",
+      "patchedSha256": "6d7925fc870f82b6aa16f29cd0be82c5f98981f348cea563285bcf01407d4c40"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/tag_rect.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "0b4e38b6818b6671cf150f09fdbc16add09747577893116463b37a4f94e877c2",
+      "patchedSha256": "d3660dd3b2ddad9d326241ed4c5c4959ed0fe5a8e21acf82f371e62d88bc0a48"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/tagged_wave_document.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "9f466642531d944b2c84446e43f6b29c33b243170d57e8571d6864c21d9f34ba",
+      "patchedSha256": "daba849c61b39b298086ef44fafd1299f1c6a0307d48af441c94ef28eb824ff5"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/triangle.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "528fb6d95703c2e3795e1068a8c62693d12fa041627cc35234668c717cad75e7",
+      "patchedSha256": "546e17e3cacd359dbc53b2ea7e5e8e383313d6d1e918fec5c288e9040c2b46c4"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/render/node/shapes/wave_document.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "64ab0e30a3a8a6b59084d46dbc0f7133dbdce24f262874eb562b5e6167b514fe",
+      "patchedSha256": "0c470929cb025fbccd5b00dd01d036c171433bc32a845d004b66db87c78b7dbb"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/swimlane/cluster.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "490376730f2c80ac3c9940d80908cc78c91bf3477f7f5b95c6e053840aa19b30",
+      "patchedSha256": "6b1822769d6e04b0a100c9b66f0e8f6f1bf6dfb8d5a349ffdcfe77879e6cc6ab"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/flowchart/viewbox_node_bounds.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "8363211b443f6933bfe8cd6a50b24e3f69fbfbe8a9dd428df99261cb77ada84f",
+      "patchedSha256": "7bfeef2c4acaa4991269003eefb5e92b5166db2410412e4eebb7921ad2d74926"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "20177628476ec7fc4d509e08d9d071aa83c91cf950aaa3fa76be767ad7f17172",
+      "patchedSha256": "765cc4324350a4a7386035d27537d37954838f068022f0b0fe484ec067fbea13"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/mindmap.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "616262282729431b99f35a6ed0a4cd2cbb0f90bcd127637705d3cc133803a3fd",
+      "patchedSha256": "9bbc3c1293bd9e8ee6f0ee2314f43f81e6b4b5a9dfb2b4a489d7954d05fe5dac"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/mindmap/render.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "98eb48965f20a9fa4aa8179af4c05da4c7a27c15a583a9952710f20b8dcef5d0",
+      "patchedSha256": "eca09d20a177d038696cf365bbe585ef563643af98b58ee949ad86c1ed6f963b"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/actor_man.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "dd370124a2a91b4ea0473a34fefb8c3c548d19603d427d133ac3e1686347d163",
+      "patchedSha256": "82b40200022918a9d90f6a70c8b2a7f7c91bf6e58f670504d9ebb05520a7f86e"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/actor_man_glyphs.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "e629d8bf4225930d418f90a0abff2cb84cd00b969526d7c4c253f54c894670bc",
+      "patchedSha256": "6d9f1f7de5e71528ef0a61e598a952aa31cb299f8b3a6138c056396dc7055019"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/actor_shapes.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "650a11b6bfcd6b13e3935f2b81104a79d76b4c11a7ee5aa79f9de4b9e94fa3f8",
+      "patchedSha256": "148f0f756db17517807ac9e13a5ae7f8b2bc907af5c2f5942d620770c25bdd00"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/block_collection.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "b210088f1272828f4cc282eb694e49bcc965bcb96f50f1b33790f527d3f8f1c5",
+      "patchedSha256": "e95c2a1c56581ef078e78ef547fd9981103a15a464dfd31dc5e1cc4d899937b6"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/block_text.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "2747e45a34c4b410da7d8d2d0acc7aaed470f1427d8a0fd110c77b5c0e577bea",
+      "patchedSha256": "51f3c206c51b339258f2b207a9913c091e0acb683019afb14d79e4f9ba5de667"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/blocks.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "0228f8e16b8445079ac3784960741e9879eec95ab46c8388ecf01e8d9e53be0f",
+      "patchedSha256": "176d43abf76c739b17a7bb6624d1f3d9c946b346a4fbb4bfabc0546c9115dc42"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/frames.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "11ec785cb193e8c4d9bb8f9416c73022f75b80eb648b4a8e7f1354446bdb0421",
+      "patchedSha256": "443582fb66d9cd9f77b0f42e1d97c5d80e2fd33f4fa2c5c8588416c018690bb8"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/math_label.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "667ac52136094c9db9f5f692fa32fad6c813bfad27c2db73cb4b572dd00ea6cb",
+      "patchedSha256": "4fef9a32497e41a6ef9f99c7ecf157455a0245705df31a68e6befcc89a65fed6"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/messages.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "224cba933c4139257c3e9e425e3f03cc2009be17ae1feaaf43a1c07c47b65cf7",
+      "patchedSha256": "b561bb9f9be58cef4fa362db57cef3d11ef1668588b68113b9cd4a2f96b5925e"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "378c0021904bc43d5480ba4c79c80d1b5f984e7f585b2b05556ec114e5704095",
+      "patchedSha256": "021b1a549bf0892644b49b2119fc03b78b3811b41c44c73500b31615cbef1cf8"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/notes.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "d5360e6f9399e3a4a8f5e812fe6234914e57a2409aaf5cf230e50e88eac62c61",
+      "patchedSha256": "163aec2eb0f0cca7bd61b6c0c0127b6e2097074c24483f28820dd280b97ef60d"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/render.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "f02083d0e77b335900ce74dfc72425d46c943d3fd4621c511c818ab55589b662",
+      "patchedSha256": "5efabbceddebadc6966c1d4359b5066cf4e7428623dda1fd103c5069b29aa568"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/sequence/root.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "77ad6c51ffd36c958f60b588decad9226e088bbf46b2fecabab724e292e8ddca",
+      "patchedSha256": "8c40059919af9ecee30218a960e6590eefe77e0b0a908935195f230dc30afb4c"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/state/edge.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "e2601e413420058437a55fb9f13c503fe01cb7cdcab431b84826731daae4e7c5",
+      "patchedSha256": "24191a7c3502c020624db21561c0fb6f4ce419a8355a79ff893a37a3f0348924"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/state/mod.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "b63ca1faaa042d0bc4519db27e5d969de19494ef8c0495fcda46ef587563888e",
+      "patchedSha256": "667bcab55de7b8980c15d66956eee7fe36cca9051b5962303acb15bb27ff9a9a"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/state/node.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "bc6b582ffac823c8362f382317f43ca51faa70d6b4017060d40570f8a81e6bfb",
+      "patchedSha256": "03646c57fcfa83f6d497e789616f4a72737aecd9794d7f83a190c93da9400e2b"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/state/render.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "9be38b28f71d2bab74e0186f91530efa45efde000cb220a60b29a0d10c3dea48",
+      "patchedSha256": "e9aeef27c9272938af5ec966979ad0f4cfad88006cdeba444c6f640784c1e664"
+    },
+    {
+      "path": "crates/merman-render/src/svg/parity/state/style.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "ed2f60bc4bdec9eeffa8494540a297cef4669f2c7b3777893ee6d4541d9c6bd0",
+      "patchedSha256": "b664e814fe0755aa425dfbdee047eab6e1b0115571903a6371ec6e6cc2580ded"
+    },
+    {
+      "path": "crates/merman-render/src/swimlane/prepare.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "b09ca6475aed609e5f024381b2bc525921dcaf67b4c5fbe4b22fff5f5029039d",
+      "patchedSha256": "c7857ddef986aa8dca19ccc4edf843373192a915f4cc89371211580534d49fd5"
+    },
+    {
+      "path": "crates/merman-render/src/text.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "248403a655c0f9435211076534495d07659d89c467a46cfd1402c4c826444ec7",
+      "patchedSha256": "2063cd9843b94bb6867bc1a6e4c215d0d5c2c09a585aeda7b976e7e66f0165ac"
+    },
+    {
+      "path": "crates/merman-render/src/text/markdown.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "a959ce722d8fed1cfd3d6ae09ac90b72a509e9ebbc7029a0f06460d69ab6e433",
+      "patchedSha256": "6723638f53b14397f812ff6ef9f40d6607c308e85f309ab31609087fbb38af4d"
+    },
+    {
+      "path": "crates/merman-render/src/text/metrics.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "a3c2d6f6d6f29d5e2b2611ff3faea539ae768ecdaebd7a7d29673788c6696646",
+      "patchedSha256": "3ea088f1bc09280bb7d71131fd52fbd1b096a7f25da2881de3b56134b10f9c4b"
+    },
+    {
+      "path": "crates/merman-render/src/text/raw_formatting_tags.rs",
+      "changeKind": "add",
+      "upstreamSha256": null,
+      "patchedSha256": "f08f9cfdbfcdde23f8e52e6ead0a5e16f8cfe7d199c9e5056dff87c86c715a5e"
+    },
+    {
+      "path": "crates/merman-render/tests/flowchart_svg_test.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "de50d4a603953494d9b5a054ce9e63f6078c68cc2d3b7313db7dd4e91437df0b",
+      "patchedSha256": "5d29a3c9d719a7843695d0508d324a8382f4ce87bea74c8957c7a3b27f81a9bc"
+    },
+    {
+      "path": "crates/merman-render/tests/mindmap_svg_test.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "c99b7734182e360b86e2e98c9197f3515f47fef7ed6848008a0b3311026c739f",
+      "patchedSha256": "877d850040df1c3f08d7274693735af2fe02b6a0446ab94a60dd76554cbc280a"
+    },
+    {
+      "path": "crates/merman-render/tests/sequence_svg_test.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "26a92616b7a3b8fa3cce505b00dbd77728c156fe155ee4cb2d7c1a43a6803230",
+      "patchedSha256": "30663c920c82763c838b673543480facb24aaf0822d735b7af0f88ecd7d97103"
+    },
+    {
+      "path": "crates/merman-render/tests/state_svg_test.rs",
+      "changeKind": "modify",
+      "upstreamSha256": "05ab0ce99a0e3d304f824473dc40e5aa732c0ef63d5e09e3728c555299a521fe",
+      "patchedSha256": "3dcb16a108e8cdac5135d18c898ff7a13e174e472680b73d953aed55d61e3caf"
+    }
+  ]
+}

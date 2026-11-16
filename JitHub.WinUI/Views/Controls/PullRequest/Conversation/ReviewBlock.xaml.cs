@@ -1,4 +1,4 @@
-using JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels;
+using JitHub.WinUI.ViewModels.PullRequests.Conversation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

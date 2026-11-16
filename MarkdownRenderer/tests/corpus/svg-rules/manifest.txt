@@ -1,0 +1,420 @@
+# Shared SVG rules corpus.
+#
+# Each [case] names one input under inputs/ and the verdict every rule
+# implementation must reach for those exact bytes:
+#   worker    - the resvg worker preflight (native/src/svg_preflight), checked
+#               by native/src/tests/svg_rules_corpus.rs
+#   host      - ResvgMarkdownSvgRenderer.PrepareSource (inert-DOCTYPE
+#               neutralization, SvgResourceBudget, SvgStaticSnapshot)
+#   preflight - SvgPreflight, the host's direct OpenAsync preflight
+# The host and preflight columns are checked by
+# tests/MarkdownRenderer.Svg.Resvg.Tests/SvgRulesCorpusTests.cs.
+#
+# Verdicts are "accept" or "reject <class>: <detail>", where class and detail are:
+#   worker    - the Reject variant and its exact message
+#   host      - the MarkdownSvgFailureReason and the host preflight reason code
+#   preflight - the MarkdownSvgException reason and its exact message
+# Limits are the hard ceilings, which are also the host option defaults.
+#
+# When the sides disagree on accept versus reject, the case must carry a
+# "difference" line saying why; both harnesses fail on an unexplained
+# disagreement or on a stale difference note. Recording a difference does
+# not endorse it: it documents current behavior so a change is deliberate.
+# "seed" names the existing test the case came from.
+
+[static-rect]
+input = static-rect.svg
+seed = baseline (C# SvgInertDoctypeAdmissionTests body)
+worker = accept
+host = accept
+preflight = accept
+
+[literal-markers-in-comment-and-cdata]
+input = literal-markers-in-comment-and-cdata.svg
+seed = Rust tests::svg_preflight_xml::static_xml_allows_declaration_spellings_in_comments_and_cdata; C# SvgResourceBudgetTests (DOCTYPE text in comment/CDATA)
+worker = accept
+host = accept
+preflight = accept
+
+[internal-dtd-subset]
+input = internal-dtd-subset.svg
+seed = Rust tests::svg_preflight_xml::static_xml_rejects_actual_dtd_and_stylesheet_processing_instruction; C# SvgResourceBudgetTests (dtd-forbidden), SvgInertDoctypeAdmissionTests.PrepareSourceStillRejectsEveryOtherDoctype
+worker = reject unsupported: malformed XML
+host = reject UnsupportedContent: dtd-forbidden
+preflight = reject UnsupportedContent: SVG DTDs and entities are forbidden.
+
+[inert-w3c-doctype]
+input = inert-w3c-doctype.svg
+seed = C# SvgInertDoctypeAdmissionTests.PrepareSourceAdmitsInertW3cDoctypeAndTheWorkerRendersIt
+worker = reject unsupported: malformed XML
+host = accept
+preflight = reject UnsupportedContent: SVG DTDs and entities are forbidden.
+difference = By design. Host preparation replaces the published W3C SVG DOCTYPE with equal-length whitespace before every later stage; the direct preflight and the worker still reject every DTD, and only see this input if a caller skips PrepareSource.
+
+[xml-stylesheet-instruction]
+input = xml-stylesheet-instruction.svg
+seed = Rust tests::svg_preflight_xml::static_xml_rejects_actual_dtd_and_stylesheet_processing_instruction
+worker = reject unsupported: XML stylesheet processing instructions are forbidden
+host = accept
+preflight = reject UnsupportedContent: External SVG stylesheets are forbidden.
+difference = Host preparation reads with IgnoreProcessingInstructions, so its budget never sees <?xml-stylesheet?>; the prepared bytes keep the instruction and the direct preflight rejects them at open. The worker rejects it too.
+
+[root-is-not-svg]
+input = root-is-not-svg.svg
+seed = C# SvgResourceBudgetTests (missing-root)
+worker = reject unsupported: root element is not SVG
+host = reject UnsupportedContent: missing-root
+preflight = reject UnsupportedContent: The document root is not an SVG element.
+
+[unqualified-svg-root]
+input = unqualified-svg-root.svg
+seed = C# SvgResourceBudgetTests (un-namespaced <svg> inputs)
+worker = accept
+host = accept
+preflight = reject UnsupportedContent: The document root is not an SVG element.
+difference = The direct preflight requires the SVG namespace on the root element; host preparation and the worker match the local name svg without a namespace.
+
+[xml-depth-over-ceiling]
+input = xml-depth-over-ceiling.svg
+seed = new boundary: worker HARD_MAX_XML_DEPTH and C# MaxXmlDepth (128)
+worker = reject resource: XML depth budget exceeded
+host = reject ResourceLimitExceeded: element-depth
+preflight = reject ResourceLimitExceeded: The SVG exceeds the XML-depth ceiling.
+
+[latin1-declared-encoding]
+input = latin1-declared-encoding.svg
+seed = new: worker requires UTF-8 source text
+worker = reject unsupported: SVG is not UTF-8
+host = accept
+preflight = accept
+difference = By design. The host preflight transcodes declared non-UTF-8 encodings to UTF-8 before the worker sees the bytes, so the worker only accepts UTF-8 and rejects this raw input.
+
+[script-element]
+input = script-element.svg
+seed = C# SvgUnsupportedContentAdmissionTests, SvgResourceBudgetTests (active-content)
+worker = reject unsupported: executable SVG content is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: The static SVG subset does not allow <script>.
+
+[foreign-object-element]
+input = foreign-object-element.svg
+seed = C# SvgUnsupportedContentAdmissionTests, SvgResourceBudgetTests (active-content)
+worker = reject unsupported: executable SVG content is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: The static SVG subset does not allow <foreignObject>.
+
+[animate-element]
+input = animate-element.svg
+seed = C# SvgUnsupportedContentAdmissionTests, SvgResourceBudgetTests (active-content)
+worker = reject unsupported: executable SVG content is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: The static SVG subset does not allow <animate>.
+
+[set-element]
+input = set-element.svg
+seed = Rust tests::is_forbidden_element list (set)
+worker = reject unsupported: executable SVG content is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: The static SVG subset does not allow <set>.
+
+[onclick-attribute]
+input = onclick-attribute.svg
+seed = C# SvgUnsupportedContentAdmissionTests (event-handler)
+worker = reject unsupported: event handlers are forbidden
+host = reject UnsupportedContent: event-handler
+preflight = reject UnsupportedContent: SVG event handlers are forbidden.
+
+[unicode-attribute-name]
+input = unicode-attribute-name.svg
+seed = Rust tests::svg_preflight_resources::unicode_attribute_names_are_safe_and_ascii_event_prefix_remains_forbidden
+worker = accept
+host = accept
+preflight = accept
+
+[event-prefix-unicode-attribute]
+input = event-prefix-unicode-attribute.svg
+seed = Rust tests::svg_preflight_resources::unicode_attribute_names_are_safe_and_ascii_event_prefix_remains_forbidden
+worker = reject unsupported: event handlers are forbidden
+host = reject UnsupportedContent: event-handler
+preflight = reject UnsupportedContent: SVG event handlers are forbidden.
+
+[css-keyframes]
+input = css-keyframes.svg
+seed = C# SvgUnsupportedContentAdmissionTests (@keyframes)
+worker = reject unsupported: external or executable CSS is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: External fonts, imports, and animation are forbidden.
+
+[css-animation-property]
+input = css-animation-property.svg
+seed = C# SvgUnsupportedContentAdmissionTests (animation)
+worker = reject unsupported: external or executable CSS is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: External fonts, imports, and animation are forbidden.
+
+[css-transition-in-style-attribute]
+input = css-transition-in-style-attribute.svg
+seed = Rust tests::contains_motion_declaration (transition)
+worker = reject unsupported: external or executable CSS is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: External fonts, imports, and animation are forbidden.
+
+[css-import]
+input = css-import.svg
+seed = C# SvgResourceBudgetTests (@import)
+worker = reject unsupported: external or executable CSS is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: External fonts, imports, and animation are forbidden.
+
+[css-external-url-in-style-attribute]
+input = css-external-url-in-style-attribute.svg
+seed = Rust tests::svg_preflight_resources::css_external_url_is_rejected; C# SvgResourceBudgetTests
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-resource
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[css-fragment-url-in-style-attribute]
+input = css-fragment-url-in-style-attribute.svg
+seed = Rust tests::svg_preflight_resources::css_external_url_is_rejected
+worker = accept
+host = accept
+preflight = accept
+
+[css-escaped-external-url]
+input = css-escaped-external-url.svg
+seed = Rust tests::svg_preflight_resources::quoted_and_escaped_css_data_urls_are_charged_and_deduplicated
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-resource
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[css-quoted-and-escaped-data-urls]
+input = css-quoted-and-escaped-data-urls.svg
+seed = Rust tests::svg_preflight_resources::quoted_and_escaped_css_data_urls_are_charged_and_deduplicated
+worker = accept
+host = reject UnsupportedContent: external-resource
+preflight = accept
+difference = Host preparation does not decode CSS escapes inside url() before classifying the target, so the escaped colon in the first data URL makes it read as a non-data reference and the host rejects it (stricter). The direct preflight and the worker decode the escape and charge the PNG as embedded data.
+
+[css-truncated-png-data-url]
+input = css-truncated-png-data-url.svg
+seed = Rust tests::svg_preflight_resources::malformed_css_raster_payload_is_not_silently_uncharged
+worker = reject unsupported: invalid embedded image
+host = reject UnsupportedContent: external-resource
+preflight = reject UnsupportedContent: An embedded raster image is malformed or has no bounded dimensions.
+note = All sides reject; host preparation reports the CSS url() data image as external-resource rather than as a malformed embedded image.
+
+[presentation-attribute-external-url]
+input = presentation-attribute-external-url.svg
+seed = Rust tests::may_contain_css_resource_or_active_content (presentation url())
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-resource
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[css-namespace-declaration]
+input = css-namespace-declaration.svg
+seed = Rust tests::strip_inert_namespace_declarations; C# SvgResourceBudget inert @namespace removal
+worker = accept
+host = accept
+preflight = accept
+
+[css-self-contained-font-face]
+input = css-self-contained-font-face.svg
+seed = C# SvgEmbeddedFontAdmissionTests
+worker = reject unsupported: external or executable CSS is forbidden
+host = accept
+preflight = reject UnsupportedContent: External fonts, imports, and animation are forbidden.
+difference = Host preparation removes self-contained data: @font-face blocks during static snapshotting (charts then render with a fallback font), so the prepared bytes no longer contain @font-face. Without that rewrite the direct preflight and the worker reject every @font-face.
+
+[css-external-font-face]
+input = css-external-font-face.svg
+seed = C# SvgEmbeddedFontAdmissionTests (external-resource)
+worker = reject unsupported: external or executable CSS is forbidden
+host = reject UnsupportedContent: external-resource
+preflight = reject UnsupportedContent: External fonts, imports, and animation are forbidden.
+
+[metadata-apostrophe]
+input = metadata-apostrophe.svg
+seed = Rust tests::may_contain_css_resource_or_active_content (apostrophe in metadata)
+worker = accept
+host = accept
+preflight = accept
+
+[gaussian-blur-and-offset-filter]
+input = gaussian-blur-and-offset-filter.svg
+seed = Rust tests::svg_preflight_resources::filter_gutter_comes_from_parameters_and_unbounded_cases_are_marked
+worker = accept
+host = accept
+preflight = accept
+
+[tile-filter-primitive]
+input = tile-filter-primitive.svg
+seed = Rust tests::svg_preflight_resources::filter_gutter_comes_from_parameters_and_unbounded_cases_are_marked
+worker = accept
+host = accept
+preflight = accept
+
+[fe-image-external-href]
+input = fe-image-external-href.svg
+seed = C# SvgResourceBudgetTests (external-image-reference)
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-image-reference
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[inert-hyperlink]
+input = inert-hyperlink.svg
+seed = Rust tests::svg_preflight_resources::inert_hyperlink_is_allowed_but_external_image_is_rejected
+worker = accept
+host = accept
+preflight = accept
+
+[javascript-hyperlink]
+input = javascript-hyperlink.svg
+seed = new: inert hyperlink policy with a script URL
+worker = accept
+host = accept
+preflight = accept
+note = All sides accept: <a href> is inert metadata in a static raster, so no side resolves or loads hyperlink targets.
+
+[external-image]
+input = external-image.svg
+seed = Rust tests::svg_preflight_resources::inert_hyperlink_is_allowed_but_external_image_is_rejected; C# SvgResourceBudgetTests
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-image-reference
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[file-image]
+input = file-image.svg
+seed = C# SvgResourceBudgetTests (file:// image)
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-image-reference
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[use-external-symbol]
+input = use-external-symbol.svg
+seed = C# SvgResourceBudgetTests (external <use>)
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-resource
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[use-local-fragment]
+input = use-local-fragment.svg
+seed = baseline for the external <use> case
+worker = accept
+host = accept
+preflight = accept
+
+[png-data-image]
+input = png-data-image.svg
+seed = baseline embedded raster
+worker = accept
+host = accept
+preflight = accept
+
+[repeated-png-data-image]
+input = repeated-png-data-image.svg
+seed = Rust tests::svg_preflight_resources::repeated_data_is_deduplicated
+worker = accept
+host = accept
+preflight = accept
+
+[png-bytes-with-invalid-media-type]
+input = png-bytes-with-invalid-media-type.svg
+seed = Rust tests::svg_preflight_resources::invalid_data_uri_media_type_is_accepted_only_for_known_raster_bytes
+worker = accept
+host = accept
+preflight = accept
+
+[unknown-bytes-with-invalid-media-type]
+input = unknown-bytes-with-invalid-media-type.svg
+seed = Rust tests::svg_preflight_resources::invalid_data_uri_media_type_is_accepted_only_for_known_raster_bytes
+worker = reject unsupported: unsupported embedded image type
+host = reject UnsupportedContent: invalid-embedded-image
+preflight = reject UnsupportedContent: The embedded image media type is unsupported.
+
+[invalid-base64-png-data-image]
+input = invalid-base64-png-data-image.svg
+seed = C# SvgResourceBudgetTests (invalid embedded image)
+worker = reject unsupported: invalid data URI payload
+host = reject UnsupportedContent: invalid-embedded-image
+preflight = reject UnsupportedContent: The SVG is malformed.
+note = All sides reject; the direct preflight reports the undecodable data URI as a malformed SVG.
+
+[text-plain-data-image]
+input = text-plain-data-image.svg
+seed = C# SvgResourceBudgetTests (non-image data URI)
+worker = reject unsupported: unsupported embedded image type
+host = reject UnsupportedContent: invalid-embedded-image
+preflight = reject UnsupportedContent: The embedded image media type is unsupported.
+
+[png-header-over-pixel-budget]
+input = png-header-over-pixel-budget.svg
+seed = new boundary: 6000x6000 PNG header against the 24 Mpx embedded pixel budget
+worker = reject resource: embedded pixel budget exceeded
+host = reject UnsupportedContent: embedded-image-format
+preflight = reject ResourceLimitExceeded: Embedded images exceed the decoded-pixel ceiling.
+note = All sides reject, but host preparation classes the IHDR-only PNG as an unsupported embedded format, while the direct preflight and the worker read its dimensions and charge them against the 24 Mpx pixel budget.
+
+[nested-static-svg]
+input = nested-static-svg.svg
+seed = C# SvgUnsupportedContentAdmissionTests.PrepareSourceStillAdmitsAStaticNestedSvgDataUriClosureUnchanged
+worker = accept
+host = accept
+preflight = accept
+
+[nested-script]
+input = nested-script.svg
+seed = C# SvgUnsupportedContentAdmissionTests.PrepareSourceRejectsForbiddenContentInsideNestedSvgBeforeNormalization
+worker = reject unsupported: executable nested SVG is forbidden
+host = reject UnsupportedContent: active-content
+preflight = reject UnsupportedContent: The static SVG subset does not allow <script>.
+
+[nested-literal-markers]
+input = nested-literal-markers.svg
+seed = Rust tests::svg_preflight_xml::nested_svg_checks_real_tokens_without_rejecting_literal_markers
+worker = accept
+host = accept
+preflight = accept
+
+[nested-xml-stylesheet-instruction]
+input = nested-xml-stylesheet-instruction.svg
+seed = Rust tests::svg_preflight_xml::nested_svg_checks_real_tokens_without_rejecting_literal_markers
+worker = reject unsupported: XML stylesheet processing instructions are forbidden
+host = accept
+preflight = reject UnsupportedContent: External SVG stylesheets are forbidden.
+difference = As for xml-stylesheet-instruction, inside a nested data-URI SVG: host preparation ignores processing instructions; the direct preflight and the worker reject the nested stylesheet.
+
+[nested-mislabeled-raster]
+input = nested-mislabeled-raster.svg
+seed = Rust tests::svg_preflight_resources::recursively_validates_mislabeled_nested_raster_as_raster
+worker = accept
+host = accept
+preflight = accept
+
+[nested-event-prefix-unicode-attribute]
+input = nested-event-prefix-unicode-attribute.svg
+seed = Rust tests::svg_preflight_resources::unicode_attribute_names_are_safe_and_ascii_event_prefix_remains_forbidden
+worker = reject unsupported: nested event handler is forbidden
+host = reject UnsupportedContent: event-handler
+preflight = reject UnsupportedContent: SVG event handlers are forbidden.
+
+[nested-external-image]
+input = nested-external-image.svg
+seed = Rust tests::svg_preflight_resources::nested_svg_repeats_authoritative_external_reference_checks
+worker = reject unsupported: external references are forbidden
+host = reject UnsupportedContent: external-image-reference
+preflight = reject UnsupportedContent: Nested network and file references are forbidden.
+
+[nested-depth-at-ceiling]
+input = nested-depth-at-ceiling.svg
+seed = Rust tests::svg_preflight_resources::repeated_nested_payload_cannot_bypass_contextual_depth_check (root + 3 nested levels)
+worker = accept
+host = accept
+preflight = accept
+
+[nested-depth-over-ceiling]
+input = nested-depth-over-ceiling.svg
+seed = Rust tests::svg_preflight_resources::repeated_nested_payload_cannot_bypass_contextual_depth_check (root + 4 nested levels)
+worker = reject resource: nested SVG depth budget exceeded
+host = accept
+preflight = reject ResourceLimitExceeded: The SVG exceeds the nested-SVG ceiling.
+difference = Depth is counted differently: the host budget allows four nested levels below the root (nestedDepth 0..4), while the direct preflight and the worker count the root as one of the four SVG documents. This root plus four nested levels passes the host and fails both later stages.

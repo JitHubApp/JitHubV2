@@ -1,7 +1,7 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common">
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images">
     <DataTemplate x:Key="SelectableUserDateTemplate">
         <StackPanel Orientation="Horizontal">
             <CheckBox
@@ -12,7 +12,7 @@
                 CommandParameter="{Binding Item, Mode=OneWay}"
                 IsChecked="{Binding Selected, Mode=TwoWay}"
                 Visibility="{Binding Selectable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                <common:Avatar
+                <images:Avatar
                     Grid.Column="1"
                     AutomationInstanceId="{Binding AutomationId, Mode=OneWay}"
                     IsProfileNavigationEnabled="False"
@@ -21,7 +21,7 @@
                     Size="MEDIUM"
                     Url="{Binding AvatarUrl, Mode=OneWay}" />
             </CheckBox>
-            <common:Avatar
+            <images:Avatar
                 Grid.Column="1"
                 AutomationInstanceId="{Binding AutomationId, Mode=OneWay}"
                 Login="{Binding Login, Mode=OneWay}"

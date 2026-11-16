@@ -1,0 +1,624 @@
+diff --git a/crates/merman-core/src/diagram/mod.rs b/crates/merman-core/src/diagram/mod.rs
+index fe6e3b0ed..2e36c2a0d 100644
+--- a/crates/merman-core/src/diagram/mod.rs
++++ b/crates/merman-core/src/diagram/mod.rs
+@@ -495,6 +495,27 @@ impl RenderSemanticContext {
+             .as_ref()
+             .map_or(0, |context| context.retained_bytes())
+     }
++
++    pub(crate) fn remap_source_spans(
++        &mut self,
++        remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++        control: &OperationControl,
++    ) -> OperationControlResult<()> {
++        control.checkpoint()?;
++        if let Some(flowchart) = self.flowchart.as_mut() {
++            flowchart.remap_source_spans(remap, control)?;
++        }
++        control.checkpoint()
++    }
++
++    pub(crate) fn remap_source_spans_uncontrolled(
++        &mut self,
++        remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++    ) {
++        if let Some(flowchart) = self.flowchart.as_mut() {
++            flowchart.remap_source_spans_uncontrolled(remap);
++        }
++    }
+ }
+ 
+ #[derive(Debug, Clone)]
+@@ -529,6 +550,21 @@ impl RenderSemanticParseOutput {
+         &mut self.model
+     }
+ 
++    pub(crate) fn remap_source_spans(
++        &mut self,
++        remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++        control: &OperationControl,
++    ) -> OperationControlResult<()> {
++        self.context.remap_source_spans(remap, control)
++    }
++
++    pub(crate) fn remap_source_spans_uncontrolled(
++        &mut self,
++        remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++    ) {
++        self.context.remap_source_spans_uncontrolled(remap);
++    }
++
+     fn into_parts(self) -> (RenderSemanticModel, RenderSemanticContext) {
+         (self.model, self.context)
+     }
+diff --git a/crates/merman-core/src/diagrams/flowchart.rs b/crates/merman-core/src/diagrams/flowchart.rs
+index 6854c4beb..09d03e357 100644
+--- a/crates/merman-core/src/diagrams/flowchart.rs
++++ b/crates/merman-core/src/diagrams/flowchart.rs
+@@ -1585,10 +1585,17 @@ impl FlowchartSemanticSource {
+             if index % 128 == 0 {
+                 control.checkpoint()?;
+             }
++            let source_span = if node.provenance == FlowNodeProvenance::Authored {
++                node.label_selection.or_else(|| {
++                    (node.syntax == FlowNodeSyntax::BareReference && node.label.is_none())
++                        .then_some(node.id_span)
++                        .flatten()
++                })
++            } else {
++                None
++            };
+             let (node, render_label_source) = flow_node_to_model(node, &meta.effective_config);
+-            if let Some(source) = render_label_source {
+-                render_label_sources.insert_node(node.id.clone(), source);
+-            }
++            render_label_sources.insert_node(node.id.clone(), render_label_source, source_span);
+             render_nodes.push(node);
+         }
+         let mut render_edges = Vec::with_capacity(edges.len());
+diff --git a/crates/merman-core/src/diagrams/flowchart/model.rs b/crates/merman-core/src/diagrams/flowchart/model.rs
+index 90b4f661d..46025df61 100644
+--- a/crates/merman-core/src/diagrams/flowchart/model.rs
++++ b/crates/merman-core/src/diagrams/flowchart/model.rs
+@@ -42,11 +42,17 @@ impl FlowchartModel {
+ 
+ #[derive(Debug, Clone, Default)]
+ pub(crate) struct FlowchartRenderLabelSources {
+-    nodes: FxHashMap<String, String>,
++    nodes: FxHashMap<String, FlowchartNodeRenderLabelSource>,
+     edges: FxHashMap<String, String>,
+     subgraphs: Vec<Option<FlowSubgraphRenderLabelSource>>,
+ }
+ 
++#[derive(Debug, Clone, Default)]
++struct FlowchartNodeRenderLabelSource {
++    source: Option<String>,
++    source_span: Option<SourceSpan>,
++}
++
+ #[derive(Debug, Clone)]
+ struct FlowSubgraphRenderLabelSource {
+     id: String,
+@@ -57,10 +63,41 @@ impl FlowchartRenderLabelSources {
+     pub(crate) fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
+         self.nodes
+             .get(&node.id)
+-            .map(String::as_str)
++            .and_then(|source| source.source.as_deref())
+             .or(node.label.as_deref())
+     }
+ 
++    pub(crate) fn node_label_source_span(&self, node_id: &str) -> Option<SourceSpan> {
++        self.nodes.get(node_id)?.source_span
++    }
++
++    pub(crate) fn remap_node_label_source_spans(
++        &mut self,
++        mut remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++        control: &crate::OperationControl,
++    ) -> crate::OperationControlResult<()> {
++        for (index, source) in self.nodes.values_mut().enumerate() {
++            if index % 128 == 0 {
++                control.checkpoint()?;
++            }
++            if let Some(span) = source.source_span {
++                source.source_span = remap(span);
++            }
++        }
++        control.checkpoint()
++    }
++
++    pub(crate) fn remap_node_label_source_spans_uncontrolled(
++        &mut self,
++        mut remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++    ) {
++        for source in self.nodes.values_mut() {
++            if let Some(span) = source.source_span {
++                source.source_span = remap(span);
++            }
++        }
++    }
++
+     pub(crate) fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+         self.edges
+             .get(&edge.id)
+@@ -81,8 +118,21 @@ impl FlowchartRenderLabelSources {
+             .unwrap_or(subgraph.title.as_str())
+     }
+ 
+-    pub(crate) fn insert_node(&mut self, id: String, source: String) {
+-        self.nodes.insert(id, source);
++    pub(crate) fn insert_node(
++        &mut self,
++        id: String,
++        source: Option<String>,
++        source_span: Option<SourceSpan>,
++    ) {
++        if source.is_some() || source_span.is_some() {
++            self.nodes.insert(
++                id,
++                FlowchartNodeRenderLabelSource {
++                    source,
++                    source_span,
++                },
++            );
++        }
+     }
+ 
+     pub(crate) fn insert_edge(&mut self, id: String, source: String) {
+@@ -107,10 +157,15 @@ impl FlowchartRenderLabelSources {
+     pub(crate) fn retained_bytes(&self) -> usize {
+         self.nodes
+             .iter()
+-            .chain(&self.edges)
+-            .fold(0usize, |total, (id, label)| {
+-                total.saturating_add(id.len()).saturating_add(label.len())
++            .fold(0usize, |total, (id, source)| {
++                total
++                    .saturating_add(id.len())
++                    .saturating_add(source.source.as_ref().map_or(0, String::len))
++                    .saturating_add(std::mem::size_of::<FlowchartNodeRenderLabelSource>())
+             })
++            .saturating_add(self.edges.iter().fold(0usize, |total, (id, label)| {
++                total.saturating_add(id.len()).saturating_add(label.len())
++            }))
+             .saturating_add(
+                 self.subgraphs
+                     .iter()
+@@ -208,6 +263,16 @@ impl FlowchartRenderContext {
+         self.labels.node_label_for_render(node)
+     }
+ 
++    /// Returns the exact authored source range corresponding to the final rendered node label.
++    ///
++    /// For a bare node whose displayed label falls back to its identifier, the range covers the
++    /// identifier. The render parse pipeline remaps ranges to the caller's original
++    /// UTF-8 source. Shape-data-provided labels intentionally have no source range.
++    #[doc(hidden)]
++    pub fn node_label_source_span(&self, node_id: &str) -> Option<SourceSpan> {
++        self.labels.node_label_source_span(node_id)
++    }
++
+     #[doc(hidden)]
+     pub fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+         self.labels.edge_label_for_render(edge)
+@@ -238,6 +303,22 @@ impl FlowchartRenderContext {
+         self.styles.contains_subgraph_vertex(id)
+     }
+ 
++    pub(crate) fn remap_source_spans(
++        &mut self,
++        remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++        control: &crate::OperationControl,
++    ) -> crate::OperationControlResult<()> {
++        self.labels.remap_node_label_source_spans(remap, control)
++    }
++
++    pub(crate) fn remap_source_spans_uncontrolled(
++        &mut self,
++        remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
++    ) {
++        self.labels
++            .remap_node_label_source_spans_uncontrolled(remap);
++    }
++
+     pub(crate) fn retained_bytes(&self) -> usize {
+         self.labels
+             .retained_bytes()
+diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
+index 4119076eb..f3267d533 100644
+--- a/crates/merman-core/src/parse_pipeline.rs
++++ b/crates/merman-core/src/parse_pipeline.rs
+@@ -536,6 +536,8 @@ impl<'a> ParsePipeline<'a> {
+                 output.model_mut().remap_warning_fact_spans(|fact| {
+                     Self::remap_warning_fact_spans(fact, source_map);
+                 });
++                output
++                    .remap_source_spans_uncontrolled(|span| source_map.try_remap_source_span(span));
+             },
+             |output| Some(output.model().kind()),
+         )
+@@ -625,6 +627,7 @@ impl<'a> ParsePipeline<'a> {
+             output.model_mut().remap_warning_fact_spans(|fact| {
+                 Self::remap_warning_fact_spans(fact, &source_map);
+             });
++            output.remap_source_spans(|span| source_map.try_remap_source_span(span), &control)?;
+             operation.checkpoint_at(OperationPhase::Semantic)?;
+             timing.log_success(ParseTimingSuccess {
+                 total_start,
+diff --git a/crates/merman-core/src/tests/flowchart.rs b/crates/merman-core/src/tests/flowchart.rs
+index 86323607a..a8045428b 100644
+--- a/crates/merman-core/src/tests/flowchart.rs
++++ b/crates/merman-core/src/tests/flowchart.rs
+@@ -460,6 +460,160 @@ fn parse_typed_flowchart(text: &str) -> crate::diagrams::flowchart::FlowchartMod
+         .expect("typed flowchart model")
+ }
+ 
++fn parse_flowchart_render(text: &str) -> crate::diagram::ParsedDiagramRender {
++    Engine::new()
++        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
++        .expect("flowchart render parse")
++        .expect("flowchart render model")
++}
++
++fn parse_flowchart_render_controlled(text: &str) -> crate::diagram::ParsedDiagramRender {
++    let engine = Engine::new();
++    let operation = crate::OperationControl::new();
++    engine
++        .parse_diagram_for_render_model_controlled_sync(text, ParseOptions::strict(), &operation)
++        .expect("controlled render parse was not cancelled")
++        .expect("controlled flowchart render parse")
++        .expect("controlled flowchart render model")
++}
++
++fn assert_render_source_spans_match_controlled(text: &str, node_ids: &[&str]) {
++    let standard = parse_flowchart_render(text);
++    let controlled = parse_flowchart_render_controlled(text);
++    let standard_context = standard
++        .flowchart_render_context()
++        .expect("standard flowchart render context");
++    let controlled_context = controlled
++        .flowchart_render_context()
++        .expect("controlled flowchart render context");
++
++    for node_id in node_ids {
++        assert_eq!(
++            standard_context.node_label_source_span(node_id),
++            controlled_context.node_label_source_span(node_id),
++            "standard and controlled span for node {node_id}"
++        );
++    }
++}
++
++#[test]
++fn flowchart_render_source_span_tracks_final_duplicate_node_label() {
++    let text = "flowchart LR\nA[First label] --> B\nA[Final label]\n";
++    let parsed = parse_flowchart_render(text);
++    let span = parsed
++        .flowchart_render_context()
++        .expect("flowchart render context")
++        .node_label_source_span("A")
++        .expect("authored node label source");
++
++    assert_eq!(&text[span.start..span.end], "Final label");
++    assert_render_source_spans_match_controlled(text, &["A"]);
++    let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
++        panic!("expected flowchart model");
++    };
++    assert_eq!(
++        model
++            .nodes
++            .iter()
++            .find(|node| node.id == "A")
++            .and_then(|node| node.label.as_deref()),
++        Some("Final label")
++    );
++}
++
++#[test]
++fn flowchart_render_source_span_uses_id_for_bare_authored_node_and_omits_ignored_edge_id() {
++    let text = "flowchart LR\nA e1@--> B\ne1[ignored node]\n";
++    let parsed = parse_flowchart_render(text);
++    let context = parsed
++        .flowchart_render_context()
++        .expect("flowchart render context");
++
++    let a_span = context
++        .node_label_source_span("A")
++        .expect("bare authored node A source");
++    let b_span = context
++        .node_label_source_span("B")
++        .expect("bare authored node B source");
++    assert_eq!(&text[a_span.start..a_span.end], "A");
++    assert_eq!(&text[b_span.start..b_span.end], "B");
++    assert_eq!(context.node_label_source_span("e1"), None);
++    assert_render_source_spans_match_controlled(text, &["A", "B", "e1"]);
++    let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
++        panic!("expected flowchart model");
++    };
++    assert!(!model.nodes.iter().any(|node| node.id == "e1"));
++}
++
++#[test]
++fn flowchart_render_source_spans_remap_crlf_frontmatter_and_directives_to_original_utf8() {
++    let text = concat!(
++        "---\r\n",
++        "title: 雪\r\n",
++        "---\r\n",
++        "%%{init: {\"theme\": \"default\"}}%%\r\n",
++        "flowchart LR\r\n",
++        "A[雪 Ω] --> B\r\n",
++    );
++    let parsed = parse_flowchart_render(text);
++    let span = parsed
++        .flowchart_render_context()
++        .expect("flowchart render context")
++        .node_label_source_span("A")
++        .expect("authored Unicode label source");
++    let expected_start = text.find("雪 Ω").expect("label bytes");
++
++    assert_eq!(
++        span,
++        SourceSpan::new(expected_start, expected_start + "雪 Ω".len())
++    );
++    assert_eq!(&text[span.start..span.end], "雪 Ω");
++    assert_render_source_spans_match_controlled(text, &["A"]);
++}
++
++#[test]
++fn flowchart_render_source_span_maps_encoded_entity_to_authored_source() {
++    let text = "flowchart LR\nescaped[\"#quot;\"]\n";
++    let parsed = parse_flowchart_render(text);
++    let context = parsed
++        .flowchart_render_context()
++        .expect("flowchart render context");
++    let span = context
++        .node_label_source_span("escaped")
++        .expect("the complete encoded entity maps to its authored token");
++    let expected_start = text.find("#quot;").expect("authored entity token");
++
++    assert_eq!(
++        span,
++        SourceSpan::new(expected_start, expected_start + "#quot;".len())
++    );
++    assert_eq!(&text[span.start..span.end], "#quot;");
++    assert_render_source_spans_match_controlled(text, &["escaped"]);
++}
++
++#[test]
++fn flowchart_render_source_span_does_not_keep_a_label_replaced_by_shape_data() {
++    let text = "flowchart LR\nA[Authored label]\nA@{ label: \"Model label\" }\n";
++    let parsed = parse_flowchart_render(text);
++    let context = parsed
++        .flowchart_render_context()
++        .expect("flowchart render context");
++
++    assert_eq!(context.node_label_source_span("A"), None);
++    assert_render_source_spans_match_controlled(text, &["A"]);
++    let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
++        panic!("expected flowchart model");
++    };
++    assert_eq!(
++        model
++            .nodes
++            .iter()
++            .find(|node| node.id == "A")
++            .and_then(|node| node.label.as_deref()),
++        Some("Model label")
++    );
++}
++
+ #[test]
+ fn parse_diagram_flowchart_preserves_typed_edge_marker_stroke_and_visibility_semantics() {
+     use crate::diagrams::flowchart::{
+diff --git a/crates/merman-render/src/flowchart/mod.rs b/crates/merman-render/src/flowchart/mod.rs
+index 84881fc87..55a6a892e 100644
+--- a/crates/merman-render/src/flowchart/mod.rs
++++ b/crates/merman-render/src/flowchart/mod.rs
+@@ -35,6 +35,18 @@ impl<'a> FlowchartRenderModelRef<'a> {
+         self.render_context.node_label_for_render(node)
+     }
+ 
++    /// Returns the exact source range for an authored node label when the parser retained one.
++    ///
++    /// This range is carried by canonical node identity from the final merged model. Renderers
++    /// must not reconstruct it from visible label text, since distinct nodes may have identical
++    /// labels.
++    pub(crate) fn node_label_source_span_for_render(
++        &self,
++        node_id: &str,
++    ) -> Option<merman_core::SourceSpan> {
++        self.render_context.node_label_source_span(node_id)
++    }
++
+     pub(crate) fn edge_label_for_render<'b>(&'b self, edge: &'b FlowEdge) -> Option<&'b str> {
+         self.render_context.edge_label_for_render(edge)
+     }
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node.rs b/crates/merman-render/src/svg/parity/flowchart/render/node.rs
+index 570590654..a2a77680a 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node.rs
+@@ -135,6 +135,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
+         }
+         _ => node_classes,
+     };
++    let source_range = ctx
++        .model
++        .node_label_source_span_for_render(node_id)
++        .and_then(|span| {
++            let start = u32::try_from(span.start).ok()?;
++            let end = u32::try_from(span.end).ok()?;
++            (start < end).then_some((start, end))
++        });
+     helpers::open_node_wrapper(
+         out,
+         helpers::NodeWrapperAttrs {
+@@ -151,6 +159,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
+             tooltip_enabled,
+             tooltip,
+             look,
++            source_range,
+         },
+     );
+     ctx.checkpoint_emit()?;
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
+index ab996366c..fd6ff9c4d 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
+@@ -3,6 +3,7 @@
+ use crate::svg::icon_registry::mermaid_unknown_icon_svg;
+ use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
+ use crate::svg::parity::util::escape_attr_display;
++use crate::svg::parity::util::escape_xml_raw_into;
+ use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
+ use merman_core::svg_security::{
+     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+@@ -110,6 +111,8 @@ pub(super) struct NodeWrapperAttrs<'a> {
+     pub(super) tooltip_enabled: bool,
+     pub(super) tooltip: &'a str,
+     pub(super) look: &'a str,
++    /// Validated half-open UTF-8 source byte offsets for this final model node's authored label.
++    pub(super) source_range: Option<(u32, u32)>,
+ }
+ 
+ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+@@ -127,6 +130,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+         tooltip_enabled,
+         tooltip,
+         look,
++        source_range,
+     } = attrs;
+ 
+     if wrapped_in_a {
+@@ -202,9 +206,47 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+     if tooltip_enabled {
+         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
+     }
++    write_node_source_attrs(out, node_id, source_range);
+     out.push('>');
+ }
+ 
++fn write_node_source_attrs(out: &mut String, node_id: &str, source_range: Option<(u32, u32)>) {
++    out.push_str(r#" data-mmir-node-id=""#);
++    // A node ID is an identity token, not label text: preserve Mermaid entity-looking sequences
++    // literally while escaping XML-sensitive characters for this quoted attribute.
++    escape_xml_raw_into(out, node_id);
++    out.push('"');
++    if let Some((source_start, source_end)) = source_range {
++        let _ = write!(
++            out,
++            r#" data-mmir-source-start="{source_start}" data-mmir-source-end="{source_end}""#
++        );
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::write_node_source_attrs;
++
++    #[test]
++    fn node_source_attrs_escape_identity_without_decoding_mermaid_entities() {
++        let mut attrs = String::new();
++        let node_id = "#quot;&<>\"";
++        write_node_source_attrs(&mut attrs, node_id, None);
++
++        let svg = format!("<svg><g{attrs}/></svg>");
++        let document =
++            roxmltree::Document::parse(&svg).expect("escaped identity remains valid XML");
++        let wrapper = document
++            .root_element()
++            .first_element_child()
++            .expect("node wrapper exists");
++        assert_eq!(wrapper.attribute("data-mmir-node-id"), Some(node_id));
++        assert!(!attrs.contains("data-mmir-source-start"));
++        assert!(!attrs.contains("data-mmir-source-end"));
++    }
++}
++
+ pub(super) fn flowchart_node_label_span_class(label_type: &str) -> &'static str {
+     if label_type == "markdown" {
+         "nodeLabel markdown-node-label"
+diff --git a/crates/merman-render/tests/flowchart_svg_test.rs b/crates/merman-render/tests/flowchart_svg_test.rs
+index 89c1b705a..1f2105040 100644
+--- a/crates/merman-render/tests/flowchart_svg_test.rs
++++ b/crates/merman-render/tests/flowchart_svg_test.rs
+@@ -129,6 +129,78 @@ fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
+     assert!(collector.snapshot().is_empty());
+ }
+ 
++#[test]
++fn flowchart_svg_carries_final_node_label_source_by_canonical_node_id() {
++    let source = "flowchart LR\n  first[\"duplicate\"] --> second[\"duplicate\"]\n  third\n";
++    let svg = render_flowchart_svg_from_text(source);
++    let first_start = source.find("duplicate").expect("first authored label") as u32;
++    let second_start = source
++        .find("duplicate")
++        .and_then(|start| {
++            source[start + "duplicate".len()..]
++                .find("duplicate")
++                .map(|next| start + "duplicate".len() + next)
++        })
++        .expect("second authored label") as u32;
++    let label_length = "duplicate".len() as u32;
++
++    assert!(svg.contains(&format!(
++        r#"data-mmir-node-id="first" data-mmir-source-start="{first_start}" data-mmir-source-end="{}""#,
++        first_start + label_length,
++    )));
++    assert!(svg.contains(&format!(
++        r#"data-mmir-node-id="second" data-mmir-source-start="{second_start}" data-mmir-source-end="{}""#,
++        second_start + label_length,
++    )));
++    let third_start = source.find("third").expect("bare authored node id") as u32;
++    let third_marker = format!(
++        r#"data-mmir-node-id="third" data-mmir-source-start="{third_start}" data-mmir-source-end="{}""#,
++        third_start + "third".len() as u32,
++    );
++    let third_wrapper_start = svg
++        .find(&third_marker)
++        .expect("the bare final model node carries its exact identifier span");
++    let third_wrapper_end = svg[third_wrapper_start..]
++        .find('>')
++        .map(|offset| third_wrapper_start + offset)
++        .expect("node wrapper tag terminates");
++    let third_wrapper = &svg[third_wrapper_start..third_wrapper_end];
++    assert!(third_wrapper.contains(&third_marker));
++}
++
++#[test]
++fn flowchart_svg_keeps_node_identity_without_a_range_for_shape_data_label() {
++    let source = "flowchart LR\nA[Authored label]\nA@{ label: \"Model label\" }\n";
++    let svg = render_flowchart_svg_from_text(source);
++    let marker = r#"data-mmir-node-id="A""#;
++    let wrapper_start = svg
++        .find(marker)
++        .expect("the final model node retains its canonical identity marker");
++    let wrapper_end = svg[wrapper_start..]
++        .find('>')
++        .map(|offset| wrapper_start + offset)
++        .expect("node wrapper tag terminates");
++    let wrapper = &svg[wrapper_start..wrapper_end];
++    assert!(!wrapper.contains("data-mmir-source-start"));
++    assert!(!wrapper.contains("data-mmir-source-end"));
++}
++
++#[test]
++fn flowchart_svg_maps_entity_label_to_its_exact_authored_token() {
++    let source = "flowchart LR\n  escaped[\"#quot;\"]\n";
++    let svg = render_flowchart_svg_from_text(source);
++    let start = source.find("#quot;").expect("authored entity token") as u32;
++    let end = start + "#quot;".len() as u32;
++    let marker = format!(
++        r#"data-mmir-node-id="escaped" data-mmir-source-start="{start}" data-mmir-source-end="{end}""#
++    );
++
++    assert!(
++        svg.contains(&marker),
++        "entity preprocessing should retain the exact authored token span"
++    );
++}
++
+ #[test]
+ fn failed_flowchart_render_does_not_publish_staged_edge_trace() {
+     let source = "flowchart TD\nA --> B\n";

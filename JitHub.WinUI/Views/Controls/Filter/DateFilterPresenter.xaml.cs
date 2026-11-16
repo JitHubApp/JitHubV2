@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using JitHub.Models.Filter;
+using JitHub.WinUI.Models.Filter;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

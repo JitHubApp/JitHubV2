@@ -3,9 +3,9 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

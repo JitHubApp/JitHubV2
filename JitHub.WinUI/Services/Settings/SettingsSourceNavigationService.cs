@@ -3,11 +3,19 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.Models.NavArgs;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Settings;
+using JitHub.Core.Services.Telemetry;
+using JitHub.WinUI.Models.Navigation;
+using JitHub.WinUI.Services.Navigation;
 using JitHub.WinUI.Views.Pages;
 
-namespace JitHub.Services;
+namespace JitHub.WinUI.Services.Settings;
 
 public sealed class SettingsSourceNavigationService : ISettingsSourceNavigationService
 {

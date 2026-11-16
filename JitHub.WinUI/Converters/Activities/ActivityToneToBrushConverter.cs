@@ -1,5 +1,5 @@
 using System;
-using JitHub.Models.Activities;
+using JitHub.WinUI.Models.Activities;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;

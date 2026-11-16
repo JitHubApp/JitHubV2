@@ -1,0 +1,19 @@
+using Microsoft.UI.Xaml.Data;
+
+namespace JitHub.Core.ViewModels.Collections;
+
+public static class IncrementalLoadingSourceAdapter
+{
+    public static ISupportIncrementalLoading? Resolve(
+        ISupportIncrementalLoading? explicitSource,
+        object? itemsSource,
+        object? host)
+    {
+        return explicitSource ??
+            itemsSource as ISupportIncrementalLoading ??
+            (host as IIncrementalLoadingHost)?.IncrementalLoadingSource;
+    }
+
+    public static bool IsLoading(ISupportIncrementalLoading source)
+        => source is IIncrementalLoadingActivity { IsLoading: true };
+}

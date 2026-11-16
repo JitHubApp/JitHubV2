@@ -1,4 +1,4 @@
-using JitHub.Models;
+using JitHub.Shared.Theming;
 
 namespace JitHub.Web.Content;
 

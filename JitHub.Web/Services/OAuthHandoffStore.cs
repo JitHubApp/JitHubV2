@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using JitHub.Security;
+using JitHub.Shared.Security;
 
 namespace JitHub.Web.Services;
 

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The sample UI-automation driver's own test project (an executable may be
+       referenced only by its own tests). -->
+  <PropertyGroup>
+    <!-- The same target framework as the FlaUI driver it tests. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>MarkdownRenderer.Sample.Automation.Tests</RootNamespace>
+    <!-- The FlaUI driver graph has no RID-specific assets. -->
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <ProjectReference Include="..\..\samples\MarkdownRenderer.Sample.Automation\MarkdownRenderer.Sample.Automation.csproj" />
+  </ItemGroup>
+</Project>

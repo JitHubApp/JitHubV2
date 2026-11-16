@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JitHub.Models.Activities;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Models.Activities;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "packageName": "resvg",
+  "packageVersion": "0.48.1",
+  "repository": "https://github.com/linebender/resvg.git",
+  "revision": "68b14c4c3bccdb60344c777406486b54c36ec1a4",
+  "purpose": "test-only",
+  "files": [
+    {
+      "path": "tests/fonts/Amiri-LICENSE-OFL.txt",
+      "upstreamPath": "crates/resvg/tests/fonts/Amiri-LICENSE-OFL.txt",
+      "sha256": "1f91c5ef4a18a747526f9c527d8e39337d31d3f37a8472c89fbdfe874c2d0d69",
+      "license": "OFL-1.1",
+      "licenseTextPath": "tests/fonts/Amiri-LICENSE-OFL.txt",
+      "licenseTextSha256": "1f91c5ef4a18a747526f9c527d8e39337d31d3f37a8472c89fbdfe874c2d0d69"
+    },
+    {
+      "path": "tests/fonts/Amiri-Regular.ttf",
+      "upstreamPath": "crates/resvg/tests/fonts/Amiri-Regular.ttf",
+      "sha256": "f3615b08cc3d78409474c28ed7c9e0fb5cc42435e12080a385e1a4163ab46708",
+      "license": "OFL-1.1",
+      "licenseTextPath": "tests/fonts/Amiri-LICENSE-OFL.txt",
+      "licenseTextSha256": "1f91c5ef4a18a747526f9c527d8e39337d31d3f37a8472c89fbdfe874c2d0d69"
+    },
+    {
+      "path": "tests/fonts/NotoSans-Regular.ttf",
+      "upstreamPath": "crates/resvg/tests/fonts/NotoSans-Regular.ttf",
+      "sha256": "6b04c8dd65af6b73eb4279472ed1580b29102d6496a377340e80a40cdb3b22c9",
+      "license": "OFL-1.1",
+      "licenseTextPath": "tests/fonts/Noto-LICENSE-OFL.txt",
+      "licenseTextSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "tests/fonts/Noto-LICENSE-OFL.txt",
+      "upstreamPath": "crates/resvg/tests/fonts/Noto-LICENSE-OFL.txt",
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+      "license": "OFL-1.1",
+      "licenseTextPath": "tests/fonts/Noto-LICENSE-OFL.txt",
+      "licenseTextSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "tests/fonts/NotoSerif-Regular.ttf",
+      "upstreamPath": "crates/resvg/tests/fonts/NotoSerif-Regular.ttf",
+      "sha256": "0fa6d56e4d826f72c1bc6c287b43fa1ae85b4369339f989cfa5bdf1595f22673",
+      "license": "OFL-1.1",
+      "licenseTextPath": "tests/fonts/Noto-LICENSE-OFL.txt",
+      "licenseTextSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    }
+  ]
+}

@@ -496,26 +496,30 @@ try {
     & (Join-Path $PSScriptRoot 'Restore-NativeAot.ps1') -Architecture $ledgerArchitecture
     & (Join-Path $PSScriptRoot 'Update-NativeAotDependencyLedger.ps1') -Verify
 
-    $testProjectPath = Join-Path (Split-Path -Parent $resolvedProjectPath) '..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj'
-    $resolvedTestProjectPath = Resolve-AbsolutePath -Path $testProjectPath
-    & dotnet restore $resolvedTestProjectPath `
-        -p:Configuration=Release `
-        -p:Platform=x64 `
-        -p:RuntimeIdentifier=win-x64 `
-        --locked-mode
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Locked release-security test restore failed.'
-    }
+    # The ReleaseSecurity tests live in the tests of JitHub.Core and in the
+    # tests of the app's own files.
+    foreach ($testProjectName in @('JitHub.Core.Tests', 'JitHub.WinUI.Tests')) {
+        $testProjectPath = Join-Path (Split-Path -Parent $resolvedProjectPath) "..\$testProjectName\$testProjectName.csproj"
+        $resolvedTestProjectPath = Resolve-AbsolutePath -Path $testProjectPath
+        & dotnet restore $resolvedTestProjectPath `
+            -p:Configuration=Release `
+            -p:Platform=x64 `
+            -p:RuntimeIdentifier=win-x64 `
+            --locked-mode
+        if ($LASTEXITCODE -ne 0) {
+            throw "Locked release-security test restore failed for $testProjectName."
+        }
 
-    & dotnet test $resolvedTestProjectPath `
-        -c Release `
-        -p:Platform=x64 `
-        -p:RuntimeIdentifier=win-x64 `
-        -p:SkipReleaseSecurityGate=true `
-        --filter 'Category=ReleaseSecurity' `
-        --no-restore
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Release security validation failed.'
+        & dotnet test $resolvedTestProjectPath `
+            -c Release `
+            -p:Platform=x64 `
+            -p:RuntimeIdentifier=win-x64 `
+            -p:SkipReleaseSecurityGate=true `
+            --filter 'Category=ReleaseSecurity' `
+            --no-restore
+        if ($LASTEXITCODE -ne 0) {
+            throw "Release security validation failed in $testProjectName."
+        }
     }
 
     if ($UseSigningCertificate) {

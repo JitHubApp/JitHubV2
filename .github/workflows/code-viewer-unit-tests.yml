@@ -28,12 +28,25 @@ jobs:
           global-json-file: ./global.json
 
       - name: Restore dependencies
-        run: dotnet restore JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -p:Platform=x64
+        run: |
+          dotnet restore JitHub.Core.Tests/JitHub.Core.Tests.csproj -p:Platform=x64
+          dotnet restore JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -p:Platform=x64
 
-      - name: Build test project
-        run: dotnet build JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -c Debug -p:Platform=x64 --no-restore
+      - name: Build test projects
+        run: |
+          dotnet build JitHub.Core.Tests/JitHub.Core.Tests.csproj -c Debug -p:Platform=x64 --no-restore
+          dotnet build JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -c Debug -p:Platform=x64 --no-restore
 
-      - name: Run unit tests
+      - name: Run JitHub.Core unit tests
+        run: >
+          dotnet test JitHub.Core.Tests/JitHub.Core.Tests.csproj
+          -c Debug
+          -p:Platform=x64
+          --no-build
+          --logger "trx;LogFileName=core-test-results.trx"
+          --collect:"XPlat Code Coverage"
+
+      - name: Run app unit tests
         run: >
           dotnet test JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj
           -c Debug

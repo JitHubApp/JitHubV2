@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The desktop app's code that does not need its XAML: GitHub models and
+       query services, caching and storage, authentication, telemetry,
+       settings and diagnostics, code viewer services, and the view models
+       and view items the pages bind to. The app (JitHub.WinUI) holds the
+       pages, controls, resources and composition root, and references this
+       project; JitHub.Core.Tests tests it directly. Code is organized by
+       layer, then area (Models, Services, ViewModels), and every namespace is
+       JitHub.Core plus the folder path. -->
+  <PropertyGroup>
+    <!-- Match JitHub.WinUI and the projects it references. Like JitHub.Markdown
+         and the renderer, it uses the SDK's default Windows projection so
+         that JitHub.Core.Tests, which also uses the default, resolves one
+         version. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>JitHub.Core</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- The SDK defaults Platform to AnyCPU before this file is evaluated. -->
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <!-- Architecture-neutral IL, like JitHub.Markdown. RuntimeIdentifiers makes
+         the lock file record every app deployment graph. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <!-- Part of the app's Native AOT graph. Implies IsTrimmable and the trim,
+         single-file and Native AOT analyzers. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Like JitHub.WinUI: view models, collections and other types here cross
+         the WinRT ABI in the Native AOT app, so CsWinRT generates their AOT
+         vtables where they are declared (which needs unsafe code), and level 2
+         makes a type that CsWinRT cannot generate for a build error here. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CsWinRTAotOptimizerEnabled>true</CsWinRTAotOptimizerEnabled>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
+    <!-- GitHub payloads, caches and settings serialize through source-generated
+         contexts. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="JitHub.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="CommunityToolkit.Common" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <!-- The models and view models use Windows App SDK types (theme, dispatcher,
+         incremental loading, resources); the XAML itself stays in the app. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JitHub.Markdown\JitHub.Markdown.csproj" />
+    <ProjectReference Include="..\JitHub.Performance\JitHub.Performance.csproj" />
+    <ProjectReference Include="..\JitHub.Shared\JitHub.Shared.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
+  </ItemGroup>
+</Project>

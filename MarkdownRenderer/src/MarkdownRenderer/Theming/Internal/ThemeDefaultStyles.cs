@@ -1,0 +1,188 @@
+using Microsoft.UI.Xaml;
+using Windows.UI;
+using Windows.UI.Text;
+using MarkdownRenderer.Theming.Internal.Environment;
+
+namespace MarkdownRenderer.Theming.Internal;
+
+/// <summary>
+/// The built-in Windows 11 style for each markdown element role, for light,
+/// dark and High Contrast, before app resources and theme overrides apply.
+/// </summary>
+internal static class ThemeDefaultStyles
+{
+    internal static ElementStyle CreateDefaultStyle(
+        string key,
+        bool isDark,
+        bool isHighContrast,
+        Color? accentColor,
+        PlatformThemeColors platformColors,
+        Windows.UI.Text.FontWeight semiBoldFontWeight,
+        IMarkdownSystemThemeProvider? systemTheme)
+    {
+        ThemeDefaultPalette colors = ResolvePalette(key, isDark, isHighContrast, accentColor, platformColors, systemTheme);
+
+        // Single font family names for Win2D/DirectWrite. DirectWrite does NOT support
+        // CSS-style comma-separated font stacks; the system font fallback maps emoji
+        // code-points to Segoe UI Emoji automatically on Windows 10/11.
+        const string font = "Segoe UI Variable Text";
+        const string mono = "Consolas";
+
+        // The gap a paragraph leaves below itself. A list is a block in the
+        // same flow: it ends with the same gap, as HTML lists and paragraphs do.
+        var paragraphMargin = new Thickness(0, 0, 0, 8);
+
+        return key switch
+        {
+            MarkdownElementKeys.Heading1 or MarkdownElementKeys.Heading2 or MarkdownElementKeys.Heading3 or MarkdownElementKeys.Heading4 or MarkdownElementKeys.Heading5 or MarkdownElementKeys.Heading6 => CreateHeadingStyle(key, font, colors.Foreground, colors.SecondaryForeground, semiBoldFontWeight),
+            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = paragraphMargin, ListIndent = 22f, NestedListIndent = 0f },
+            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.CodeBackground, AccentBar = colors.HighContrastAccent, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.CodeBorder, BorderThickness = isHighContrast ? colors.HighContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
+            MarkdownElementKeys.CodeBlockHeader or MarkdownElementKeys.CodeBlockGutter => new ElementStyle
+            {
+                FontFamily = key == MarkdownElementKeys.CodeBlockGutter ? mono : font,
+                FontSize = 12,
+                Foreground = isHighContrast ? colors.Foreground : colors.CodeMuted,
+                Background = isHighContrast ? colors.HighContrastBackground : colors.CodeHeaderBackground,
+                BorderBrush = key == MarkdownElementKeys.CodeBlockHeader && !isHighContrast ? colors.CodeBorder : colors.HighContrastAccent,
+            },
+            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = semiBoldFontWeight, Foreground = isHighContrast ? colors.Foreground : colors.CodeMuted },
+            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = isHighContrast ? colors.Foreground : colors.CodeMuted },
+            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.CodeBackground, CornerRadius = isHighContrast ? 0 : 3, Padding = new Thickness(2, 0, 2, 0) },
+            MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.SecondaryForeground, AccentBar = isHighContrast ? colors.HighContrastAccent : colors.QuoteBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
+            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = isHighContrast ? colors.Foreground : colors.Accent, HoverForeground = colors.LinkHover, FocusForeground = colors.LinkHover, Underline = isHighContrast ? colors.Roles.Underline : true },
+            MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = colors.Foreground },
+            MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = colors.Foreground },
+            MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = isHighContrast ? colors.Roles.Strikethrough : true, Foreground = colors.SecondaryForeground },
+            MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = colors.Foreground },
+            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = isHighContrast ? colors.Roles.Underline : true, Foreground = colors.Foreground },
+            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : isDark ? Color.FromArgb(0x45, 0xFF, 0xD8, 0x66) : Color.FromArgb(0x66, 0xFF, 0xE5, 0x8A), CornerRadius = isHighContrast ? 0 : 3 },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, AccentBar = isHighContrast ? colors.HighContrastAccent : colors.Accent, Underline = isHighContrast ? colors.Roles.Underline : true },
+            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = colors.Foreground, Margin = new Thickness(0, 4, 0, 0) },
+            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.SecondaryForeground, Background = colors.HighContrastBackground, Margin = new Thickness(18, 0, 0, 6) },
+            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = new Thickness(0, 8, 0, 10) },
+            MarkdownElementKeys.FigureCaption or MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = colors.SecondaryForeground, Background = key == MarkdownElementKeys.FigureCaption ? colors.HighContrastBackground : null, Margin = new Thickness(0, 2, 0, 8) },
+            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.CodeBackground, AccentBar = colors.HighContrastAccent, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.QuoteBar, BorderThickness = isHighContrast ? colors.HighContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
+            MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = isHighContrast ? new Thickness(1, 0, 1, 0) : new Thickness(0, 0, 0, 4) },
+            MarkdownElementKeys.List => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = paragraphMargin },
+            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.SecondaryForeground, ListIndent = 22f, NestedListIndent = 0f },
+            MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = isHighContrast ? colors.Foreground : colors.QuoteBar, Margin = new Thickness(0, 12, 0, 12) },
+            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.TableBackground, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.TableBorder, BorderThickness = isHighContrast ? colors.HighContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 8, 0, 12) },
+            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.TableHeaderBackground, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.TableBorder, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = isHighContrast ? colors.HighContrastBackground : colors.TableBackground, BorderBrush = isHighContrast ? colors.HighContrastAccent : colors.TableBorder, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle
+            {
+                FontFamily = font,
+                FontSize = 14,
+                Foreground = colors.Foreground,
+                AccentBar = isHighContrast ? colors.HighContrastAccent : key switch
+                {
+                    MarkdownElementKeys.AlertNote => Color.FromArgb(0xFF, 0x0E, 0xA5, 0xE9),
+                    MarkdownElementKeys.AlertTip => Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E),
+                    MarkdownElementKeys.AlertImportant => Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7),
+                    MarkdownElementKeys.AlertWarning => Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B),
+                    _ => Color.FromArgb(0xFF, 0xEF, 0x44, 0x44),
+                },
+                Padding = new Thickness(12, 2, 8, 2),
+                Margin = new Thickness(0, 4, 0, 8),
+            },
+            _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = colors.Foreground, Background = colors.HighContrastBackground, Margin = new Thickness(0, 0, 0, 4) }
+        };
+    }
+
+    /// <summary>
+    /// The colors the built-in styles draw from: the system High Contrast roles
+    /// for this element, or hardcoded Windows 11 design-token equivalents.
+    /// </summary>
+    private static ThemeDefaultPalette ResolvePalette(
+        string key,
+        bool isDark,
+        bool isHighContrast,
+        Color? accentColor,
+        PlatformThemeColors platformColors,
+        IMarkdownSystemThemeProvider? systemTheme)
+    {
+        MarkdownHighContrastStyleRoles roles = isHighContrast
+            ? MarkdownHighContrastDefaults.Resolve(key)
+            : default;
+        Color highContrastForeground = isHighContrast
+            ? ResolveHighContrastRole(roles.Foreground, systemTheme!)
+            : default;
+        Color? highContrastBackground = isHighContrast && roles.Background is { } backgroundRole
+            ? ResolveHighContrastRole(backgroundRole, systemTheme!)
+            : null;
+        Color? highContrastAccent = isHighContrast && roles.AccentBar is { } accentRole
+            ? ResolveHighContrastRole(accentRole, systemTheme!)
+            : null;
+
+        // Hardcoded Win11 design token equivalents — bypasses the XAML resource system
+        // which only works reliably for the app-level theme, not per-element themes.
+        var fg = isHighContrast ? highContrastForeground : platformColors.PrimaryText;
+        var fgSecondary = isHighContrast ? highContrastForeground : platformColors.SecondaryText;
+        // Accent: try to get the user's accent color, fall back to Win11 blue.
+        var accent      = isHighContrast ? highContrastForeground : accentColor ?? platformColors.AccentText;
+        var linkHover   = isHighContrast ? highContrastForeground : ThemeColorMath.AdjustColor(accent, isDark ? 0.18f : -0.12f);
+        var codeBg      = isDark ? Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E) : Color.FromArgb(0xFF, 0xF6, 0xF8, 0xFA);
+        var codeHeaderBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x26) : Color.FromArgb(0xFF, 0xF0, 0xF2, 0xF5);
+        var codeBorder = isDark ? Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3C) : Color.FromArgb(0xFF, 0xD0, 0xD7, 0xDE);
+        var codeMuted = isDark ? Color.FromArgb(0xFF, 0x85, 0x85, 0x85) : Color.FromArgb(0xFF, 0x6E, 0x77, 0x81);
+        var tableBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x25) : Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        var tableHeaderBg = isDark ? Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30) : Color.FromArgb(0xFF, 0xF7, 0xF8, 0xFA);
+        var tableBorder = isDark ? Color.FromArgb(0xFF, 0x3D, 0x3D, 0x40) : Color.FromArgb(0xFF, 0xD8, 0xDC, 0xE0);
+        var quoteBar    = isDark ? Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x50, 0x00, 0x00, 0x00);
+
+        return new ThemeDefaultPalette(
+            roles,
+            highContrastBackground,
+            highContrastAccent,
+            fg,
+            fgSecondary,
+            accent,
+            linkHover,
+            codeBg,
+            codeHeaderBg,
+            codeBorder,
+            codeMuted,
+            tableBg,
+            tableHeaderBg,
+            tableBorder,
+            quoteBar);
+    }
+
+    private static ElementStyle CreateHeadingStyle(
+        string key,
+        string font,
+        Color foreground,
+        Color secondaryForeground,
+        Windows.UI.Text.FontWeight semiBoldFontWeight)
+    {
+        var (fontSize, marginTop, marginBottom) = key switch
+        {
+            MarkdownElementKeys.Heading1 => (32f, 16d, 8d),
+            MarkdownElementKeys.Heading2 => (26f, 14d, 6d),
+            MarkdownElementKeys.Heading3 => (22f, 12d, 4d),
+            MarkdownElementKeys.Heading4 => (18f, 10d, 4d),
+            MarkdownElementKeys.Heading5 => (15f, 8d, 2d),
+            _ => (14f, 6d, 2d),
+        };
+        return new ElementStyle
+        {
+            FontFamily = font,
+            FontSize = fontSize,
+            FontWeight = semiBoldFontWeight,
+            Foreground = key == MarkdownElementKeys.Heading6 ? secondaryForeground : foreground,
+            Margin = new Thickness(0, marginTop, 0, marginBottom),
+        };
+    }
+
+    private static Color ResolveHighContrastRole(
+        MarkdownHighContrastColorRole role,
+        IMarkdownSystemThemeProvider systemTheme) => role switch
+    {
+        MarkdownHighContrastColorRole.WindowText => systemTheme.WindowTextColor,
+        MarkdownHighContrastColorRole.Window => systemTheme.WindowColor,
+        MarkdownHighContrastColorRole.Hotlight => systemTheme.HotlightColor,
+        MarkdownHighContrastColorRole.Highlight => systemTheme.HighlightColor,
+        MarkdownHighContrastColorRole.HighlightText => systemTheme.HighlightTextColor,
+        _ => systemTheme.WindowTextColor,
+    };
+}

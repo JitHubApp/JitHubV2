@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "packageId": "MarkdownRenderer.Mermaid",
+      "allowNoNative": false,
+      "assets": [
+        {
+          "path": "runtimes/win-arm64/native/MarkdownRenderer.Mermaid.Native.dll",
+          "machine": "arm64",
+          "exportsFile": "native-abi-mermaid-exports.txt"
+        },
+        {
+          "path": "runtimes/win-x64/native/MarkdownRenderer.Mermaid.Native.dll",
+          "machine": "x64",
+          "exportsFile": "native-abi-mermaid-exports.txt"
+        },
+        {
+          "path": "runtimes/win-x86/native/MarkdownRenderer.Mermaid.Native.dll",
+          "machine": "x86",
+          "exportsFile": "native-abi-mermaid-exports.txt"
+        }
+      ]
+    },
+    {
+      "packageId": "MarkdownRenderer.Svg.Resvg",
+      "allowNoNative": false,
+      "assets": [
+        {
+          "path": "runtimes/win-arm64/native/MarkdownRenderer.Svg.Resvg.Worker.exe",
+          "machine": "arm64",
+          "exports": []
+        },
+        {
+          "path": "runtimes/win-x64/native/MarkdownRenderer.Svg.Resvg.Worker.exe",
+          "machine": "x64",
+          "exports": []
+        },
+        {
+          "path": "runtimes/win-x86/native/MarkdownRenderer.Svg.Resvg.Worker.exe",
+          "machine": "x86",
+          "exports": []
+        }
+      ]
+    }
+  ]
+}

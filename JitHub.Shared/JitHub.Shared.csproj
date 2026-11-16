@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Code that both the desktop app and the JitHub.Web website use: the
+       OAuth handoff wire protocol and the theme palette catalog. It targets
+       plain net10.0 because the website builds and runs on Linux, and it
+       depends on nothing, so either side references it instead of compiling
+       its files. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>JitHub.Shared</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- Part of the app's Native AOT graph, whose publish analyzes this
+         assembly with warnings as errors. It does not set IsAotCompatible:
+         that adds the SDK-versioned Microsoft.NET.ILLink.Tasks package to
+         this lock file, and JitHub.Web restores this project in locked mode
+         on its own SDK. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+  </ItemGroup>
+</Project>

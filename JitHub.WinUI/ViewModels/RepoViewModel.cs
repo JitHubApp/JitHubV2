@@ -1,0 +1,31 @@
+using JitHub.WinUI.Models.LegacyGitHub;
+using System;
+using System.Threading.Tasks;
+
+namespace JitHub.WinUI.ViewModels
+{
+public partial class RepoViewModel : LoadableViewModel<Repository>
+    {
+        public Repository Repo
+        {
+            get => Model;
+            set => Model = value;
+        }
+
+        public bool IsAuthor => User?.Login == Repo?.Owner?.Login;
+
+        virtual public async Task<bool> IsCollaborator()
+        {
+            try
+            {
+                var res = await GitHubService.IsUserCollaborator(Repo.Id, User?.Login);
+                return res;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+    }
+}
+

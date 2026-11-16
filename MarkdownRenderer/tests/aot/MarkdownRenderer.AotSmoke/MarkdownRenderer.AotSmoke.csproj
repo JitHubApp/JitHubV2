@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- WinAppSDK's single-file target embeds PRI resources through MSIX tooling. -->
+    <EnableMsixTooling Condition="'$(PublishSingleFile)' == 'true'">true</EnableMsixTooling>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Match the application's WinRT projection settings in the AOT consumer. -->
+    <CsWinRTAotOptimizerEnabled>true</CsWinRTAotOptimizerEnabled>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <!-- Windows SDK 10.0.26100.57 / CsWinRT 2.3.1 emits IL2081 in generated
+         ABI fallback projections during NativeAOT and single-file trimming.
+         NativeAOT remains fully enforced, as do every other trim diagnostic. -->
+    <NoWarn Condition="'$(PublishAot)' == 'true' or '$(PublishSingleFile)' == 'true'">$(NoWarn);IL2081</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MarkdownRendererPackageVersion)' == ''">
+    <!-- Single-file and MSIX settings apply to this executable, not the referenced libraries. -->
+    <ProjectReference Include="..\..\..\src\MarkdownRenderer\MarkdownRenderer.csproj">
+      <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MarkdownRendererPackageVersion)' != ''">
+    <!-- This is the renderer's own package, freshly packed by CI, not a
+         third-party dependency: CI passes the version it just packed, so it
+         overrides Directory.Packages.props instead of being pinned there. -->
+    <PackageReference Include="MarkdownRenderer" VersionOverride="$(MarkdownRendererPackageVersion)" />
+  </ItemGroup>
+</Project>

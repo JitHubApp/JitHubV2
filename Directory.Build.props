@@ -1,5 +1,10 @@
 <Project>
   <PropertyGroup>
+    <!-- Keep the Windows SDK command-line tools consistent for WinUI and
+         self-contained renderer hosts. Projects that merge app manifests
+         must reference this package directly; transitive build assets are
+         intentionally not a reliable tool-discovery mechanism. -->
+    <JitHubWindowsSdkBuildToolsVersion>10.0.28000.1721</JitHubWindowsSdkBuildToolsVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>

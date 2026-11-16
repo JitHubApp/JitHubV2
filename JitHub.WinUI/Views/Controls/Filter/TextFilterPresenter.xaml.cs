@@ -1,4 +1,4 @@
-using JitHub.Models.Filter;
+using JitHub.WinUI.Models.Filter;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

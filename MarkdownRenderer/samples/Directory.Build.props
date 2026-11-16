@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <MarkdownRendererProject>true</MarkdownRendererProject>
+  </PropertyGroup>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Sample applications and their UI-automation driver. None of them ships. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

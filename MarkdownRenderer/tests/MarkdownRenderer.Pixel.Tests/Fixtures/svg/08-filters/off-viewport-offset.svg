@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <filter id="move" filterUnits="userSpaceOnUse" x="0" y="0" width="192" height="32">
+      <feOffset dx="-128"/>
+    </filter>
+  </defs>
+  <g filter="url(#move)">
+    <g opacity=".5"><rect x="128" y="4" width="24" height="24" fill="#0078d4"/></g>
+  </g>
+</svg>

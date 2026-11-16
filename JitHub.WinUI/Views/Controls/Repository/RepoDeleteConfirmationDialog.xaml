@@ -1,0 +1,62 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Repository.RepoDeleteConfirmationDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.Repository"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Padding="{ThemeResource AppPadding16_32}">
+            <StackPanel
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Spacing="{ThemeResource AppGap8}">
+                <TextBlock>
+                    <Run x:Uid="ControlsRepoRepoDeleteConfirmationDialogRunYouAreAboutTo" Text="You are about to delete "/>
+                    <Run Text="{x:Bind Number, Mode=OneWay}"/>
+                    <Run x:Uid="ControlsRepoRepoDeleteConfirmationDialogRunRepositories" Text=" repositories."/>
+                </TextBlock>
+                <CheckBox
+                    x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteDoNotS" AutomationProperties.AutomationId="RepoDeleteDoNotShowAgainCheckBox"
+                    AutomationProperties.Name="Do not show this confirmation again"
+                    Content="Don't show this again."
+                    Unchecked="CheckBox_Checked"
+                    Checked="CheckBox_Checked"/>
+            </StackPanel>
+            
+        </Grid>
+        <Grid
+            Grid.Row="1"
+            Background="{ThemeResource AppSolidSecondaryRush}"
+            Padding="{ThemeResource AppPadding0_32_16_32}">
+            <StackPanel
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="{ThemeResource AppGap8}">
+                <Button
+                    x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteConfir" AutomationProperties.AutomationId="RepoDeleteConfirmButton"
+                    AutomationProperties.Name="Confirm repository deletion"
+                    Content="Confirm"
+                Style="{StaticResource AppAccentButtonStyle}"
+                    Command="{x:Bind ConfirmCommand, Mode=OneWay}"/>
+                <Button
+                    x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteCancel" AutomationProperties.AutomationId="RepoDeleteCancelButton"
+                    AutomationProperties.Name="Cancel repository deletion"
+                    Content="Cancel"
+                    Style="{StaticResource AppOutlineButtonStyle}"
+                    Command="{x:Bind CancelCommand, Mode=OneWay}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>
+

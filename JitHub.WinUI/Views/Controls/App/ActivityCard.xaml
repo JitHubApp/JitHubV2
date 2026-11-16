@@ -2,8 +2,8 @@
     x:Class="JitHub.WinUI.Views.Controls.App.ActivityCard"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:activities="using:JitHub.Models.Activities"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:activities="using:JitHub.WinUI.Models.Activities"
+    xmlns:images="using:JitHub.WinUI.Views.Controls.Images"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     HorizontalAlignment="Stretch"
@@ -43,7 +43,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <common:Avatar
+            <images:Avatar
                 Margin="{ThemeResource AppMargin0_3_0_0}"
                 AutomationInstanceId="{x:Bind ViewModel.EventId, Mode=OneWay}"
                 VerticalAlignment="Top"

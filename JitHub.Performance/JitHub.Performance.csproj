@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The product performance contract: route budgets and the gate verdict,
+       the run plan, readiness traversal, observation trackers and the report
+       document. The app records against it; the out-of-process performance
+       gate (JitHub.WinUI.PerformanceGate) and the automation harness
+       (JitHub.WinUI.Automation) plan, read and judge with the same types.
+       It targets plain net10.0 and depends on nothing, so those FlaUI drivers
+       reference it without taking on the app's Windows App SDK graph. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>JitHub.Performance</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- Part of the app's Native AOT graph. Implies IsTrimmable and the trim,
+         single-file and Native AOT analyzers. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The report document serializes through its source-generated context. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+  </ItemGroup>
+</Project>

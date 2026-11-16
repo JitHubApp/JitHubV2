@@ -1,0 +1,50 @@
+using System;
+using System.IO;
+using JitHub.Core.ViewModels.CodeViewer;
+using JitHub.Markdown.Documents;
+using JitHub.Markdown.Links;
+using MarkdownRenderer.Images;
+using Xunit;
+
+namespace JitHub.Core.Tests.ViewModels.CodeViewer;
+
+/// <summary>
+/// Link routing that needs the app: payload-backed README sources and the shell's
+/// route confirmation. The policy itself is tested in JitHub.Markdown.Tests.
+/// </summary>
+public sealed class MarkdownLinkRoutingIntegrationTests
+{
+    [Fact]
+    public void PayloadBackedNestedReadme_ResolvesRelativeLinkFromPayloadContext()
+    {
+        const string commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string blob = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string readmePath = "docs/guides/README.md";
+        string baseUrl = $"https://github.com/owner/repository/blob/{commit}/{readmePath}";
+        MarkdownDocumentSource source = MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+            blob,
+            baseUrl,
+            readmePath) ?? throw new InvalidOperationException("The test README source should be valid.");
+        var payload = new MarkdownViewerDocumentPayload(
+            "# Guide",
+            baseUrl,
+            readmePath,
+            source);
+        const string relativeLink = "../setup/install.md";
+
+        Assert.True(MarkdownLinkNavigationPolicy.TryResolveLaunchUri(
+            relativeLink,
+            new Uri(payload.BaseUrl!, UriKind.Absolute),
+            payload.DocumentSource,
+            out Uri? resolved,
+            out bool mayNavigateInternally));
+        Assert.Equal(
+            $"https://github.com/owner/repository/blob/{commit}/docs/setup/install.md",
+            resolved!.ToString());
+        Assert.True(mayNavigateInternally);
+        // MarkdownPreview supplies repository context only through its atomic
+        // payload. MarkdownViewer reads rendering and link activation from one
+        // CurrentDocument() so the two cannot diverge; observing the link event
+        // itself needs a live XAML runtime.
+    }
+}

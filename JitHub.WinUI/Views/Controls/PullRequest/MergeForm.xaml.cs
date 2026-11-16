@@ -1,11 +1,11 @@
-using JitHub.Models.LegacyGitHub;
-using PullRequestMergeMethod = JitHub.Models.LegacyGitHub.PullRequestMergeMethod;
-using PullRequestModel = JitHub.Models.LegacyGitHub.PullRequest;
-using RepositoryModel = JitHub.Models.LegacyGitHub.Repository;
+using PullRequestMergeMethod = JitHub.WinUI.Models.LegacyGitHub.PullRequestMergeMethod;
+using PullRequestModel = JitHub.WinUI.Models.LegacyGitHub.PullRequest;
+using RepositoryModel = JitHub.WinUI.Models.LegacyGitHub.Repository;
 using System.Windows.Input;
-using JitHub.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using JitHub.WinUI.Models.LegacyGitHub;
+using JitHub.WinUI.Services.Dialogs;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
 

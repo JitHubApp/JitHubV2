@@ -13,7 +13,7 @@ Implemented:
   text search, word/line/paragraph movement, bounding rectangles, children, and
   scroll-into-view;
 - `ITextProvider.RangeFromChild` maps UIA child providers back to semantic text
-  ranges for links, images, table/list nodes, and hosted WinUI embeds;
+  ranges for links, images, table/list nodes, and hosted WinUI elements;
 - `ITextRangeProvider.GetAttributeValue` and `FindAttribute` expose common
   native text attributes: read-only/hidden/active/culture/flow direction, font
   family/size/weight, foreground/background color, underline, strikethrough,
@@ -34,8 +34,8 @@ Implemented:
 - abbreviations expose their expanded form in semantic text;
 - definition lists, figures/captions, and extra emphasis variants participate in
   TextPattern ranges and source-mapped selection;
-- keyboard focus ordering coordinates painted links and hosted WinUI embeds;
-- hosted WinUI embeds expose their normal XAML UIA peers through the visual tree.
+- keyboard focus ordering coordinates painted links and hosted WinUI elements;
+- hosted WinUI elements expose their normal XAML UIA peers through the visual tree.
 
 ## Current peer model
 
@@ -71,7 +71,7 @@ assistive-technology behavior that cannot be trusted from unit tests alone:
 - arrow-key spatial navigation and pointer-resume semantics that match native
   controls in more edge cases;
 - richer row-header modeling if a later table syntax supports row headers;
-- broader verification around virtualized embeds and offscreen text ranges.
+- broader verification around virtualized hosted elements and offscreen text ranges.
 
 ## Accessibility testing
 

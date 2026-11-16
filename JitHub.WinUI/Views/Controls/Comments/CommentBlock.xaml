@@ -1,0 +1,40 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Comments.CommentBlock"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.Comments"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Border
+        Style="{StaticResource Container}"
+        Padding="{ThemeResource AppPadding0}">
+        <Grid
+            Padding="{ThemeResource AppPadding0}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border
+                Grid.Row="0"
+                Padding="{ThemeResource AppPadding12_10}"
+                Background="{ThemeResource AppCanvasRaisedBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusMedium}">
+                <ContentPresenter
+                    Content="{x:Bind HeaderContent, Mode=OneWay}"/>
+            </Border>
+            <Grid
+                Grid.Row="1">
+                <ContentPresenter
+                    Content="{x:Bind BodyContent, Mode=OneWay}"/>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>
+

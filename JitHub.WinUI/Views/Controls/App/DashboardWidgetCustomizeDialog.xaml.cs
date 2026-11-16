@@ -1,5 +1,5 @@
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Services.Dialogs;
+using JitHub.WinUI.ViewModels.Dashboard;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

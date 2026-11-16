@@ -1,0 +1,229 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using JitHub.WinUI.Tests.TestSupport;
+using Xunit;
+
+namespace JitHub.WinUI.Tests.Services.GitHub;
+
+public sealed partial class GitHubReadArchitectureConformanceTests
+{
+    private static readonly IReadOnlySet<string> DirectHttpAdapters =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Protocol/compatibility adapters. Reachable pages must consume their query facades instead.
+            "GitHubClientService.cs",
+            "GitHubRestTransport.cs",
+            "GitHubService.cs",
+            "GitHubService.Post.cs",
+            "GitHubGistQueryService.cs",
+            "GitHubNotificationQueryService.cs",
+            // GraphQL HTTP is confined to its protocol adapter. Profile's direct HTTP is mutation-only.
+            "GitHubGraphQlTransport.cs",
+            "GitHubProfileQueryService.cs",
+            // Remote image traffic is separately constrained by MarkdownRemoteImagePolicy.
+            "GitHubImageHttpFetcher.cs"
+            ,"GitHubDeviceFlowClient.cs"
+        };
+
+    [Fact]
+    public void CanonicalRepositoryMetadataCallersUseThePhaseZeroQueryFacade()
+    {
+        string root = FindRepositoryRoot();
+        string settings = Read(root, "JitHub.WinUI", "Views", "Pages", "SettingsPage.xaml.cs");
+        string settingsViewModel = Read(
+            root,
+            "JitHub.Core",
+            "ViewModels",
+            "Settings",
+            "SettingsPageViewModel.cs");
+        string settingsNavigation = Read(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Settings",
+            "SettingsSourceNavigationService.cs");
+        string shell = Read(root, "JitHub.WinUI", "ViewModels", "Shell", "ShellPageViewModel.cs");
+        string stars = Read(root, "JitHub.Core", "Services", "Stars", "GitHubStarLibraryService.cs");
+
+        Assert.Contains("ViewModel.OpenSourceRepositoryAsync", settings, StringComparison.Ordinal);
+        Assert.Contains("ISettingsSourceNavigationService", settingsViewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetService<IGitHubService>", settings, StringComparison.Ordinal);
+        Assert.Contains("IGitHubRepositoryQueryService", settingsNavigation, StringComparison.Ordinal);
+        Assert.Contains("_repositoryQueryService.GetRepositoryAsync", settingsNavigation, StringComparison.Ordinal);
+
+        Assert.Contains("_repositoryQueryService.GetRepositoryAsync", shell, StringComparison.Ordinal);
+        Assert.DoesNotContain("_gitHubClientService.GetRepositoryAsync", shell, StringComparison.Ordinal);
+
+        Assert.Contains("_repositoryQueryService.GetRepositoryAsync", stars, StringComparison.Ordinal);
+        Assert.DoesNotContain("_clientService.GetRepositoryAsync", stars, StringComparison.Ordinal);
+        Assert.Contains("GitHubRequestPriority.BackgroundRefresh", stars, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProfileMutationsUseOwnedAccountWorkAndViewModelCancellation()
+    {
+        string root = FindRepositoryRoot();
+        string service = Read(root, "JitHub.Core", "Services", "Profile", "GitHubProfileQueryService.cs");
+        string viewModel = Read(root, "JitHub.WinUI", "ViewModels", "Profile", "ProfilePageViewModel.cs");
+
+        Assert.Contains("_requestQueue.EnqueueForAccountAsync", service, StringComparison.Ordinal);
+        Assert.Contains("GitHubRequestPriority.Mutation", service, StringComparison.Ordinal);
+        Assert.Contains("_taskCoordinator.RunAsync", service, StringComparison.Ordinal);
+        Assert.Contains("new ApplicationTaskOptions(taskName, accountPartition)", service, StringComparison.Ordinal);
+        Assert.Contains("using CancellationTokenSource mutation = BeginMutation(cancellationToken);", viewModel, StringComparison.Ordinal);
+        Assert.Contains("UpdateAuthenticatedProfileAsync(", viewModel, StringComparison.Ordinal);
+        Assert.Contains("UnfollowUserAsync(", viewModel, StringComparison.Ordinal);
+        Assert.Contains("FollowUserAsync(", viewModel, StringComparison.Ordinal);
+        Assert.True(
+            Regex.Matches(viewModel, @"\bmutationToken\s*\);").Count >= 3,
+            "Profile edit, follow, and unfollow calls must receive the active mutation token.");
+    }
+
+    [Fact]
+    public void ReachableOwnersDoNotAddDirectGitHubClientReads()
+    {
+        string root = FindRepositoryRoot();
+        List<string> violations = [];
+
+        foreach (string file in EnumerateOwnerFiles())
+        {
+            string fileName = Path.GetFileName(file);
+            string source = File.ReadAllText(file);
+            foreach (string method in FindReadInvocations(source, ClientDeclarationRegex()))
+            {
+                if (IsAllowedDirectClientRead(fileName, method))
+                {
+                    continue;
+                }
+
+                violations.Add($"{Path.GetRelativePath(root, file)} owns direct read {method}");
+            }
+        }
+
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void ViewsAndViewModelsDoNotInvokeLegacyGitHubReads()
+    {
+        string root = FindRepositoryRoot();
+        string[] violations = EnumerateOwnerFiles()
+            .Where(file => file.Contains($"{Path.DirectorySeparatorChar}Views{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+                           file.Contains($"{Path.DirectorySeparatorChar}ViewModels{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .Where(file => FindReadInvocations(File.ReadAllText(file), LegacyServiceDeclarationRegex()).Any())
+            .Select(file => Path.GetRelativePath(root, file))
+            .ToArray();
+
+        Assert.True(violations.Length == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void DirectHttpTrafficIsConfinedToDocumentedAdapters()
+    {
+        string root = FindRepositoryRoot();
+        string[] violations = EnumerateProductFiles("Services")
+            .Where(file => FindHttpInvocations(File.ReadAllText(file)).Any())
+            .Where(file => !DirectHttpAdapters.Contains(Path.GetFileName(file)))
+            .Select(file => Path.GetRelativePath(root, file))
+            .ToArray();
+
+        Assert.True(violations.Length == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    private static bool IsAllowedDirectClientRead(string fileName, string method)
+    {
+        if (fileName.Equals("AuthService.cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return method is "GetCurrentUserAsync" or "GetTokenScopesAsync";
+        }
+
+        if (fileName is "GitHubClientService.cs" or "GitHubService.cs" or "GitHubService.Post.cs")
+        {
+            return true;
+        }
+
+        // Markdown image resolution moved out of GitHubService with exactly these
+        // repository-image and rendered-README reads. It now lives in JitHub.Markdown
+        // and reaches the app's client only through this adapter, which gains no
+        // other direct client reads.
+        if (fileName.Equals("GitHubMarkdownContentClient.cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return method is "GetRepositoryContentAsync" or "GetBlobAsync" or "GetRenderedReadmeHtmlAsync";
+        }
+
+        return false;
+    }
+
+    // Views, view models and services live in the app and in the libraries it
+    // references (JitHub.Core and the others ProductSourceTree lists), in the
+    // same folder layout, so each owner folder is scanned in every project.
+    private static IEnumerable<string> EnumerateOwnerFiles() =>
+        new[] { "Views", "ViewModels", "Services" }
+            .SelectMany(EnumerateProductFiles);
+
+    private static IEnumerable<string> EnumerateProductFiles(string directory) =>
+        ProductSourceTree.EnumerateFiles("*.cs")
+            .Where(file => file.RelativePath.StartsWith(directory + "/", StringComparison.Ordinal))
+            .Select(static file => file.FullPath);
+
+    private static IEnumerable<string> FindReadInvocations(string source, Regex declarationRegex)
+    {
+        foreach (Match declaration in declarationRegex.Matches(source))
+        {
+            string variable = declaration.Groups["variable"].Value;
+            Regex invocation = new(
+                $@"\b{Regex.Escape(variable)}\.(?<method>(?:Get|Search|Is)[A-Za-z0-9_]*)\s*\(",
+                RegexOptions.CultureInvariant);
+            foreach (Match match in invocation.Matches(source))
+            {
+                yield return match.Groups["method"].Value;
+            }
+        }
+    }
+
+    private static IEnumerable<string> FindHttpInvocations(string source)
+    {
+        foreach (Match declaration in HttpClientDeclarationRegex().Matches(source))
+        {
+            string variable = declaration.Groups["variable"].Value;
+            Regex invocation = new(
+                $@"\b{Regex.Escape(variable)}\.(?:GetAsync|GetStringAsync|SendAsync)\s*\(",
+                RegexOptions.CultureInvariant);
+            if (invocation.IsMatch(source))
+            {
+                yield return variable;
+            }
+        }
+    }
+
+    private static string Read(string root, params string[] segments) =>
+        File.ReadAllText(Path.Combine(new[] { root }.Concat(segments).ToArray()));
+
+    private static string FindRepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not find the JitHub repository root.");
+    }
+
+    [GeneratedRegex(@"\bIGitHubClientService\s+(?<variable>[_A-Za-z][_A-Za-z0-9]*)", RegexOptions.CultureInvariant)]
+    private static partial Regex ClientDeclarationRegex();
+
+    [GeneratedRegex(@"\bIGitHubService\s+(?<variable>[_A-Za-z][_A-Za-z0-9]*)", RegexOptions.CultureInvariant)]
+    private static partial Regex LegacyServiceDeclarationRegex();
+
+    [GeneratedRegex(@"\bHttpClient\s+(?<variable>[_A-Za-z][_A-Za-z0-9]*)", RegexOptions.CultureInvariant)]
+    private static partial Regex HttpClientDeclarationRegex();
+}

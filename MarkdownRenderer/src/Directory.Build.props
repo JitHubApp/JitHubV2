@@ -1,0 +1,64 @@
+<Project>
+  <PropertyGroup>
+    <MarkdownRendererProject>true</MarkdownRendererProject>
+  </PropertyGroup>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Shipping libraries and the MarkdownRenderer / MarkdownRenderer.All
+       meta-packages. -->
+  <PropertyGroup>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <!-- Every renderer assembly is architecture-neutral IL. Native code ships
+         only as runtimes/<rid>/native payloads (Mermaid, resvg) or comes from a
+         dependency that resolves its RID asset in the consuming app (Win2D).
+         One RID-neutral package therefore serves x86, x64 and ARM64
+         applications, and an x64 pack cannot produce a library unusable
+         elsewhere; Platform only selects matching project references.
+         RuntimeIdentifiers makes the lock file record every supported
+         consumer deployment graph, so RID-specific consumer restores stay
+         deterministic without splitting a package. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+
+    <!-- Implies IsTrimmable and the trim, single-file and NativeAOT analyzers. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors>$(WarningsAsErrors);$(MarkdownRendererTrimAndAotWarningsAsErrors)</WarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- NuGet metadata shared by every renderer package. Each project sets its
+       own PackageId, Description and PackageTags. -->
+  <PropertyGroup>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <!-- The archive keeps the icon name the packages have always shipped. -->
+    <PackageIcon>icon-192.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The product README; a package with its own README points this at it. -->
+    <MarkdownRendererPackageReadme>$(MSBuildThisFileDirectory)..\..\docs\markdown-renderer\README.md</MarkdownRendererPackageReadme>
+  </PropertyGroup>
+
+  <!-- Every project that ships an assembly declares its public surface in
+       PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt next to its project
+       file. PublicApiAnalyzers.globalconfig makes undeclared, removed and
+       unannotated entries build errors, and Directory.Build.targets fails
+       the build when either file is missing. The meta-package
+       MarkdownRenderer.All sets IncludeBuildOutput=false and ships no
+       assembly, so it has no API to track. Item conditions are evaluated after all properties, so the
+       project file's IncludeBuildOutput is visible here. -->
+  <ItemGroup Condition="'$(IncludeBuildOutput)' != 'false'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)PublicApiAnalyzers.globalconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)..\assets\package-icon.png" Pack="true" PackagePath="$(PackageIcon)" Visible="false" />
+    <None Include="$(MarkdownRendererPackageReadme)" Pack="true" PackagePath="$(PackageReadmeFile)" Visible="false" />
+  </ItemGroup>
+</Project>
