@@ -165,9 +165,17 @@ public sealed class AccessibilityReleaseGateTests
             context,
             string.Empty,
             string.Empty,
-            linkUrl: "https://example.test")
+            linkUrl: "https://example.test/docs/start")
         {
             SourceSpan = new SourceSpan(5, 4),
+        });
+        paragraph.Add(new InlineImageRun(
+            context,
+            string.Empty,
+            string.Empty,
+            linkUrl: "#")
+        {
+            SourceSpan = new SourceSpan(10, 4),
         });
 
         using var snapshot = new LayoutSnapshot(
@@ -176,12 +184,16 @@ public sealed class AccessibilityReleaseGateTests
             width: 100,
             height: 20);
         MarkdownSemanticNode semanticParagraph = Assert.Single(snapshot.SemanticDocument.Root.Children);
-        MarkdownSemanticNode linkedImage = Assert.Single(
-            semanticParagraph.Children,
-            static node => node.Role == MarkdownSemanticRole.Image);
+        MarkdownSemanticNode[] linkedImages = semanticParagraph.Children
+            .Where(static node => node.Role == MarkdownSemanticRole.Image)
+            .ToArray();
+        Assert.Equal(2, linkedImages.Length);
 
-        Assert.Equal("Localized image", snapshot.SemanticDocument.GetText(linkedImage));
-        InlineImageRun linkedRun = Assert.IsType<InlineImageRun>(linkedImage.InlineRun);
+        // A linked image with no alt text or title is named by where its link goes;
+        // only a target with nothing readable falls back to the localized image name.
+        Assert.Equal("example.test/docs/start", snapshot.SemanticDocument.GetText(linkedImages[0]));
+        Assert.Equal("Localized image", snapshot.SemanticDocument.GetText(linkedImages[1]));
+        InlineImageRun linkedRun = Assert.IsType<InlineImageRun>(linkedImages[0].InlineRun);
         Assert.True(linkedRun.IsLinked);
         Assert.Equal(paragraph.BlockIndex, linkedRun.Image.BlockIndex);
     }

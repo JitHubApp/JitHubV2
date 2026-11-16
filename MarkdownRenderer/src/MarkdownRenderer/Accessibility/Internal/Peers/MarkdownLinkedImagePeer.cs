@@ -200,11 +200,12 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     private string GetImageName(InlineImageRun run, MarkdownImageAccessibilityState state)
     {
         string description = string.IsNullOrWhiteSpace(run.AltText)
-            ? string.IsNullOrWhiteSpace(run.LinkTitle)
-                ? _owner.Localization.Resolve(
+            ? MarkdownImageSemanticPolicy.GetLinkedImageFallbackName(
+                run.LinkTitle,
+                run.LinkUrl,
+                _owner.Localization.Resolve(
                     MarkdownStringKeys.ImageName,
-                    MarkdownLocalizedStrings.ImageName)
-                : run.LinkTitle!
+                    MarkdownLocalizedStrings.ImageName))
             : run.AltText;
 
         return state switch

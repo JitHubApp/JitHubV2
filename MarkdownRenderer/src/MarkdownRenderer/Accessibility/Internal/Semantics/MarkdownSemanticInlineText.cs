@@ -21,6 +21,7 @@ internal static class MarkdownSemanticInlineText
                 imageRun.AltText,
                 imageRun.IsLinked,
                 imageRun.LinkTitle,
+                imageRun.LinkUrl,
                 context.ResolveString(
                     MarkdownStringKeys.ImageName,
                     MarkdownLocalizedStrings.ImageName)) ?? string.Empty

@@ -52,7 +52,10 @@ fidelity. Without a registered provider, SVGs remain accessible fallbacks.
 ## Accessibility
 
 Explicit markdown/HTML alt text is the accessible name; an explicitly empty alt
-keeps the image decorative. The root SVG `<desc>` is exposed as help text. SVGs
+keeps the image decorative. A linked image with empty alt text is still a link,
+so it is named by the link title, or else by the link target's host and path
+(`crates.io/crates/deno`), with the full URL as help text. The root SVG `<desc>`
+is exposed as help text. SVGs
 remain atomic images for selection and UI Automation, so inner SVG text is not
 duplicated as document text. Applications should still provide meaningful alt
 text because a preview may run without the optional capability.
