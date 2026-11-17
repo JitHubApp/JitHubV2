@@ -813,7 +813,7 @@
       "sha256": "a4ba0c5e27faa8a76795f5f75be72a9dfd4c43f19a66a4bfc01eeefef80477dd"
     }
   ],
-  "addedFilesSha256": "36412a6e06cc5fb70e85a2611f292d560fd58a828aa992e514132b53f3742df9",
+  "addedFilesSha256": "6b7c2784de83f55e31c35cc0e41e720f92cf90806dccda7713a3b08bdaf73aa0",
   "addedFiles": [
     {
       "path": "LICENSE-JITHUB-MIT",
@@ -845,7 +845,35 @@
     },
     {
       "path": "src/scan/path_analytic.rs",
-      "sha256": "4afa501640ab21bd21913e07b2ec46af63a7fadc56c42f9fbd7539a17ecdf48a",
+      "sha256": "9ab209cdf48fcf3f6c1b66dc2668f760b6926656d3460be833aaa02bd6d7c501",
+      "license": "MIT",
+      "licenseTextPath": "LICENSE-JITHUB-MIT",
+      "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+    },
+    {
+      "path": "src/scan/path_analytic/event_queue.rs",
+      "sha256": "6e654edcfc75151479b66b825314b366461ea742f4fb8251f3277ca0d83949b5",
+      "license": "MIT",
+      "licenseTextPath": "LICENSE-JITHUB-MIT",
+      "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+    },
+    {
+      "path": "src/scan/path_analytic/pending_trapezoids.rs",
+      "sha256": "47b846a0238f6030fc1b2329018d2aeabe90e683cd9d0a8cd12ba8669eb5a505",
+      "license": "MIT",
+      "licenseTextPath": "LICENSE-JITHUB-MIT",
+      "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+    },
+    {
+      "path": "src/scan/path_analytic/sweep_work_tests.rs",
+      "sha256": "d5e09b0faea82ad598933ef6837dfa9ff42c0c88b200822baaa9818a1c9b6c78",
+      "license": "MIT",
+      "licenseTextPath": "LICENSE-JITHUB-MIT",
+      "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"
+    },
+    {
+      "path": "src/scan/path_analytic/vertex_continuation.rs",
+      "sha256": "c8a85ea448ef9e3c8f83641d70c2eee3bdb25135e8fa9940f20bfd0b7cd16050",
       "license": "MIT",
       "licenseTextPath": "LICENSE-JITHUB-MIT",
       "licenseTextSha256": "50a0a014b7017b4cdc90c9097efa8e109a8d84f3ad92c3bfcecb45178fc65b40"

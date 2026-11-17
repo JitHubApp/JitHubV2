@@ -13,6 +13,16 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 use tiny_skia_path::{Path, PathSegment, Transform};
 
+mod event_queue;
+mod pending_trapezoids;
+#[cfg(test)]
+mod sweep_work_tests;
+mod vertex_continuation;
+
+use event_queue::EventQueue;
+use pending_trapezoids::{AreaSink, PendingTrapezoids};
+use vertex_continuation::find_vertex_continuation;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
     pub x: f64,
@@ -123,6 +133,9 @@ struct RasterUsage {
     partial_intersections: u64,
     range_runs: usize,
     output_spans: usize,
+    /// Event groups that needed the general order-tree update. Every other
+    /// group was a vertex continuation updated in place.
+    reordered_event_groups: usize,
 }
 
 impl RasterUsage {
@@ -151,6 +164,10 @@ impl RasterUsage {
             .output_spans
             .checked_add(other.output_spans)
             .ok_or(CoverageError::SpanLimit)?;
+        self.reordered_event_groups = self
+            .reordered_event_groups
+            .checked_add(other.reordered_event_groups)
+            .ok_or(CoverageError::EventLimit)?;
         Ok(())
     }
 }
@@ -958,6 +975,7 @@ struct SweepScratch {
     band_edges: Vec<usize>,
     band_stack: Vec<usize>,
     fill_pairs: Vec<(usize, usize)>,
+    pending: PendingTrapezoids,
 }
 
 #[derive(Clone, Copy)]
@@ -986,6 +1004,7 @@ impl SweepScratch {
             + self.band_edges.capacity() * core::mem::size_of::<usize>()
             + self.band_stack.capacity() * core::mem::size_of::<usize>()
             + self.fill_pairs.capacity() * core::mem::size_of::<(usize, usize)>()
+            + self.pending.capacity_bytes()
     }
 }
 
@@ -2802,7 +2821,7 @@ fn rasterize_with_base_usage(
     reserve_scratch!(scratch, band_edges, edges.len(), fixed_bytes, limits)?;
     reserve_scratch!(scratch, band_stack, edges.len(), fixed_bytes, limits)?;
 
-    let mut heap = BinaryHeap::new();
+    let mut queue = EventQueue::new();
     let mut scheduled = ScheduledPairs::default();
     let mut event_count = 0usize;
 
@@ -2826,44 +2845,35 @@ fn rasterize_with_base_usage(
     {
         return Err(CoverageError::EventLimit);
     }
-    heap.try_reserve_exact(initial_event_capacity)
-        .map_err(|_| CoverageError::AllocationFailure)?;
+    // Vertex and clip events are fixed before the sweep, so they are sorted
+    // once inside exactly this admitted reservation; only crossings use a heap.
+    queue.try_reserve_fixed(initial_event_capacity)?;
     if bytes_without_heap.saturating_add(
-        heap.capacity()
+        queue
+            .capacity()
             .saturating_mul(core::mem::size_of::<Event>()),
     ) > limits.max_intermediate_bytes
         || bytes_without_heap.saturating_add(
-            heap.capacity()
+            queue
+                .capacity()
                 .saturating_mul(core::mem::size_of::<Event>()),
         ) > limits.max_total_bytes
     {
         return Err(CoverageError::ActiveWorkLimit);
     }
-    push_event(
-        &mut heap,
-        Event {
-            y: clip.top,
-            x: f64::NEG_INFINITY,
-            kind: EventKind::Clip,
-        },
-        &mut event_count,
-        limits,
-        bytes_without_heap,
-    )?;
-    push_event(
-        &mut heap,
-        Event {
-            y: clip.bottom,
-            x: f64::NEG_INFINITY,
-            kind: EventKind::Clip,
-        },
-        &mut event_count,
-        limits,
-        bytes_without_heap,
-    )?;
+    for y in [clip.top, clip.bottom] {
+        queue.push_fixed(
+            Event {
+                y,
+                x: f64::NEG_INFINITY,
+                kind: EventKind::Clip,
+            },
+            &mut event_count,
+            limits,
+        )?;
+    }
     for edge in &edges {
-        push_event(
-            &mut heap,
+        queue.push_fixed(
             Event {
                 y: edge.a.y,
                 x: edge.a.x,
@@ -2871,10 +2881,8 @@ fn rasterize_with_base_usage(
             },
             &mut event_count,
             limits,
-            bytes_without_heap,
         )?;
-        push_event(
-            &mut heap,
+        queue.push_fixed(
             Event {
                 y: edge.b.y,
                 x: edge.b.x,
@@ -2882,16 +2890,16 @@ fn rasterize_with_base_usage(
             },
             &mut event_count,
             limits,
-            bytes_without_heap,
         )?;
     }
+    queue.sort_fixed();
 
     let mut coverage = CoverageAccumulator::default();
     if prefer_dense {
         if let Some((x_origin, width, rows)) = dense_bounds(&edges, clip) {
             let mut dense_base_bytes = estimate_intermediate_bytes(
                 fixed_bytes,
-                heap.capacity(),
+                queue.capacity(),
                 scheduled.capacity_bytes(),
                 0,
                 scratch.capacity_bytes(),
@@ -2922,7 +2930,14 @@ fn rasterize_with_base_usage(
     let mut active_visits = 0u64;
     let mut partial_visits = 0u64;
     let mut processed_events = 0usize;
-    while let Some(first) = heap.pop() {
+    let mut reordered_event_groups = 0usize;
+    // Whether `scratch.band_edges` holds the order tree's current in-order
+    // sequence. Vertex continuations keep it current in place, so the band
+    // after one does not walk the tree again.
+    let mut band_order_current = false;
+    // Whether `scratch.fill_pairs` holds the fill pairs of that sequence.
+    let mut fill_pairs_current = false;
+    while let Some(first) = queue.pop() {
         processed_events = processed_events
             .checked_add(1)
             .ok_or(CoverageError::EventLimit)?;
@@ -2936,7 +2951,7 @@ fn rasterize_with_base_usage(
         if y > current_y {
             let base_bytes = estimate_intermediate_bytes(
                 fixed_bytes,
-                heap.capacity(),
+                queue.capacity(),
                 scheduled.capacity_bytes(),
                 0,
                 scratch.capacity_bytes(),
@@ -2946,8 +2961,12 @@ fn rasterize_with_base_usage(
             {
                 return Err(CoverageError::ActiveWorkLimit);
             }
-            scratch.band_edges.clear();
-            tree.copy_in_order(&mut scratch.band_edges, &mut scratch.band_stack);
+            if !band_order_current {
+                scratch.band_edges.clear();
+                tree.copy_in_order(&mut scratch.band_edges, &mut scratch.band_stack);
+                band_order_current = true;
+                fill_pairs_current = false;
+            }
             active_visits = active_visits
                 .checked_add(scratch.band_edges.len() as u64)
                 .ok_or(CoverageError::ActiveWorkLimit)?;
@@ -2955,7 +2974,7 @@ fn rasterize_with_base_usage(
                 return Err(CoverageError::ActiveWorkLimit);
             }
             coverage.set_sweep_work(active_visits, limits)?;
-            accumulate_band(
+            fill_pairs_current = accumulate_band(
                 &edges,
                 &scratch.band_edges,
                 fill_rule,
@@ -2965,6 +2984,8 @@ fn rasterize_with_base_usage(
                 &mut coverage,
                 &mut partial_visits,
                 &mut scratch.fill_pairs,
+                fill_pairs_current,
+                &mut scratch.pending,
                 limits,
                 base_bytes,
             )?;
@@ -2981,14 +3002,14 @@ fn rasterize_with_base_usage(
         scratch.candidates.clear();
         let shared_bytes = estimate_intermediate_bytes(
             fixed_bytes,
-            heap.capacity(),
+            queue.capacity(),
             scheduled.capacity_bytes(),
             coverage.live_bytes(),
             0,
         );
         push_scratch!(scratch, group, first, shared_bytes, limits);
-        while heap.peek().map_or(false, |e| same_y(e.y, y)) {
-            let event = heap.pop().expect("peeked event");
+        while queue.peek().is_some_and(|e| same_y(e.y, y)) {
+            let event = queue.pop().expect("peeked event");
             push_scratch!(scratch, group, event, shared_bytes, limits);
             processed_events = processed_events
                 .checked_add(1)
@@ -3002,248 +3023,281 @@ fn rasterize_with_base_usage(
         // on the group's y+ side, even when the representative (first) event
         // has a slightly smaller ordinate than the edge endpoint.
         let group_max_y = scratch.group.iter().map(|event| event.y).fold(y, f64::max);
-        for event_index in 0..scratch.group.len() {
-            let e = scratch.group[event_index];
-            match e.kind {
-                EventKind::End(id) => {
-                    push_scratch!(scratch, remove, id, shared_bytes, limits);
-                }
-                EventKind::Start(id) => {
-                    push_scratch!(scratch, add, id, shared_bytes, limits);
-                }
-                EventKind::Cross(a, b) => {
-                    scheduled.remove((a.min(b), a.max(b)));
-                    if tree.by_edge[a].is_some()
-                        && tree.by_edge[b].is_some()
-                        && near(edges[a].x_at(y), e.x)
-                        && near(edges[b].x_at(y), e.x)
-                    {
-                        push_scratch!(scratch, cross_x, e.x, shared_bytes, limits);
-                        // Preserve the event's certified pair as seeds. The
-                        // active tree may already contain a numerically
-                        // ambiguous tie, so a binary lower bound alone can
-                        // miss the very pair whose crossing it is processing.
-                        push_scratch!(scratch, changed, a, shared_bytes, limits);
-                        push_scratch!(scratch, changed, b, shared_bytes, limits);
+        let continuation = find_vertex_continuation(&scratch.group, group_max_y, y, &edges, &tree);
+        if let Some((continuation, rank)) = continuation {
+            // One edge hands its slot to the next edge of its chain. This is
+            // the tree, active order, and scheduling the general path below
+            // would produce; `vertex_continuation` documents the proof.
+            tree.continue_in_place(continuation);
+            if band_order_current {
+                scratch.band_edges[rank] = continuation.started;
+                // Equal winding keeps every fill transition, so the band's
+                // fill pairs only rename the ended edge.
+                fill_pairs_current = fill_pairs_current
+                    && edges[continuation.ended].winding == edges[continuation.started].winding;
+                if fill_pairs_current {
+                    for pair in &mut scratch.fill_pairs {
+                        if pair.0 == continuation.ended {
+                            pair.0 = continuation.started;
+                        } else if pair.1 == continuation.ended {
+                            pair.1 = continuation.started;
+                        }
                     }
                 }
-                EventKind::Clip => {}
             }
-        }
-
-        // Expand each crossing point to its full coincident active block. A
-        // multi-edge crossing is handled as one tie, not pairwise swaps.
-        scratch.cross_x.sort_unstable_by(f64::total_cmp);
-        scratch.cross_x.dedup_by(|a, b| near(*a, *b));
-
-        for cross_index in 0..scratch.cross_x.len() {
-            let x = scratch.cross_x[cross_index];
-            push_scratch!(
-                scratch,
-                reinsert,
-                CrossingGroup {
-                    x,
-                    seed_lo: None,
-                    seed_hi: None,
-                },
-                shared_bytes,
-                limits
-            );
-        }
-
-        // Seed each block from its scheduled crossing pair before expanding
-        // to any other coincident active edges found around the event x.
-        for seed_index in 0..scratch.changed.len() {
-            let id = scratch.changed[seed_index];
-            if !tree.by_edge[id].is_some() || edges[id].b.y <= group_max_y {
-                continue;
-            }
-            if let Some(group) = nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) {
-                let seed = CrossingEntry { group, edge: id };
-                record_crossing_seed_ranges(
-                    core::slice::from_ref(&seed),
-                    &mut scratch.reinsert,
-                    &tree,
-                    &mut active_visits,
-                    limits,
-                )?;
-                push_scratch!(scratch, crossing_ids, seed, shared_bytes, limits);
-            }
-        }
-
-        for cross_index in 0..scratch.cross_x.len() {
-            let group = scratch.reinsert[cross_index];
-            // Expand from the ranks of this group's certified event seeds.
-            // A binary lower bound assumes the pre-crossing tree is already
-            // ordered at the tie; that is exactly the assumption invalidated
-            // by a numerically ambiguous crossing.
-            let (Some(mut lo), Some(mut hi)) = (group.seed_lo, group.seed_hi) else {
-                continue;
-            };
-
-            while lo > 0 {
-                let id = tree.edge_at(lo - 1).ok_or(CoverageError::NumericRange)?;
-                active_visits = active_visits
-                    .checked_add(1)
-                    .ok_or(CoverageError::ActiveWorkLimit)?;
-                if active_visits > limits.max_active_edge_visits {
-                    return Err(CoverageError::ActiveWorkLimit);
-                }
-                if nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) != Some(cross_index)
-                {
-                    break;
-                }
-                lo -= 1;
-            }
-            while hi + 1 < tree.len() {
-                let id = tree.edge_at(hi + 1).ok_or(CoverageError::NumericRange)?;
-                active_visits = active_visits
-                    .checked_add(1)
-                    .ok_or(CoverageError::ActiveWorkLimit)?;
-                if active_visits > limits.max_active_edge_visits {
-                    return Err(CoverageError::ActiveWorkLimit);
-                }
-                if nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) != Some(cross_index)
-                {
-                    break;
-                }
-                hi += 1;
-            }
-
-            for rank in lo..=hi {
-                active_visits = active_visits
-                    .checked_add(1)
-                    .ok_or(CoverageError::ActiveWorkLimit)?;
-                if active_visits > limits.max_active_edge_visits {
-                    return Err(CoverageError::ActiveWorkLimit);
-                }
-                let id = tree.edge_at(rank).ok_or(CoverageError::NumericRange)?;
-                if nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) == Some(cross_index)
-                {
-                    // Edges ending at this ordinate must be removed, but must
-                    // not be reinserted into the y+ active order. A crossing
-                    // coincident with a shared polygon vertex can otherwise
-                    // resurrect the incoming edge beyond its endpoint.
-                    if edges[id].b.y <= group_max_y {
+            push_scratch!(scratch, changed, continuation.started, shared_bytes, limits);
+        } else {
+            band_order_current = false;
+            fill_pairs_current = false;
+            reordered_event_groups = reordered_event_groups
+                .checked_add(1)
+                .ok_or(CoverageError::EventLimit)?;
+            for event_index in 0..scratch.group.len() {
+                let e = scratch.group[event_index];
+                match e.kind {
+                    EventKind::End(id) => {
                         push_scratch!(scratch, remove, id, shared_bytes, limits);
-                        continue;
                     }
-                    push_scratch!(
-                        scratch,
-                        crossing_ids,
-                        CrossingEntry {
-                            group: cross_index,
-                            edge: id,
-                        },
-                        shared_bytes,
-                        limits
-                    );
+                    EventKind::Start(id) => {
+                        push_scratch!(scratch, add, id, shared_bytes, limits);
+                    }
+                    EventKind::Cross(a, b) => {
+                        scheduled.remove((a.min(b), a.max(b)));
+                        if tree.by_edge[a].is_some()
+                            && tree.by_edge[b].is_some()
+                            && near(edges[a].x_at(y), e.x)
+                            && near(edges[b].x_at(y), e.x)
+                        {
+                            push_scratch!(scratch, cross_x, e.x, shared_bytes, limits);
+                            // Preserve the event's certified pair as seeds. The
+                            // active tree may already contain a numerically
+                            // ambiguous tie, so a binary lower bound alone can
+                            // miss the very pair whose crossing it is processing.
+                            push_scratch!(scratch, changed, a, shared_bytes, limits);
+                            push_scratch!(scratch, changed, b, shared_bytes, limits);
+                        }
+                    }
+                    EventKind::Clip => {}
                 }
             }
-        }
 
-        // A vertex can start on the same ordinate as a crossing. Include any
-        // start at that crossing x in its block so f64 evaluation noise cannot
-        // split a multi-edge tie into an arbitrary left/right order.
-        let mut retained_starts = 0;
-        for read_index in 0..scratch.add.len() {
-            let id = scratch.add[read_index];
-            if edges[id].b.y <= group_max_y {
-                continue;
-            }
-            if let Some(group) = nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) {
+            // Expand each crossing point to its full coincident active block. A
+            // multi-edge crossing is handled as one tie, not pairwise swaps.
+            scratch.cross_x.sort_unstable_by(f64::total_cmp);
+            scratch.cross_x.dedup_by(|a, b| near(*a, *b));
+
+            for cross_index in 0..scratch.cross_x.len() {
+                let x = scratch.cross_x[cross_index];
                 push_scratch!(
                     scratch,
-                    crossing_ids,
-                    CrossingEntry { group, edge: id },
+                    reinsert,
+                    CrossingGroup {
+                        x,
+                        seed_lo: None,
+                        seed_hi: None,
+                    },
                     shared_bytes,
                     limits
                 );
-            } else {
-                scratch.add[retained_starts] = id;
-                retained_starts += 1;
             }
-        }
-        scratch.add.truncate(retained_starts);
 
-        // Keep each crossing block together and order it by the side the sweep
-        // enters (increasing y). The event x is the canonical shared x; do not
-        // let a few ulps of independently evaluated x_at(y) reorder members.
-        scratch.crossing_ids.sort_unstable_by(|a, b| {
-            a.group
-                .cmp(&b.group)
-                .then_with(|| edges[a.edge].slope().total_cmp(&edges[b.edge].slope()))
-                .then_with(|| a.edge.cmp(&b.edge))
-        });
-        scratch
-            .crossing_ids
-            .dedup_by(|a, b| a.group == b.group && a.edge == b.edge);
-        for crossing_index in 0..scratch.crossing_ids.len() {
-            let id = scratch.crossing_ids[crossing_index].edge;
-            push_scratch!(scratch, remove, id, shared_bytes, limits);
-        }
-        scratch.remove.sort_unstable();
-        scratch.remove.dedup();
+            // Seed each block from its scheduled crossing pair before expanding
+            // to any other coincident active edges found around the event x.
+            for seed_index in 0..scratch.changed.len() {
+                let id = scratch.changed[seed_index];
+                if !tree.by_edge[id].is_some() || edges[id].b.y <= group_max_y {
+                    continue;
+                }
+                if let Some(group) = nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) {
+                    let seed = CrossingEntry { group, edge: id };
+                    record_crossing_seed_ranges(
+                        core::slice::from_ref(&seed),
+                        &mut scratch.reinsert,
+                        &tree,
+                        &mut active_visits,
+                        limits,
+                    )?;
+                    push_scratch!(scratch, crossing_ids, seed, shared_bytes, limits);
+                }
+            }
 
-        for remove_index in 0..scratch.remove.len() {
-            let id = scratch.remove[remove_index];
-            if let Some(node) = tree.by_edge[id] {
-                let (before, after) = tree.neighbors(node);
-                if let Some(neighbor) = before {
-                    push_scratch!(scratch, changed, neighbor, shared_bytes, limits);
+            for cross_index in 0..scratch.cross_x.len() {
+                let group = scratch.reinsert[cross_index];
+                // Expand from the ranks of this group's certified event seeds.
+                // A binary lower bound assumes the pre-crossing tree is already
+                // ordered at the tie; that is exactly the assumption invalidated
+                // by a numerically ambiguous crossing.
+                let (Some(mut lo), Some(mut hi)) = (group.seed_lo, group.seed_hi) else {
+                    continue;
+                };
+
+                while lo > 0 {
+                    let id = tree.edge_at(lo - 1).ok_or(CoverageError::NumericRange)?;
+                    active_visits = active_visits
+                        .checked_add(1)
+                        .ok_or(CoverageError::ActiveWorkLimit)?;
+                    if active_visits > limits.max_active_edge_visits {
+                        return Err(CoverageError::ActiveWorkLimit);
+                    }
+                    if nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y))
+                        != Some(cross_index)
+                    {
+                        break;
+                    }
+                    lo -= 1;
                 }
-                if let Some(neighbor) = after {
-                    push_scratch!(scratch, changed, neighbor, shared_bytes, limits);
+                while hi + 1 < tree.len() {
+                    let id = tree.edge_at(hi + 1).ok_or(CoverageError::NumericRange)?;
+                    active_visits = active_visits
+                        .checked_add(1)
+                        .ok_or(CoverageError::ActiveWorkLimit)?;
+                    if active_visits > limits.max_active_edge_visits {
+                        return Err(CoverageError::ActiveWorkLimit);
+                    }
+                    if nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y))
+                        != Some(cross_index)
+                    {
+                        break;
+                    }
+                    hi += 1;
                 }
-                let removed = tree.remove_unranked(id);
-                debug_assert!(removed);
+
+                for rank in lo..=hi {
+                    active_visits = active_visits
+                        .checked_add(1)
+                        .ok_or(CoverageError::ActiveWorkLimit)?;
+                    if active_visits > limits.max_active_edge_visits {
+                        return Err(CoverageError::ActiveWorkLimit);
+                    }
+                    let id = tree.edge_at(rank).ok_or(CoverageError::NumericRange)?;
+                    if nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y))
+                        == Some(cross_index)
+                    {
+                        // Edges ending at this ordinate must be removed, but must
+                        // not be reinserted into the y+ active order. A crossing
+                        // coincident with a shared polygon vertex can otherwise
+                        // resurrect the incoming edge beyond its endpoint.
+                        if edges[id].b.y <= group_max_y {
+                            push_scratch!(scratch, remove, id, shared_bytes, limits);
+                            continue;
+                        }
+                        push_scratch!(
+                            scratch,
+                            crossing_ids,
+                            CrossingEntry {
+                                group: cross_index,
+                                edge: id,
+                            },
+                            shared_bytes,
+                            limits
+                        );
+                    }
+                }
             }
-        }
-        // Reinsert each crossing block at its canonical event x. Members are
-        // already slope-ordered for the y+ side; inserting them at one shared
-        // rank preserves that order even when x_at(y) differs by a few ulps.
-        let mut crossing_cursor = 0;
-        for group_index in 0..scratch.reinsert.len() {
-            let group = scratch.reinsert[group_index];
-            let start = crossing_cursor;
-            while crossing_cursor < scratch.crossing_ids.len()
-                && scratch.crossing_ids[crossing_cursor].group == group_index
-            {
-                crossing_cursor += 1;
+
+            // A vertex can start on the same ordinate as a crossing. Include any
+            // start at that crossing x in its block so f64 evaluation noise cannot
+            // split a multi-edge tie into an arbitrary left/right order.
+            let mut retained_starts = 0;
+            for read_index in 0..scratch.add.len() {
+                let id = scratch.add[read_index];
+                if edges[id].b.y <= group_max_y {
+                    continue;
+                }
+                if let Some(group) = nearest_crossing_group(&scratch.cross_x, edges[id].x_at(y)) {
+                    push_scratch!(
+                        scratch,
+                        crossing_ids,
+                        CrossingEntry { group, edge: id },
+                        shared_bytes,
+                        limits
+                    );
+                } else {
+                    scratch.add[retained_starts] = id;
+                    retained_starts += 1;
+                }
             }
-            if start == crossing_cursor {
-                continue;
-            }
-            let mut rank = lower_bound_x(&tree, &edges, group.x, y);
-            for crossing_index in start..crossing_cursor {
+            scratch.add.truncate(retained_starts);
+
+            // Keep each crossing block together and order it by the side the sweep
+            // enters (increasing y). The event x is the canonical shared x; do not
+            // let a few ulps of independently evaluated x_at(y) reorder members.
+            scratch.crossing_ids.sort_unstable_by(|a, b| {
+                a.group
+                    .cmp(&b.group)
+                    .then_with(|| edges[a.edge].slope().total_cmp(&edges[b.edge].slope()))
+                    .then_with(|| a.edge.cmp(&b.edge))
+            });
+            scratch
+                .crossing_ids
+                .dedup_by(|a, b| a.group == b.group && a.edge == b.edge);
+            for crossing_index in 0..scratch.crossing_ids.len() {
                 let id = scratch.crossing_ids[crossing_index].edge;
+                push_scratch!(scratch, remove, id, shared_bytes, limits);
+            }
+            scratch.remove.sort_unstable();
+            scratch.remove.dedup();
+
+            for remove_index in 0..scratch.remove.len() {
+                let id = scratch.remove[remove_index];
+                if let Some(node) = tree.by_edge[id] {
+                    let (before, after) = tree.neighbors(node);
+                    if let Some(neighbor) = before {
+                        push_scratch!(scratch, changed, neighbor, shared_bytes, limits);
+                    }
+                    if let Some(neighbor) = after {
+                        push_scratch!(scratch, changed, neighbor, shared_bytes, limits);
+                    }
+                    let removed = tree.remove_unranked(id);
+                    debug_assert!(removed);
+                }
+            }
+            // Reinsert each crossing block at its canonical event x. Members are
+            // already slope-ordered for the y+ side; inserting them at one shared
+            // rank preserves that order even when x_at(y) differs by a few ulps.
+            let mut crossing_cursor = 0;
+            for group_index in 0..scratch.reinsert.len() {
+                let group = scratch.reinsert[group_index];
+                let start = crossing_cursor;
+                while crossing_cursor < scratch.crossing_ids.len()
+                    && scratch.crossing_ids[crossing_cursor].group == group_index
+                {
+                    crossing_cursor += 1;
+                }
+                if start == crossing_cursor {
+                    continue;
+                }
+                let mut rank = lower_bound_x(&tree, &edges, group.x, y);
+                for crossing_index in start..crossing_cursor {
+                    let id = scratch.crossing_ids[crossing_index].edge;
+                    if tree.by_edge[id].is_some() {
+                        continue;
+                    }
+                    tree.insert_at(id, rank);
+                    rank += 1;
+                    push_scratch!(scratch, changed, id, shared_bytes, limits);
+                }
+            }
+            // Multiple starts/crossings at one y are combined in geometric order.
+            scratch.add.sort_unstable();
+            scratch.add.dedup();
+            scratch.add.retain(|id| edges[*id].b.y > group_max_y);
+            scratch
+                .add
+                .sort_unstable_by(|&a, &b| compare_at_y_above(&edges[a], &edges[b], y));
+
+            // Find insertion ranks using current neighboring geometry. Insertions
+            // are individually logarithmic in the order tree; same-y ties have a
+            // deterministic slope/id order.
+            for add_index in 0..scratch.add.len() {
+                let id = scratch.add[add_index];
                 if tree.by_edge[id].is_some() {
                     continue;
                 }
+                let rank = insertion_rank(&tree, &edges, id, y, true);
                 tree.insert_at(id, rank);
-                rank += 1;
                 push_scratch!(scratch, changed, id, shared_bytes, limits);
             }
-        }
-        // Multiple starts/crossings at one y are combined in geometric order.
-        scratch.add.sort_unstable();
-        scratch.add.dedup();
-        scratch.add.retain(|id| edges[*id].b.y > group_max_y);
-        scratch
-            .add
-            .sort_unstable_by(|&a, &b| compare_at_y_above(&edges[a], &edges[b], y));
-
-        // Find insertion ranks using current neighboring geometry. Insertions
-        // are individually logarithmic in the order tree; same-y ties have a
-        // deterministic slope/id order.
-        for add_index in 0..scratch.add.len() {
-            let id = scratch.add[add_index];
-            if tree.by_edge[id].is_some() {
-                continue;
-            }
-            let rank = insertion_rank(&tree, &edges, id, y, true);
-            tree.insert_at(id, rank);
-            push_scratch!(scratch, changed, id, shared_bytes, limits);
         }
 
         // Schedule only adjacent pairs touching the changed region. Existing
@@ -3274,7 +3328,7 @@ fn rasterize_with_base_usage(
                 if !scheduled.contains(key) {
                     let non_scheduled_bytes = estimate_intermediate_bytes(
                         fixed_bytes,
-                        heap.capacity(),
+                        queue.capacity(),
                         0,
                         coverage.live_bytes(),
                         scratch.capacity_bytes(),
@@ -3282,13 +3336,13 @@ fn rasterize_with_base_usage(
                     if scheduled.insert(key, limits, non_scheduled_bytes)? {
                         let non_heap_bytes = estimate_intermediate_bytes(
                             fixed_bytes,
-                            0,
+                            queue.fixed_capacity(),
                             scheduled.capacity_bytes(),
                             coverage.live_bytes(),
                             scratch.capacity_bytes(),
                         );
                         push_event(
-                            &mut heap,
+                            queue.crossings_mut(),
                             Event {
                                 y: iy,
                                 x: ix,
@@ -3337,11 +3391,19 @@ fn rasterize_with_base_usage(
 
     let finish_base_bytes = estimate_intermediate_bytes(
         fixed_bytes,
-        heap.capacity(),
+        queue.capacity(),
         scheduled.capacity_bytes(),
         0,
         scratch.capacity_bytes(),
     );
+    scratch.pending.finish(&mut AreaSink {
+        edges: &edges,
+        clip,
+        coverage: &mut coverage,
+        partial: &mut partial_visits,
+        limits,
+        base_bytes: finish_base_bytes,
+    })?;
     let mut current_usage = RasterUsage {
         edges: edges.len(),
         processed_events,
@@ -3352,6 +3414,7 @@ fn rasterize_with_base_usage(
         partial_intersections: partial_visits,
         range_runs: coverage.total_range_count,
         output_spans: 0,
+        reordered_event_groups,
     };
     let spans = coverage.finish(limits, finish_base_bytes)?;
     current_usage.output_spans = spans.len();
@@ -3767,38 +3830,49 @@ fn segment_intersection_after(a: Edge, b: Edge, y_now: f64, clip: ClipRect) -> O
     Some((iy, ix))
 }
 
+/// Collect the band's fill pairs and integrate them through `pending`,
+/// which keeps unchanged pairs open across bands. Every row before
+/// `next_y.floor()` is complete on success, so the caller may flush it.
+/// When `pairs_current` is set, `fill_pairs` already holds the pairs of
+/// `order` and the walk is skipped unless interpolation needs validating.
+/// Returns whether `fill_pairs` holds the pairs of `order` afterwards.
 fn accumulate_band(
     edges: &[Edge],
     order: &[usize],
     rule: FillRule,
     y0: f64,
-    y1: f64,
+    next_y: f64,
     clip: ClipRect,
     coverage: &mut CoverageAccumulator,
     partial: &mut u64,
     fill_pairs: &mut Vec<(usize, usize)>,
+    pairs_current: bool,
+    pending: &mut PendingTrapezoids,
     limits: Limits,
     base_bytes: usize,
-) -> Result<(), CoverageError> {
-    if y1 <= y0 {
-        return Ok(());
+) -> Result<bool, CoverageError> {
+    if next_y <= y0 {
+        return Ok(pairs_current);
     }
     let y0 = y0.max(clip.top);
-    let y1 = y1.min(clip.bottom);
+    let y1 = next_y.min(clip.bottom);
     if y1 <= y0 {
-        return Ok(());
+        return Ok(pairs_current);
     }
+    let mut base_bytes = base_bytes;
     let sample_y = y0 * 0.5 + y1 * 0.5;
     let validate_sample_interpolation =
         limits.max_coordinate_abs > MAX_COORDINATE_WITH_PROVEN_FINITE_INTERPOLATION;
     let mut winding = 0i32;
     let mut parity = false;
     let mut left = None;
-    let dense_mode = coverage.is_dense();
-    if dense_mode {
+    let walk = if pairs_current && !validate_sample_interpolation {
+        &[][..]
+    } else {
         fill_pairs.clear();
-    }
-    for &id in order {
+        order
+    };
+    for &id in walk {
         let edge = edges[id];
         let filled_before = match rule {
             FillRule::EvenOdd => parity,
@@ -3822,16 +3896,19 @@ fn accumulate_band(
             let Some(l) = left.take() else {
                 return Err(CoverageError::NumericRange);
             };
-            if dense_mode {
-                if fill_pairs.len() >= fill_pairs.capacity() {
-                    return Err(CoverageError::ActiveWorkLimit);
-                }
-                fill_pairs.push((l.id, edge.id));
-            } else {
-                accumulate_trapezoid_rows(
-                    l, edge, y0, y1, clip, coverage, partial, limits, base_bytes,
-                )?;
+            if fill_pairs.len() == fill_pairs.capacity() {
+                // The dense reducer pre-admits room for every pair; a sparse
+                // sweep grows this list under the same live-byte budget.
+                let own_bytes = vec_capacity_bytes(fill_pairs);
+                let other_live = base_bytes
+                    .saturating_sub(own_bytes)
+                    .saturating_add(coverage.live_bytes());
+                ensure_vec_capacity(fill_pairs, fill_pairs.len() + 1, other_live, limits)?;
+                base_bytes = base_bytes
+                    .saturating_sub(own_bytes)
+                    .saturating_add(vec_capacity_bytes(fill_pairs));
             }
+            fill_pairs.push((l.id, edge.id));
         }
         // Intersections are sweep events, so the order and fill transitions
         // are constant throughout this open band. The sample value is used
@@ -3843,40 +3920,25 @@ fn accumulate_band(
     if left.is_some() {
         return Err(CoverageError::NumericRange);
     }
-    if dense_mode {
-        // A large clip may contain long empty bands before or after the path.
-        // Dense row work is admitted from the clipped geometry bounds, so do
-        // not walk those empty rows here; the caller flushes any pending row
-        // when the next sweep event proves it complete.
-        if fill_pairs.is_empty() {
-            return Ok(());
-        }
-        let row_start = y0.floor() as i32;
-        let row_end = y1.ceil() as i32;
-        for row in row_start..row_end {
-            coverage.begin_dense_row(row, limits, base_bytes)?;
-            let ya = y0.max(row as f64);
-            let yb = y1.min(row as f64 + 1.0);
-            if yb <= ya {
-                continue;
-            }
-            for &(left_id, right_id) in fill_pairs.iter() {
-                accumulate_trapezoid(
-                    edges[left_id],
-                    edges[right_id],
-                    ya,
-                    yb,
-                    clip,
-                    row,
-                    coverage,
-                    partial,
-                    limits,
-                    base_bytes,
-                )?;
-            }
-        }
-    }
-    Ok(())
+
+    let mut sink = AreaSink {
+        edges,
+        clip,
+        coverage,
+        partial,
+        limits,
+        base_bytes,
+    };
+    pending.begin_band(fill_pairs, y0, y1, &mut sink)?;
+    // The caller flushes rows before `next_y.floor()`. No band follows one
+    // that reaches the clip bottom, so that band completes every open pair.
+    let until = if next_y >= clip.bottom {
+        y1
+    } else {
+        next_y.floor().min(y1)
+    };
+    pending.complete_until(until, &mut sink)?;
+    Ok(true)
 }
 
 // Exposes the interpolation validation to the artifact's boundary tests. The
@@ -3918,6 +3980,7 @@ pub(crate) fn probe_sample_interpolation_for_test(
     let mut coverage = CoverageAccumulator::default();
     let mut partial = 0;
     let mut fill_pairs = Vec::new();
+    let mut pending = PendingTrapezoids::default();
     accumulate_band(
         &edges,
         &[0, 1],
@@ -3928,34 +3991,12 @@ pub(crate) fn probe_sample_interpolation_for_test(
         &mut coverage,
         &mut partial,
         &mut fill_pairs,
+        false,
+        &mut pending,
         limits,
         0,
     )
-}
-
-fn accumulate_trapezoid_rows(
-    left: Edge,
-    right: Edge,
-    y0: f64,
-    y1: f64,
-    clip: ClipRect,
-    coverage: &mut CoverageAccumulator,
-    partial: &mut u64,
-    limits: Limits,
-    base_bytes: usize,
-) -> Result<(), CoverageError> {
-    let row_start = y0.floor() as i32;
-    let row_end = y1.ceil() as i32;
-    for row in row_start..row_end {
-        let ya = y0.max(row as f64);
-        let yb = y1.min(row as f64 + 1.0);
-        if yb > ya {
-            accumulate_trapezoid(
-                left, right, ya, yb, clip, row, coverage, partial, limits, base_bytes,
-            )?;
-        }
-    }
-    Ok(())
+    .map(|_| ())
 }
 
 fn accumulate_trapezoid(
