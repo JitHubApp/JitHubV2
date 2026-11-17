@@ -32,7 +32,13 @@ param(
     # Measured iterations per benchmark case and round (after BenchmarkDotNet's
     # Short-job warmup).
     [ValidateRange(1, 100)]
-    [int] $IterationCount = 5
+    [int] $IterationCount = 3,
+
+    # Target duration of one iteration in milliseconds. Iterations within one
+    # process agree closely; the noise that matters is between processes, so the
+    # budget is better spent on more rounds than on longer launches.
+    [ValidateRange(10, 10000)]
+    [int] $IterationTime = 250
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +69,7 @@ function Invoke-BenchmarkMethod([string] $Assembly, [string] $Method, [string] $
         --inProcess `
         --job Short `
         --iterationCount $IterationCount `
+        --iterationTime $IterationTime `
         --exporters JSON `
         --artifacts $Artifacts `
         --filter $Method

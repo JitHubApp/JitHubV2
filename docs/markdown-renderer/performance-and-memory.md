@@ -193,6 +193,40 @@ identities must agree on all four explicit hashes. Different manifest identities
 may legitimately share those hashes when another managed, native, WinRT, XBF, PRI,
 dependency, or host file changed.
 
+### CI microbenchmark regression gate
+
+The preview workflow also compares the BenchmarkDotNet suite in
+`perf/MarkdownRenderer.Benchmarks` against the pull request's base revision,
+built separately on the same runner. The budgets are the release-plan limits:
+the candidate's mean latency may be at most 5% above the reference, and its
+allocation at most 2% above it. Every candidate round must also meet the absolute
+source-lookup and viewport-index budgets.
+
+Shared GitHub runners make a single reference run followed by a single candidate
+run unusable for a 5% budget. Within one runner, speed changes in regimes lasting
+minutes: the same build measured ten minutes apart differed by 20-25%. Separate
+process launches of the same build also land several percent apart, even when
+each launch's own iterations agree to within 1%. With identical code on both
+sides, that old comparison failed 65% of the time (39 of 60 comparisons in a
+controlled experiment) and failed two of five real pull requests that did not
+touch the measured code.
+
+`eng/Invoke-MarkdownBenchmarkComparison.ps1` therefore measures in paired
+rounds. In each round, every benchmark method runs once for the reference and once
+for the candidate, back to back, and the side that goes first alternates. It uses
+BenchmarkDotNet's in-process toolchain (`--inProcess --job Short --iterationCount 5`)
+so that each invocation runs the already-built assembly instead of generating and
+building a project. `eng/Test-MarkdownBenchmarkGates.ps1` takes each round's
+`ln(candidate mean / reference mean)` and estimates the latency ratio as the
+one-sample Hodges-Lehmann location of those round ratios. It fails when that
+estimate exceeds 1.05. With one round it reduces exactly to the former single-run
+ratio, so the budget and the decision rule are unchanged; only the noise in the
+estimate is lower. Allocation is compared conservatively: the largest candidate
+round must stay within 2% of the smallest reference round. A benchmark missing
+from any round, or a mismatched number of rounds, fails the gate.
+`eng/tests/Test-MarkdownBenchmarkGates.Tests.ps1` exercises these rules against
+synthetic reports.
+
 ## View behavior
 
 The native views build and paint around the effective viewport, cancel superseded
