@@ -323,9 +323,15 @@ public sealed class MarkdownPerformanceSourceBudgetTests
             IMarkdownImageSourceByteAdmission admission,
             CancellationToken cancellationToken)
         {
-            using IDisposable held = await admission.ReserveAsync(3, cancellationToken);
+            using IDisposable held = await admission.ReserveAsync(3, cancellationToken)
+                .ConfigureAwait(false);
             Interlocked.Increment(ref _calls);
-            await Task.Delay(1, cancellationToken);
+            // Hold the reservation across a real thread-pool hop so admitted
+            // fetches overlap. Task.Delay(1) waits a whole OS timer tick
+            // (~15.6 ms); 1,800 fetches two at a time spent ~11 s of the
+            // storm's 20 s deadline asleep.
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            cancellationToken.ThrowIfCancellationRequested();
             return MarkdownImageResolution.Resolved(
                 new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source));
         }
@@ -377,7 +383,10 @@ public sealed class MarkdownPerformanceSourceBudgetTests
             }
             try
             {
-                await Task.Delay(1, cancellationToken);
+                // A thread-pool hop, not a ~15.6 ms OS timer tick, keeps the
+                // fetch active while others are admitted.
+                await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+                cancellationToken.ThrowIfCancellationRequested();
                 return MarkdownImageResolution.Resolved(
                     new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source));
             }

@@ -236,18 +236,22 @@ public sealed class SourceByteAdmissionStormTests
 
         internal void Release() => _release.TrySetResult();
 
+        // Like the product's resolver admission, a probe never resumes on the
+        // test's synchronization context: the deep jump cancels 1,650 queued
+        // probes at once, and xUnit runs each posted continuation on a new
+        // dedicated thread, starving every other test in the testhost.
         private async Task RunAsync()
         {
             try
             {
                 using IDisposable lease = await admission.EnterAsync(
-                    owner, bytes, background, cancellationToken);
+                    owner, bytes, background, cancellationToken).ConfigureAwait(false);
                 byte[] buffer = GC.AllocateUninitializedArray<byte>(checked((int)bytes));
                 tracker.Add(bytes);
                 try
                 {
-                    await materialized.WriteAsync(this);
-                    await _release.Task;
+                    await materialized.WriteAsync(this).ConfigureAwait(false);
+                    await _release.Task.ConfigureAwait(false);
                 }
                 finally
                 {
