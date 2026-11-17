@@ -9,6 +9,13 @@
 # already-built benchmark assembly without generating and building a separate
 # project for every invocation.
 #
+# Every invocation is a fresh process, and BenchmarkDotNet's pilot stage sizes
+# iterations from the first timings. If those come from not-yet-tiered code, the
+# launch measures partly unoptimized code (the 100 KiB parse then ran 2-5x slow).
+# DOTNET_TC_CallCountingDelayMs=0 starts tier-up as soon as a method reaches its
+# call count instead of after a 100 ms quiet period; the steady-state code,
+# including dynamic PGO, is unchanged. Both sides run with the same settings.
+#
 # Output layout, read by Test-MarkdownBenchmarkGates.ps1:
 #   <OutputDirectory>\candidate\round-01\<method>\results\*-report-full-compressed.json
 #   <OutputDirectory>\reference\round-01\<method>\results\*-report-full-compressed.json
@@ -27,18 +34,19 @@ param(
 
     # Paired rounds. Each round contributes one candidate/reference ratio per benchmark.
     [ValidateRange(1, 100)]
-    [int] $Rounds = 7,
+    [int] $Rounds = 10,
 
-    # Measured iterations per benchmark case and round (after BenchmarkDotNet's
-    # Short-job warmup).
+    # Warmup iterations per benchmark case and round.
     [ValidateRange(1, 100)]
-    [int] $IterationCount = 3,
+    [int] $WarmupCount = 5,
 
-    # Target duration of one iteration in milliseconds. Iterations within one
-    # process agree closely; the noise that matters is between processes, so the
-    # budget is better spent on more rounds than on longer launches.
+    # Measured iterations per benchmark case and round.
+    [ValidateRange(1, 100)]
+    [int] $IterationCount = 5,
+
+    # Target duration of one iteration in milliseconds.
     [ValidateRange(10, 10000)]
-    [int] $IterationTime = 250
+    [int] $IterationTime = 500
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,6 +76,7 @@ function Invoke-BenchmarkMethod([string] $Assembly, [string] $Method, [string] $
     & dotnet $Assembly `
         --inProcess `
         --job Short `
+        --warmupCount $WarmupCount `
         --iterationCount $IterationCount `
         --iterationTime $IterationTime `
         --exporters JSON `
@@ -102,27 +111,34 @@ $methods = @(@($candidateMethods) + @($referenceMethods) | Sort-Object -Unique)
 Write-Host "Benchmark methods: $($methods -join ', ')"
 Write-Host "Rounds: $Rounds; reference: $(if ($null -ne $reference) { $reference } else { 'none' })"
 
-for ($round = 1; $round -le $Rounds; $round++) {
-    $roundName = 'round-{0:00}' -f $round
-    for ($index = 0; $index -lt $methods.Count; $index++) {
-        $method = $methods[$index]
-        $methodFolder = '{0:00}-{1}' -f ($index + 1), $method.Substring($method.LastIndexOf('.', $method.LastIndexOf('.') - 1) + 1)
-        $sides = [Collections.Generic.List[object]]::new()
-        if ($candidateMethods -contains $method) {
-            $sides.Add([pscustomobject]@{ Label = 'Candidate'; Assembly = $candidate; Folder = 'candidate' })
-        }
-        if ($null -ne $reference -and $referenceMethods -contains $method) {
-            $sides.Add([pscustomobject]@{ Label = 'Reference'; Assembly = $reference; Folder = 'reference' })
-        }
-        # Alternate the order across rounds and methods so neither side is
-        # systematically measured first.
-        if ((($round + $index) % 2) -eq 1) {
-            $sides.Reverse()
-        }
-        foreach ($side in $sides) {
-            Write-Host "::group::$roundName $($side.Label) $method"
-            Invoke-BenchmarkMethod $side.Assembly $method (Join-Path $OutputDirectory "$($side.Folder)\$roundName\$methodFolder") $side.Label
-            Write-Host '::endgroup::'
+$previousDelay = $env:DOTNET_TC_CallCountingDelayMs
+$env:DOTNET_TC_CallCountingDelayMs = '0'
+try {
+    for ($round = 1; $round -le $Rounds; $round++) {
+        $roundName = 'round-{0:00}' -f $round
+        for ($index = 0; $index -lt $methods.Count; $index++) {
+            $method = $methods[$index]
+            $methodFolder = '{0:00}-{1}' -f ($index + 1), $method.Substring($method.LastIndexOf('.', $method.LastIndexOf('.') - 1) + 1)
+            $sides = [Collections.Generic.List[object]]::new()
+            if ($candidateMethods -contains $method) {
+                $sides.Add([pscustomobject]@{ Label = 'Candidate'; Assembly = $candidate; Folder = 'candidate' })
+            }
+            if ($null -ne $reference -and $referenceMethods -contains $method) {
+                $sides.Add([pscustomobject]@{ Label = 'Reference'; Assembly = $reference; Folder = 'reference' })
+            }
+            # Alternate the order across rounds and methods so neither side is
+            # systematically measured first.
+            if ((($round + $index) % 2) -eq 1) {
+                $sides.Reverse()
+            }
+            foreach ($side in $sides) {
+                Write-Host "::group::$roundName $($side.Label) $method"
+                Invoke-BenchmarkMethod $side.Assembly $method (Join-Path $OutputDirectory "$($side.Folder)\$roundName\$methodFolder") $side.Label
+                Write-Host '::endgroup::'
+            }
         }
     }
+}
+finally {
+    $env:DOTNET_TC_CallCountingDelayMs = $previousDelay
 }
