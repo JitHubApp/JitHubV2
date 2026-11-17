@@ -211,12 +211,18 @@ sides, that old comparison failed 65% of the time (39 of 60 comparisons in a
 controlled experiment) and failed two of five real pull requests that did not
 touch the measured code.
 
-`eng/Invoke-MarkdownBenchmarkComparison.ps1` therefore measures in paired
+`eng/Invoke-MarkdownBenchmarkComparison.ps1` therefore measures in ten paired
 rounds. In each round, every benchmark method runs once for the reference and once
 for the candidate, back to back, and the side that goes first alternates. It uses
-BenchmarkDotNet's in-process toolchain (`--inProcess --job Short --iterationCount 5`)
-so that each invocation runs the already-built assembly instead of generating and
-building a project. `eng/Test-MarkdownBenchmarkGates.ps1` takes each round's
+BenchmarkDotNet's in-process toolchain (`--inProcess`, five warmup and five
+measured 500 ms iterations), so each invocation runs the already-built assembly
+instead of generating and building a project. Every invocation is still a fresh
+process. BenchmarkDotNet sizes its iterations from the first timings, so a launch
+whose first timings came from not-yet-tiered code measured partly unoptimized
+code; the 100 KiB parse then ran 2-5 times slower. The runner therefore sets
+`DOTNET_TC_CallCountingDelayMs=0` for both sides. That starts tier-up as soon as
+a method reaches its call count, without changing the steady-state code or dynamic
+PGO. `eng/Test-MarkdownBenchmarkGates.ps1` takes each round's
 `ln(candidate mean / reference mean)` and estimates the latency ratio as the
 one-sample Hodges-Lehmann location of those round ratios. It fails when that
 estimate exceeds 1.05. With one round it reduces exactly to the former single-run
@@ -226,6 +232,21 @@ round must stay within 2% of the smallest reference round. A benchmark missing
 from any round, or a mismatched number of rounds, fails the gate.
 `eng/tests/Test-MarkdownBenchmarkGates.Tests.ps1` exercises these rules against
 synthetic reports.
+
+The design was validated on eight independent GitHub runners. Each compared two
+separate builds of the same commit, and the same reference against a build with an
+injected slowdown in every benchmark (13-37%, median over all rounds). Over ten rounds, identical code
+failed on one runner of eight. Measured once each on the same runners, the old
+protocol failed on four of eight. The paired gate caught the injected slowdown
+for every benchmark on all eight runners. The old protocol flagged it on only one
+runner, because launch noise swamped it. The remaining false failure is not round
+noise. On one AMD EPYC runner, one build ran about 7% slower than the other on the
+viewport-index benchmarks in nine of twelve rounds. An earlier validation run
+showed the same pattern once, on the source-map benchmark. More rounds do not
+remove a bias like that, which is tied to a particular binary on a particular
+machine. The old single-run comparison has it too, hidden under its larger noise.
+The comparison takes about three minutes per round, roughly 32 minutes in total,
+instead of about six for a single run on each side.
 
 ## View behavior
 

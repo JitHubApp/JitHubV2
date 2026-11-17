@@ -6,7 +6,7 @@
 # speed in regimes lasting minutes, and separate process launches of one build land
 # several percent apart, so one reference run compared with one candidate run
 # measured minutes later cannot resolve a 5% budget (identical code exceeded it in
-# about half of such comparisons). Invoke-MarkdownBenchmarkComparison.ps1 therefore
+# 39 of 60 such comparisons). Invoke-MarkdownBenchmarkComparison.ps1 therefore
 # measures the reference and the candidate back to back in several rounds.
 # ReferenceDirectory[i] and CandidateDirectory[i] hold round i of each side.
 #
