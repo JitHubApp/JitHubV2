@@ -170,12 +170,6 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
         return _parent.IsOffscreenForChild(GetBoundingRectangleCore());
     }
 
-    internal void RaiseAutomationFocusChanged()
-    {
-        if (_lifetime.IsCurrent())
-            RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
-    }
-
     internal void NotifyImageStatusChanged()
     {
         if (!_lifetime.TryGetCurrentPayload(_runReference, out InlineImageRun? run) || run is null)

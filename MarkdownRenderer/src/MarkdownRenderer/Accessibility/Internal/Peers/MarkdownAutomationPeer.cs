@@ -62,7 +62,17 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     protected override bool IsControlElementCore() => true;
     protected override bool IsContentElementCore() => true;
     protected override bool HasKeyboardFocusCore() =>
-        !_owner.AutomationHost.HasKeyboardFocusOnVirtualChild && base.HasKeyboardFocusCore();
+        _owner.AutomationHost.FocusedChild.IsNone && base.HasKeyboardFocusCore();
+
+    /// <summary>
+    /// UIA asks the focused XAML element's peer which element really has
+    /// focus. While a painted link or other virtual child holds the renderer's
+    /// keyboard focus, answer with that child's peer instead of the document,
+    /// so clients that query focus (rather than only listening for focus
+    /// events) announce the link.
+    /// </summary>
+    protected override object GetFocusedElementCore() =>
+        ResolveFocusedChildPeer(_owner.AutomationHost.FocusedChild) ?? base.GetFocusedElementCore();
 
     protected override void SetFocusCore()
     {
@@ -186,7 +196,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal bool IsTextCaretActive => IsCaretActive(
         _owner.FocusState,
         _owner.IsSelectionEnabled,
-        _owner.AutomationHost.HasKeyboardFocusOnVirtualChild);
+        !_owner.AutomationHost.FocusedChild.IsNone);
 
     internal static bool IsCaretActive(
         FocusState focusState,
@@ -265,54 +275,19 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal bool TryGetPeerForSemanticNode(MarkdownSemanticNode node, out AutomationPeer peer) =>
         _projection.TryGetPeerForSemanticNode(node, out peer);
 
-    internal void RaiseFocusForLink(InlineContainerBox inline, LinkRun link)
-    {
-        var blockPeer = _projection.GetOrCreateBlockPeer(inline);
-        var linkPeer = _owner.AutomationHost.GetOrCreateLinkPeer(blockPeer, link);
-        linkPeer.RaiseAutomationFocusChanged();
-    }
+    /// <summary>
+    /// Raises the focus-changed event on the peer of <paramref name="child"/>,
+    /// the same peer <see cref="GetFocusedElementCore"/> reports.
+    /// </summary>
+    internal void RaiseFocusChanged(MarkdownFocusedChild child) =>
+        ResolveFocusedChildPeer(child)?.RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
 
-    internal void RaiseFocusForLinkedImage(InlineContainerBox inline, InlineImageRun image)
+    private AutomationPeer? ResolveFocusedChildPeer(MarkdownFocusedChild child)
     {
-        var blockPeer = _projection.GetOrCreateBlockPeer(inline);
-        var imagePeer = _owner.AutomationHost.GetOrCreateLinkedImagePeer(blockPeer, image);
-        imagePeer.RaiseAutomationFocusChanged();
-    }
+        if (child.IsNone || GetSemanticDocumentOrNull() is not { } document)
+            return null;
 
-    internal void RaiseFocusForInlineVectorScene(InlineVectorSceneRun scene)
-    {
-        MarkdownSemanticDocument document = GetSemanticDocument();
-        foreach (MarkdownSemanticNode node in MarkdownAutomationProjection.EnumerateSemanticNodes(document.Root))
-        {
-            if (node.Role == MarkdownSemanticRole.Math &&
-                ReferenceEquals(node.InlineRun, scene))
-            {
-                _projection.GetOrCreateNodePeer(node).RaiseAutomationFocusChanged();
-                return;
-            }
-        }
-    }
-
-    internal void RaiseFocusForVectorSemantic(VectorSceneBox box, int semanticIndex)
-    {
-        MarkdownSemanticDocument document = GetSemanticDocument();
-        foreach (MarkdownSemanticNode node in MarkdownAutomationProjection.EnumerateSemanticNodes(document.Root))
-        {
-            if (ReferenceEquals(node.VectorSceneBox, box) &&
-                node.VectorSemanticIndex == semanticIndex)
-            {
-                _projection.GetOrCreateNodePeer(node).RaiseAutomationFocusChanged();
-                return;
-            }
-        }
-    }
-
-    internal void RaiseFocusForHorizontalOverflow(IHorizontalOverflowBox overflow)
-    {
-        MarkdownSemanticDocument document = GetSemanticDocument();
-        MarkdownSemanticNode? node = FindHorizontalOverflowFocusNode(document, overflow);
-        if (node is not null)
-            _projection.GetOrCreateNodePeer(node).RaiseAutomationFocusChanged();
+        return child.ResolvePeer(new MarkdownFocusedChildPeers(_owner, _projection, document));
     }
 
     internal void NotifyHorizontalOverflowScrolled(

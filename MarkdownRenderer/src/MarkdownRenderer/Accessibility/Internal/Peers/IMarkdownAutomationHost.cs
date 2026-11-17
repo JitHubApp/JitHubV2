@@ -45,7 +45,11 @@ internal interface IMarkdownAutomationHost
 
     void AppendVisibleSelectionHandlePeers(IList<AutomationPeer> peers);
 
-    bool HasKeyboardFocusOnVirtualChild { get; }
+    /// <summary>
+    /// The painted item holding keyboard focus while the renderer itself has
+    /// focus, or <see cref="MarkdownFocusedChild.None"/>.
+    /// </summary>
+    MarkdownFocusedChild FocusedChild { get; }
 
     bool IsKeyboardFocusOnLink(LinkRun run);
 

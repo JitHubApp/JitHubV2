@@ -96,10 +96,11 @@ public sealed class MarkdownHostResourceContractTests
     {
         // Focus planning and decorative-image omission are covered by
         // LayoutSnapshotIndexConstructionTests.LinkedEmptyAltInlineImageIsFocusableButDecorativeImagesAreNot,
-        // and linked-image activation targets by LinkedAtomicTargetTests.
+        // linked-image activation targets by LinkedAtomicTargetTests, and a
+        // focused linked image resolving to its linked-image peer (the peer UIA
+        // reports as focused) by
+        // MarkdownFocusedChildTests.FocusedLinkedImageResolvesToItsLinkedImagePeer.
         string root = FindRepositoryRoot();
-        string automationPeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownAutomationPeer.cs"));
         string imagePeer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownLinkedImagePeer.cs"));
 
@@ -112,7 +113,6 @@ public sealed class MarkdownHostResourceContractTests
         Assert.Contains("LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target)", automation, StringComparison.Ordinal);
         Assert.Contains("InvalidateAutomationLayout();", focusableItems, StringComparison.Ordinal);
         Assert.Contains("FrameworkElementAutomationPeer.FromElement(_control)?.InvalidatePeer();", automation, StringComparison.Ordinal);
-        Assert.Contains("RaiseFocusForLinkedImage", automationPeer, StringComparison.Ordinal);
         Assert.Contains("IInvokeProvider", imagePeer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Hyperlink", imagePeer, StringComparison.Ordinal);
         Assert.Contains("GetImageName(_run, state)", imagePeer, StringComparison.Ordinal);
