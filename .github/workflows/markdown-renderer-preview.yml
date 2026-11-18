@@ -540,9 +540,10 @@ jobs:
           # The gate's statistics and failure modes, against synthetic reports.
           & '.\MarkdownRenderer\eng\tests\Test-MarkdownBenchmarkGates.Tests.ps1'
 
+          # "Prepare fresh artifact directories" owns this directory and creates it
+          # empty. The comparison script refuses one that already holds files.
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
           $benchmarkRoot = Join-Path $artifactRoot 'benchmarks'
-          New-Item -ItemType Directory -Path $benchmarkRoot | Out-Null
 
           # The comparison runs the built assembly in process, so locate exactly one.
           function Get-BenchmarkAssembly([string] $Project) {

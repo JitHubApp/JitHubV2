@@ -91,6 +91,14 @@ function Invoke-BenchmarkMethod([string] $Assembly, [string] $Method, [string] $
     }
 }
 
+# The gate reads every round directory under the output, so a report left from an
+# earlier run would be compared as if it were this run's. Start from an empty folder.
+if ((Test-Path -LiteralPath $OutputDirectory) -and
+    @(Get-ChildItem -LiteralPath $OutputDirectory -Force | Select-Object -First 1).Count -ne 0) {
+    throw "Benchmark output directory '$OutputDirectory' is not empty; pass a fresh directory so no earlier report enters the comparison."
+}
+[void] [IO.Directory]::CreateDirectory($OutputDirectory)
+
 $candidate = Resolve-Assembly $CandidateAssembly 'Candidate'
 $candidateMethods = Get-BenchmarkMethods $candidate 'Candidate'
 $reference = $null
