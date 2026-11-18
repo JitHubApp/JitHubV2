@@ -245,8 +245,16 @@ viewport-index benchmarks in nine of twelve rounds. An earlier validation run
 showed the same pattern once, on the source-map benchmark. More rounds do not
 remove a bias like that, which is tied to a particular binary on a particular
 machine. The old single-run comparison has it too, hidden under its larger noise.
+The first pull-request run of the gate showed the same benchmarks near the line on
+unchanged renderer code. `LocateVisibleBand(BandCount: 1000000)` measured a ratio
+of 1.0477, with rounds from 0.917 to 1.096. The 100,000-band case measured 1.0338.
+Both passed. These lookups take 20-30 ns, and they are the benchmarks most exposed
+to that per-build bias.
+
 The comparison takes about three minutes per round, roughly 32 minutes in total,
-instead of about six for a single run on each side.
+instead of about six for a single run on each side. It therefore runs as its own
+`benchmark-gates` job, in parallel with the main validation job, so it adds no
+wall-clock time to a pull request and neither job's time limit had to grow.
 
 ## View behavior
 
