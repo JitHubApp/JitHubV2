@@ -71,6 +71,14 @@ packing. The project deliberately fails `Pack` if an architecture is absent.
 
 Build workers with `eng/Build-ResvgWorker.ps1`. It pins Rust 1.96.0's bundled
 `rust-lld`, remaps checkout and Cargo paths, and enables reproducible PE output.
+It also links only the MSVC static CRT and Windows SDK libraries pinned by
+SHA-256 in `RESVG_MSVC_LIBRARIES.json`, which `eng/Install-ResvgMsvcLibraries.ps1`
+downloads from Microsoft and verifies. The installed Visual Studio does not
+affect the worker bytes, so a hosted-runner image update cannot break
+reproduction and a local build matches CI. Cargo build scripts still link with
+the machine's own MSVC environment, which needs a working C++ toolset. To move
+to newer libraries, run `eng/Update-ResvgMsvcLibrariesPin.ps1` and rebuild all
+three workers in the same change.
 CI rebuilds all three architectures and compares the complete executable payload after normalizing
 only standard PE timestamp/checksum and CodeView identity fields; executable
 sections, imports, resources, and linker version must match byte-for-byte.

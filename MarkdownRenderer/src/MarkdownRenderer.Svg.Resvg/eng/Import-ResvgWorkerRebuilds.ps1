@@ -3,8 +3,9 @@
 Installs CI-built resvg workers and records their source-bound identity.
 
 .DESCRIPTION
-Use this when a local toolchain cannot reproduce CI's worker bytes (for
-example a different MSVC static CRT), so Build-ResvgWorker.ps1 -RefreshIdentity
+Build-ResvgWorker.ps1 links only the pinned MSVC and Windows SDK libraries, so
+a local build normally reproduces CI. Use this when one cannot, for example
+when a worker can't be built locally, so Build-ResvgWorker.ps1 -RefreshIdentity
 cannot pass its local reproducible comparison. RebuildRoot is the
 resvg-worker-rebuilds artifact uploaded by the "Rebuild and verify every pinned
 resvg worker" CI step, from a run on the same worker sources:

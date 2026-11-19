@@ -153,10 +153,12 @@ function Get-ResvgWorkerSourceFingerprint([string] $ProviderRoot) {
     $fixedPaths = @(
         'Internal/WorkerProtocol.cs',
         'NATIVE_RUST_DEPENDENCIES.json',
+        'RESVG_MSVC_LIBRARIES.json',
         'RESVG_PROVENANCE.json',
         'eng/Build-ResvgWorker.ps1',
         'eng/Compare-ResvgWorkerBinary.ps1',
         'eng/Generate-ResvgSupplyChain.ps1',
+        'eng/Install-ResvgMsvcLibraries.ps1',
         'eng/ResvgWorkerIdentity.psm1',
         'eng/Import-ResvgWorkerRebuilds.ps1',
         'eng/ResvgVendoredSources.ps1',
