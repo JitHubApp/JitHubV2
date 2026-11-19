@@ -190,11 +190,13 @@ try {
     foreach ($relative in @(
         'Internal/WorkerProtocol.cs',
         'NATIVE_RUST_DEPENDENCIES.json',
+        'RESVG_MSVC_LIBRARIES.json',
         'RESVG_PROVENANCE.json',
         'eng/Build-ResvgWorker.ps1',
         'eng/Compare-ResvgWorkerBinary.ps1',
         'eng/Generate-ResvgSupplyChain.ps1',
         'eng/Import-ResvgWorkerRebuilds.ps1',
+        'eng/Install-ResvgMsvcLibraries.ps1',
         'eng/ResvgWorkerIdentity.psm1',
         'eng/Update-ResvgWorkerIdentity.ps1',
         'eng/Verify-ResvgWorkerIdentity.ps1',
@@ -214,6 +216,7 @@ try {
     foreach ($relative in @(
         'native/src/main.rs',
         'NATIVE_RUST_DEPENDENCIES.json',
+        'RESVG_MSVC_LIBRARIES.json',
         'eng/ResvgWorkerIdentity.psm1',
         'eng/Build-ResvgWorker.ps1'
     )) {
@@ -298,6 +301,12 @@ try {
     if ($sourceInitial -ceq $buildHelperChanged) { throw 'Build helper changes did not invalidate the worker source fingerprint.' }
     $checks++
     Write-SourceFixtureText $sourceFixture 'eng/Build-ResvgWorker.ps1' "pinned:eng/Build-ResvgWorker.ps1`n"
+    Write-SourceFixtureText $sourceFixture 'RESVG_MSVC_LIBRARIES.json' 'changed MSVC library pin`n'
+    if ($sourceInitial -ceq (Get-ResvgWorkerSourceFingerprint $sourceFixture)) {
+        throw 'MSVC library pin changes did not invalidate the worker source fingerprint.'
+    }
+    $checks++
+    Write-SourceFixtureText $sourceFixture 'RESVG_MSVC_LIBRARIES.json' "pinned:RESVG_MSVC_LIBRARIES.json`n"
     Write-SourceFixtureText $sourceFixture 'native/target/generated.rs' 'ignored target output`n'
     Write-SourceFixtureText $sourceFixture 'native/artifacts/old.log' 'ignored diagnostic output`n'
     if ((Get-ResvgWorkerSourceFingerprint $sourceFixture) -cne $sourceInitial) {

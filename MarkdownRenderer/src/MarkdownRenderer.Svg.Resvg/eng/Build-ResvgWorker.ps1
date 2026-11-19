@@ -8,6 +8,9 @@ param(
     [string]$Target,
 
     [string]$TargetDirectory = '',
+    # Where Install-ResvgMsvcLibraries.ps1 keeps the pinned MSVC and Windows
+    # SDK libraries; defaults to msvc-libraries under the target directory.
+    [string]$MsvcLibraryRoot = '',
     [switch]$RefreshIdentity
 )
 
@@ -30,6 +33,14 @@ if ([string]::IsNullOrWhiteSpace($TargetDirectory)) {
     $TargetDirectory = Join-Path $nativeRoot 'target'
 }
 $TargetDirectory = [IO.Path]::GetFullPath($TargetDirectory)
+if ([string]::IsNullOrWhiteSpace($MsvcLibraryRoot)) {
+    $MsvcLibraryRoot = Join-Path $TargetDirectory 'msvc-libraries'
+}
+$libraryDirectories = @(& (Join-Path $PSScriptRoot 'Install-ResvgMsvcLibraries.ps1') `
+    -Root $MsvcLibraryRoot -Target $Target)
+if ($libraryDirectories.Count -ne 3) {
+    throw "The pinned MSVC libraries for $Target did not resolve to their three directories."
+}
 
 $verboseVersion = @(& rustc +1.96.0 -vV)
 $sysroot = (& rustc +1.96.0 --print sysroot).Trim()
@@ -87,7 +98,16 @@ try {
         "--remap-path-prefix=$nativeRoot=/jithub/svg-native"
         "--remap-path-prefix=$cargoHome=/cargo"
         "--remap-path-prefix=$rustLibrarySource=$canonicalRustLibrarySource"
+        # The static CRT and Windows import libraries are pinned too. rustc
+        # hands the linker LIB from whatever Visual Studio it finds, so
+        # /lldignoreenv drops that and the linker searches only the pinned
+        # libraries. A library missing from the pin fails the link.
+        '-C'
+        'link-arg=/lldignoreenv'
     )
+    foreach ($libraryDirectory in $libraryDirectories) {
+        $flags += @('-C', "link-arg=/LIBPATH:$libraryDirectory")
+    }
     # Cargo's encoded form preserves checkout paths that contain spaces.
     $env:RUSTFLAGS = $null
     $env:CARGO_ENCODED_RUSTFLAGS = $flags -join [char]0x1F

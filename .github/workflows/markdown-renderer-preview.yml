@@ -94,6 +94,16 @@ jobs:
         with:
           global-json-file: ./global.json
 
+      # The workers link only the MSVC and Windows SDK libraries pinned by
+      # hash in RESVG_MSVC_LIBRARIES.json, never the runner's Visual Studio,
+      # so image updates cannot change their bytes. Build-ResvgWorker.ps1
+      # downloads and verifies them; the cache only saves that download.
+      - name: Restore pinned MSVC libraries for the resvg workers
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/resvg-msvc-libraries
+          key: resvg-msvc-libraries-${{ hashFiles('MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/RESVG_MSVC_LIBRARIES.json', 'MarkdownRenderer/src/MarkdownRenderer.Svg.Resvg/eng/Install-ResvgMsvcLibraries.ps1') }}
+
       - name: Rebuild and verify every pinned resvg worker
         run: |
           $manifest = '.\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\native\Cargo.toml'
@@ -129,7 +139,8 @@ jobs:
           foreach ($worker in $workerTargets.GetEnumerator()) {
             $rebuilt = .\MarkdownRenderer\src\MarkdownRenderer.Svg.Resvg\eng\Build-ResvgWorker.ps1 `
               -Target $worker.Key `
-              -TargetDirectory $targetRoot
+              -TargetDirectory $targetRoot `
+              -MsvcLibraryRoot (Join-Path $env:RUNNER_TEMP 'resvg-msvc-libraries')
             $rebuiltDirectory = Join-Path $rebuildRoot $worker.Value
             New-Item -ItemType Directory -Path $rebuiltDirectory -Force | Out-Null
             $rebuiltCopy = Join-Path $rebuiltDirectory 'MarkdownRenderer.Svg.Resvg.Worker.exe'
