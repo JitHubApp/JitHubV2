@@ -204,7 +204,8 @@ never as a pass.
 
 `Test-MarkdownEngineeringScripts.ps1` runs the offline self-tests of the
 Sandbox runners, the Sandbox sample UI configuration, the resvg
-vendored-source provenance check, and the code structure check. None of them
+vendored-source provenance check, the code structure check, and the benchmark
+regression gate (against synthetic BenchmarkDotNet reports). None of them
 launches an app or touches the desktop:
 
 ```powershell

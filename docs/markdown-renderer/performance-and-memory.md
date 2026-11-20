@@ -193,6 +193,69 @@ identities must agree on all four explicit hashes. Different manifest identities
 may legitimately share those hashes when another managed, native, WinRT, XBF, PRI,
 dependency, or host file changed.
 
+### CI microbenchmark regression gate
+
+The preview workflow also compares the BenchmarkDotNet suite in
+`perf/MarkdownRenderer.Benchmarks` against the pull request's base revision,
+built separately on the same runner. The budgets are the release-plan limits:
+the candidate's mean latency may be at most 5% above the reference, and its
+allocation at most 2% above it. Every candidate round must also meet the absolute
+source-lookup and viewport-index budgets.
+
+Shared GitHub runners make a single reference run followed by a single candidate
+run unusable for a 5% budget. Within one runner, speed changes in regimes lasting
+minutes: the same build measured ten minutes apart differed by 20-25%. Separate
+process launches of the same build also land several percent apart, even when
+each launch's own iterations agree to within 1%. With identical code on both
+sides, that old comparison failed 65% of the time (39 of 60 comparisons in a
+controlled experiment) and failed two of five real pull requests that did not
+touch the measured code.
+
+`eng/Invoke-MarkdownBenchmarkComparison.ps1` therefore measures in ten paired
+rounds. In each round, every benchmark method runs once for the reference and once
+for the candidate, back to back, and the side that goes first alternates. It uses
+BenchmarkDotNet's in-process toolchain (`--inProcess`, five warmup and five
+measured 500 ms iterations), so each invocation runs the already-built assembly
+instead of generating and building a project. Every invocation is still a fresh
+process. BenchmarkDotNet sizes its iterations from the first timings, so a launch
+whose first timings came from not-yet-tiered code measured partly unoptimized
+code; the 100 KiB parse then ran 2-5 times slower. The runner therefore sets
+`DOTNET_TC_CallCountingDelayMs=0` for both sides. That starts tier-up as soon as
+a method reaches its call count, without changing the steady-state code or dynamic
+PGO. `eng/Test-MarkdownBenchmarkGates.ps1` takes each round's
+`ln(candidate mean / reference mean)` and estimates the latency ratio as the
+one-sample Hodges-Lehmann location of those round ratios. It fails when that
+estimate exceeds 1.05. With one round it reduces exactly to the former single-run
+ratio, so the budget and the decision rule are unchanged; only the noise in the
+estimate is lower. Allocation is compared conservatively: the largest candidate
+round must stay within 2% of the smallest reference round. A benchmark missing
+from any round, or a mismatched number of rounds, fails the gate.
+`eng/tests/Test-MarkdownBenchmarkGates.Tests.ps1` exercises these rules against
+synthetic reports.
+
+The design was validated on eight independent GitHub runners. Each compared two
+separate builds of the same commit, and the same reference against a build with an
+injected slowdown in every benchmark (13-37%, median over all rounds). Over ten rounds, identical code
+failed on one runner of eight. Measured once each on the same runners, the old
+protocol failed on four of eight. The paired gate caught the injected slowdown
+for every benchmark on all eight runners. The old protocol flagged it on only one
+runner, because launch noise swamped it. The remaining false failure is not round
+noise. On one AMD EPYC runner, one build ran about 7% slower than the other on the
+viewport-index benchmarks in nine of twelve rounds. An earlier validation run
+showed the same pattern once, on the source-map benchmark. More rounds do not
+remove a bias like that, which is tied to a particular binary on a particular
+machine. The old single-run comparison has it too, hidden under its larger noise.
+The first pull-request run of the gate showed the same benchmarks near the line on
+unchanged renderer code. `LocateVisibleBand(BandCount: 1000000)` measured a ratio
+of 1.0477, with rounds from 0.917 to 1.096. The 100,000-band case measured 1.0338.
+Both passed. These lookups take 20-30 ns, and they are the benchmarks most exposed
+to that per-build bias.
+
+The comparison takes about three minutes per round, roughly 32 minutes in total,
+instead of about six for a single run on each side. It therefore runs as its own
+`benchmark-gates` job, in parallel with the main validation job, so it adds no
+wall-clock time to a pull request and neither job's time limit had to grow.
+
 ## View behavior
 
 The native views build and paint around the effective viewport, cancel superseded
