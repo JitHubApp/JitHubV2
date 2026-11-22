@@ -138,7 +138,18 @@
     </Task>
   </UsingTask>
 
-  <Target Name="EmbedCommonTextMateResources" BeforeTargets="CoreCompile">
+  <!--
+    Skipped in design-time builds. Visual Studio runs CoreCompile in its
+    design-time builds and collects this project's PackageVersion items from
+    the same build to nominate the NuGet restore. Failing here before the
+    package is restored made that nomination carry no versions, so restore
+    reported NU1010, the package stayed unrestored, and every later
+    design-time build failed the same way. Embedded resources do not affect
+    the language service; the next real build embeds them.
+  -->
+  <Target Name="EmbedCommonTextMateResources"
+          BeforeTargets="CoreCompile"
+          Condition="'$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
       <_TextMateSharpGrammarsAssembly>$(PkgTextMateSharp_Grammars)\lib\netstandard2.0\TextMateSharp.Grammars.dll</_TextMateSharpGrammarsAssembly>
       <_CommonTextMateResourceOutput>$(IntermediateOutputPath)CuratedTextMateResources</_CommonTextMateResourceOutput>
