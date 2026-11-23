@@ -75,6 +75,15 @@
         <Setter Property="FontWeight" Value="{ThemeResource AppFontWeightSemibold}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
     </Style>
+    <!--  Uses the font's natural line height so the text centers on an adjacent progress ring.  -->
+    <Style
+        x:Key="AppProgressLabelTextBlockStyle"
+        BasedOn="{StaticResource SectionSecondaryTextBlockStyle}"
+        TargetType="TextBlock">
+        <Setter Property="LineHeight" Value="{ThemeResource AppZeroDimension}" />
+        <Setter Property="TextWrapping" Value="WrapWholeWords" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style
         x:Key="ListItemSecondaryTextBlockStyle"
         BasedOn="{StaticResource SectionSecondaryTextBlockStyle}"

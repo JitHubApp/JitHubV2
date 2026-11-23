@@ -16,34 +16,38 @@
         Background="{ThemeResource AppCanvasBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <Grid
-                MaxWidth="{ThemeResource AppLoginPageMaxWidth}"
+                MaxWidth="{ThemeResource AppDimension460}"
                 Margin="{ThemeResource AppMargin0_40_0_40}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center">
+                <!--  Holds the block at its structural width, or the viewport width when narrower, so card states never move it.  -->
+                <Border
+                    Width="{ThemeResource AppDimension460}"
+                    Height="{ThemeResource AppDimension0}"
+                    AutomationProperties.AccessibilityView="Raw"
+                    IsHitTestVisible="False" />
                 <StackPanel
-                    MaxWidth="{ThemeResource AppDimension760}"
                     Spacing="{ThemeResource AppGap24}"
                     VerticalAlignment="Center">
-                    <StackPanel
-                        MaxWidth="{ThemeResource AppDimension640}"
-                        Spacing="{ThemeResource AppGap0}">
-                        <TextBlock
-                            Style="{StaticResource PageTitleTextBlockStyle}"
-                            Text="{x:Bind ViewModel.AppTitle, Mode=OneWay}" />
-                    </StackPanel>
+                    <TextBlock
+                        Style="{StaticResource PageTitleTextBlockStyle}"
+                        Text="{x:Bind ViewModel.AppTitle, Mode=OneWay}" />
 
                     <appcontrols:AppSurfaceCard
-                        x:Uid="PagesLoginPageLoginCard" MaxWidth="{ThemeResource AppDimension460}"
-                        HorizontalAlignment="Left"
+                        x:Uid="PagesLoginPageLoginCard"
+                        HorizontalAlignment="Stretch"
                         AutomationProperties.AutomationId="LoginCard"
                         AutomationProperties.Name="GitHub sign in">
                         <appcontrols:AppSurfaceCard.Child>
                             <StackPanel Spacing="{ThemeResource AppGap16}">
                                 <TextBlock
+                                    AutomationProperties.AutomationId="LoginCardTitle"
                                     Style="{StaticResource SectionTitleTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.SignInTitle, Mode=OneWay}" />
+                                    Text="{x:Bind ViewModel.CardTitle, Mode=OneWay}" />
                                 <TextBlock
+                                    x:Name="LoginStatusTextBlock"
                                     AutomationProperties.AutomationId="LoginStatusText"
+                                    AutomationProperties.LiveSetting="Polite"
                                     Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                     Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
                                     TextWrapping="WrapWholeWords" />
@@ -58,20 +62,46 @@
                                     Severity="Error"
                                     Style="{StaticResource AppErrorInfoBarStyle}"
                                     Title="{x:Bind ViewModel.LoginErrorTitle, Mode=OneWay}" />
-                                <Button
-                                    x:Uid="PagesLoginPageLoginSignInButton" x:Name="LoginSignInButton"
-                                    AutomationProperties.AutomationId="LoginSignInButton"
-                                    AutomationProperties.Name="Continue with GitHub"
-                                    Click="LoginButton_Click"
-                                    IsEnabled="{x:Bind ViewModel.IsLoginEnabled, Mode=OneWay}"
-                                    Style="{StaticResource PrimaryActionButtonStyle}">
-                                    <StackPanel
-                                        Orientation="Horizontal"
-                                        Spacing="{ThemeResource AppGap8}">
-                                        <FontIcon VerticalAlignment="Center" Glyph="&#xE72E;" />
-                                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Button>
+                                <!--  The action and progress share one row so the card keeps its height.  -->
+                                <Grid MinHeight="{ThemeResource AppDimension44}">
+                                    <Button
+                                        x:Uid="PagesLoginPageLoginSignInButton" x:Name="LoginSignInButton"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="LoginSignInButton"
+                                        AutomationProperties.Name="Continue with GitHub"
+                                        Click="LoginButton_Click"
+                                        IsEnabled="{x:Bind ViewModel.IsLoginEnabled, Mode=OneWay}"
+                                        Style="{StaticResource PrimaryActionButtonStyle}"
+                                        Visibility="{x:Bind ViewModel.IsSignInActionVisible, Mode=OneWay}">
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="{ThemeResource AppGap8}">
+                                            <FontIcon VerticalAlignment="Center" Glyph="&#xE72E;" />
+                                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Grid
+                                        VerticalAlignment="Center"
+                                        ColumnSpacing="{ThemeResource AppGap12}"
+                                        Visibility="{x:Bind ViewModel.IsSessionWorkInProgress, Mode=OneWay}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressRing
+                                            Width="{ThemeResource AppDimension20}"
+                                            Height="{ThemeResource AppDimension20}"
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            IsActive="{x:Bind ViewModel.IsSessionWorkInProgress, Mode=OneWay}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="LoginNoActionNeededText"
+                                            Style="{StaticResource AppProgressLabelTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.NoActionNeededText, Mode=OneWay}" />
+                                    </Grid>
+                                </Grid>
                             </StackPanel>
                         </appcontrols:AppSurfaceCard.Child>
                     </appcontrols:AppSurfaceCard>
