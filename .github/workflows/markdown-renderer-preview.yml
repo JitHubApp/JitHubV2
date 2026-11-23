@@ -3,24 +3,20 @@ name: MarkdownRenderer Preview Validation
 # Hosted CI does not run pinned-machine ETW traces, live UI Automation, or
 # native ARM64 execution, and must not claim their results.
 
+# These paths are the renderer packages and every file outside them that their
+# builds, packages, or checks read. App-only changes do not change the renderer;
+# Code Viewer Unit Tests and Full Native AOT validate the app on every PR.
+# Of the docs, only the README is packed into the NuGet packages.
 on:
   push:
     branches:
       - main
     paths:
       - MarkdownRenderer/**
-      - JitHub.WinUI/**
-      - JitHub.WinUI.Tests/**
-      - JitHub.Core/**
-      - JitHub.Core.Tests/**
-      - JitHub.Markdown/**
-      - JitHub.Markdown.Tests/**
-      - JitHub.Performance/**
-      - JitHub.Shared/**
-      - docs/markdown-renderer/**
-      - JitHub.slnx
+      - docs/markdown-renderer/README.md
       - .github/workflows/markdown-renderer-preview.yml
       - Directory.Build.props
+      - Directory.Packages.props
       - .gitattributes
       - global.json
       - LICENSE
@@ -30,18 +26,10 @@ on:
       - main
     paths:
       - MarkdownRenderer/**
-      - JitHub.WinUI/**
-      - JitHub.WinUI.Tests/**
-      - JitHub.Core/**
-      - JitHub.Core.Tests/**
-      - JitHub.Markdown/**
-      - JitHub.Markdown.Tests/**
-      - JitHub.Performance/**
-      - JitHub.Shared/**
-      - docs/markdown-renderer/**
-      - JitHub.slnx
+      - docs/markdown-renderer/README.md
       - .github/workflows/markdown-renderer-preview.yml
       - Directory.Build.props
+      - Directory.Packages.props
       - .gitattributes
       - global.json
       - LICENSE
