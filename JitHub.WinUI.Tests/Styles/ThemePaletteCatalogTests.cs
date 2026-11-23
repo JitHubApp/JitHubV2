@@ -88,6 +88,8 @@ public sealed class ThemePaletteCatalogTests
         (string Foreground, string Background)[] actionPairs =
         [
             ("AppAccentForegroundColor", "AppAccentColor"),
+            ("AppAccentForegroundColor", "AppAccentHoverColor"),
+            ("AppAccentForegroundColor", "AppAccentPressedColor"),
             ("AppWarmAccentForegroundColor", "AppWarmAccentColor"),
             ("AppDangerForegroundColor", "AppDangerColor"),
             ("AppSuccessForegroundColor", "AppSuccessColor"),

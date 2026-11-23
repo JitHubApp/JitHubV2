@@ -97,7 +97,7 @@ public static class ThemePaletteCatalog
             Dark("#282828", "#1D2021", "#3C3836", "#171918", "#45403C", "#4B3F28", "#665C54", "#F4E5C5", "#D5C4A1", "#D79921", "#E2AA38", "#BC8315", "#1A1712")),
         Generated(ThemePaletteIds.Monokai, "Monokai", "Monokai", "Crisp charcoal and vivid accents inspired by Monokai.",
             Light("#F8F8F2", "#EFEFE8", "#FFFFFF", "#E2E2DA", "#EEEEEA", "#F5DCE7", "#C9C9C0", "#272822", "#4F5048", "#B41455", "#981147", "#7F0E3C", "#FFFFFF"),
-            Dark("#272822", "#1E1F1C", "#35362F", "#181916", "#3E3F37", "#4B2D3A", "#5A5B50", "#F8F8F2", "#D6D6C2", "#F92672", "#FA4A8A", "#D91D62", "#151612")),
+            Dark("#272822", "#1E1F1C", "#35362F", "#181916", "#3E3F37", "#4B2D3A", "#5A5B50", "#F8F8F2", "#D6D6C2", "#F92672", "#FA4A8A", "#FA387E", "#151612")),
         Generated(ThemePaletteIds.Ayu, "Ayu", "Ayu", "Clean neutrals and warm accents inspired by Ayu.",
             Light("#FAFAFA", "#F3F4F5", "#FFFFFF", "#E6E8EB", "#EFF1F3", "#F4E2CE", "#C8CCD2", "#4D5566", "#5C6773", "#945000", "#7D4300", "#693800", "#FFFFFF"),
             Dark("#0B0E14", "#070A0F", "#161B22", "#03060A", "#1D2430", "#3B3021", "#3D4757", "#F1EBD9", "#B3B1AD", "#FFB454", "#FFC374", "#E39B3F", "#17130D")),
