@@ -13,6 +13,8 @@
     <x:Double x:Key="AppOpacityDisabledControl">0.45</x:Double>
     <x:Double x:Key="AppOpacityDisabledSurface">0.55</x:Double>
     <x:Double x:Key="AppOpacityPlaceholder">0.72</x:Double>
+    <!-- Lowest fill opacity that keeps on-accent text at 3:1 or better in every palette. -->
+    <x:Double x:Key="AppOpacityAccentButtonDisabledFill">0.72</x:Double>
     <x:Double x:Key="AppOpacityPlaceholderStrong">0.82</x:Double>
     <x:Double x:Key="AppOpacityMaterialLuminosity">0.85</x:Double>
     <x:Double x:Key="AppOpacityOnAccentSecondary">0.9</x:Double>

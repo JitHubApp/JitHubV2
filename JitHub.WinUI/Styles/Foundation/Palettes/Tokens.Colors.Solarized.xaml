@@ -150,7 +150,7 @@
             <Color x:Key="AppHairlineColor">#16404A</Color>
             <Color x:Key="AppAccentColor">#2AA198</Color>
             <Color x:Key="AppAccentHoverColor">#3AB7AD</Color>
-            <Color x:Key="AppAccentPressedColor">#21827B</Color>
+            <Color x:Key="AppAccentPressedColor">#32ACA2</Color>
             <Color x:Key="AppAccentForegroundColor">#002B36</Color>
             <Color x:Key="AppWarmAccentColor">#B58900</Color>
             <Color x:Key="AppWarmAccentForegroundColor">#002B36</Color>

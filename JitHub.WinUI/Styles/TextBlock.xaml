@@ -8,6 +8,13 @@
         <Setter Property="TextWrapping" Value="WrapWholeWords" />
     </Style>
 
+    <!-- Omits Foreground so a label inside a Button inherits the button's foreground, as its icon does. -->
+    <Style x:Key="AppButtonLabelTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{ThemeResource AppBodyFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource AppBodyFontSize}" />
+        <Setter Property="TextWrapping" Value="WrapWholeWords" />
+    </Style>
+
     <Style x:Key="TitleStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppDisplayFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppTitleFontSize}" />

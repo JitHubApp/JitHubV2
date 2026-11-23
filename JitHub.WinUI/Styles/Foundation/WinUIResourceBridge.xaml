@@ -40,6 +40,10 @@
             <StaticResource x:Key="AppSegmentedItemBorderThickness" ResourceKey="AppZeroThickness" />
             <StaticResource x:Key="AppSegmentedItemFocusStrokeThickness" ResourceKey="AppHairlineBorderThickness" />
             <StaticResource x:Key="AppSegmentedItemDisabledOpacity" ResourceKey="AppOpacityDisabledControl" />
+            <StaticResource x:Key="AppAccentButtonBorderPointerOverBrush" ResourceKey="AppAccentHoverBrush" />
+            <StaticResource x:Key="AppAccentButtonBorderPressedBrush" ResourceKey="AppAccentPressedBrush" />
+            <StaticResource x:Key="AppAccentButtonBorderPressedThickness" ResourceKey="AppHairlineBorderThickness" />
+            <StaticResource x:Key="AppAccentButtonDisabledFillOpacity" ResourceKey="AppOpacityAccentButtonDisabledFill" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <StaticResource x:Key="AppSegmentedBackgroundBrush" ResourceKey="AppCanvasInsetBrush" />
@@ -63,6 +67,10 @@
             <StaticResource x:Key="AppSegmentedItemBorderThickness" ResourceKey="AppZeroThickness" />
             <StaticResource x:Key="AppSegmentedItemFocusStrokeThickness" ResourceKey="AppHairlineBorderThickness" />
             <StaticResource x:Key="AppSegmentedItemDisabledOpacity" ResourceKey="AppOpacityDisabledControl" />
+            <StaticResource x:Key="AppAccentButtonBorderPointerOverBrush" ResourceKey="AppAccentHoverBrush" />
+            <StaticResource x:Key="AppAccentButtonBorderPressedBrush" ResourceKey="AppAccentPressedBrush" />
+            <StaticResource x:Key="AppAccentButtonBorderPressedThickness" ResourceKey="AppHairlineBorderThickness" />
+            <StaticResource x:Key="AppAccentButtonDisabledFillOpacity" ResourceKey="AppOpacityAccentButtonDisabledFill" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <StaticResource x:Key="AppSegmentedBackgroundBrush" ResourceKey="SystemColorWindowColorBrush" />
@@ -88,6 +96,11 @@
             <StaticResource x:Key="AppSegmentedItemFocusStrokeThickness" ResourceKey="AppStrongBorderThickness" />
             <!--  System colours must not be dimmed; disabled items use GrayText instead.  -->
             <StaticResource x:Key="AppSegmentedItemDisabledOpacity" ResourceKey="AppOpacityVisible" />
+            <!--  Every accent state fill is Highlight here, so hover and pressed are shown by a system-color outline.  -->
+            <StaticResource x:Key="AppAccentButtonBorderPointerOverBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+            <StaticResource x:Key="AppAccentButtonBorderPressedBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+            <StaticResource x:Key="AppAccentButtonBorderPressedThickness" ResourceKey="AppStrongBorderThickness" />
+            <StaticResource x:Key="AppAccentButtonDisabledFillOpacity" ResourceKey="AppOpacityVisible" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 

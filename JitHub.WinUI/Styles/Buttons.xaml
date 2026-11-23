@@ -104,6 +104,76 @@
         <Setter Property="Foreground" Value="{ThemeResource AppAccentForegroundBrush}" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <!-- The base template tints content with an ink overlay, which lowers on-accent contrast. Accent states change only the fill. -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Fill.Background" Value="{ThemeResource AppAccentHoverBrush}" />
+                                        <Setter Target="Fill.BorderBrush" Value="{ThemeResource AppAccentButtonBorderPointerOverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Fill.Background" Value="{ThemeResource AppAccentPressedBrush}" />
+                                        <Setter Target="Fill.BorderBrush" Value="{ThemeResource AppAccentButtonBorderPressedBrush}" />
+                                        <Setter Target="Fill.BorderThickness" Value="{ThemeResource AppAccentButtonBorderPressedThickness}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Fill.Opacity" Value="{ThemeResource AppAccentButtonDisabledFillOpacity}" />
+                                        <!-- High Contrast never dims the system fill, so the GrayText backplate is the disabled cue there. -->
+                                        <Setter Target="ContentPresenter.HighContrastAdjustment" Value="Application" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters>
+                                        <Setter Target="FocusVisual.Opacity" Value="{ThemeResource AppOpacityVisible}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <!-- The fill is a sibling of the content so disabled opacity never dims the label or icon. -->
+                        <Border
+                            x:Name="Fill"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}" />
+                        <!-- Opts out of the text backplate because this template paints its own Highlight and HighlightText pair. -->
+                        <ContentPresenter
+                            x:Name="ContentPresenter"
+                            Margin="{TemplateBinding BorderThickness}"
+                            HighContrastAdjustment="None"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            ContentTransitions="{TemplateBinding ContentTransitions}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        <Border
+                            x:Name="FocusVisual"
+                            Margin="{ThemeResource AppMargin1}"
+                            BorderBrush="{ThemeResource AppAccentForegroundBrush}"
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False"
+                            Opacity="{ThemeResource AppOpacityTransparent}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="AppQuietButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">

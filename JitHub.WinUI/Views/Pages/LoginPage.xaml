@@ -77,7 +77,10 @@
                                             Orientation="Horizontal"
                                             Spacing="{ThemeResource AppGap8}">
                                             <FontIcon VerticalAlignment="Center" Glyph="&#xE72E;" />
-                                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource AppButtonLabelTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
                                         </StackPanel>
                                     </Button>
                                     <Grid

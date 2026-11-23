@@ -169,7 +169,11 @@
                     Style="{StaticResource AppAccentButtonStyle}">
                     <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap7}">
                         <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE710;" />
-                        <TextBlock x:Name="NewRepositoryButtonText" VerticalAlignment="Center" Text="{x:Bind ViewModel.NewRepositoryButtonText, Mode=OneWay}" />
+                        <TextBlock
+                            x:Name="NewRepositoryButtonText"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource AppButtonLabelTextBlockStyle}"
+                            Text="{x:Bind ViewModel.NewRepositoryButtonText, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
                 <Button
