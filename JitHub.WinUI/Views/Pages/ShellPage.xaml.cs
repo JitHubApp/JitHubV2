@@ -113,11 +113,13 @@ public sealed partial class ShellPage : Page
     private ScrollViewer? _repositoryScrollViewer;
     private long _repositoryVerticalOffsetCallbackToken;
     private long _repositoryScrollableHeightCallbackToken;
-    private double _lastRepositoryScrollOffset;
-    private double _repositoryUpwardRevealTravel;
-    private double _repositoryDownwardRehideTravel;
-    private bool _repositoryHeaderRevealedByUpwardScroll;
-    private bool _isRepositoryScrollHeaderShy;
+    private readonly ShyHeaderScrollTracker _repositoryScrollHeader = new(
+        RepositoryShyHeaderStartOffset,
+        RepositoryShyHeaderRestoreOffset,
+        RepositoryShyHeaderRevealTravel,
+        RepositoryShyHeaderRehideTravel,
+        RepositoryScrollDirectionEpsilon);
+    private ShyHeaderManipulationBinding? _repositoryManipulation;
     private bool _isRepositoryHeaderShy;
     private bool _synchronizingRepositoryFilters;
     private bool _repositoryFiltersInitialized;
@@ -1137,10 +1139,10 @@ public sealed partial class ShellPage : Page
             }
             else
             {
-                _isRepositoryScrollHeaderShy = false;
-                _repositoryHeaderRevealedByUpwardScroll = false;
-                _repositoryUpwardRevealTravel = 0;
-                _repositoryDownwardRehideTravel = 0;
+                _repositoryScrollHeader.Reset(
+                    _repositoryScrollViewer?.VerticalOffset ?? 0,
+                    _repositoryScrollViewer?.ScrollableHeight ?? 0,
+                    isShy: false);
                 SetRepositoryHeaderShy(false, animate: true);
             }
 
@@ -1827,14 +1829,16 @@ public sealed partial class ShellPage : Page
             ScrollViewer.ScrollableHeightProperty,
             RepositoryScrollViewer_ScrollPropertyChanged);
 
-        _lastRepositoryScrollOffset = scrollViewer.VerticalOffset;
-        _repositoryUpwardRevealTravel = 0;
-        _repositoryDownwardRehideTravel = 0;
-        _repositoryHeaderRevealedByUpwardScroll = false;
-        _isRepositoryScrollHeaderShy =
-            scrollViewer.ScrollableHeight > 0 &&
-            scrollViewer.VerticalOffset >= RepositoryShyHeaderStartOffset;
-        SetRepositoryHeaderShy(_isRepositoryScrollHeaderShy, animate: false);
+        _repositoryManipulation = new ShyHeaderManipulationBinding(
+            scrollViewer,
+            _repositoryScrollHeader,
+            () => UpdateRepositoryHeaderForScroll(scrollViewer, isIntermediate: false));
+        _repositoryScrollHeader.Reset(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            isShy: scrollViewer.VerticalOffset >= RepositoryShyHeaderStartOffset &&
+                CanHideRepositoryHeader(scrollViewer));
+        SetRepositoryHeaderShy(_repositoryScrollHeader.IsShy, animate: false);
     }
 
     private void DetachRepositoryScrollViewer()
@@ -1844,6 +1848,8 @@ public sealed partial class ShellPage : Page
             return;
         }
 
+        _repositoryManipulation?.Dispose();
+        _repositoryManipulation = null;
         scrollViewer.ViewChanged -= RepositoryScrollViewer_ViewChanged;
         scrollViewer.UnregisterPropertyChangedCallback(
             ScrollViewer.VerticalOffsetProperty,
@@ -1860,7 +1866,7 @@ public sealed partial class ShellPage : Page
     {
         if (sender is ScrollViewer scrollViewer)
         {
-            UpdateRepositoryHeaderForScroll(scrollViewer);
+            UpdateRepositoryHeaderForScroll(scrollViewer, e.IsIntermediate);
         }
     }
 
@@ -1874,99 +1880,44 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    private void UpdateRepositoryHeaderForScroll(ScrollViewer scrollViewer)
+    private void UpdateRepositoryHeaderForScroll(ScrollViewer scrollViewer, bool isIntermediate = true)
     {
         if (!ReferenceEquals(_repositoryScrollViewer, scrollViewer))
         {
             return;
         }
 
+        double offset = scrollViewer.VerticalOffset;
+        double scrollableHeight = scrollViewer.ScrollableHeight;
         if (_isRepositoryHeaderLayoutTransitionActive)
         {
-            _lastRepositoryScrollOffset = scrollViewer.VerticalOffset;
+            _repositoryScrollHeader.SyncLayout(offset, scrollableHeight);
             return;
         }
 
-        if (scrollViewer.ScrollableHeight <= 0)
+        if (scrollableHeight <= 0)
         {
-            _lastRepositoryScrollOffset = 0;
-            _repositoryUpwardRevealTravel = 0;
-            _repositoryDownwardRehideTravel = 0;
-            _repositoryHeaderRevealedByUpwardScroll = false;
-            _isRepositoryScrollHeaderShy = false;
+            _repositoryScrollHeader.Reset(0, scrollableHeight, isShy: false);
             SetRepositoryHeaderShy(false, animate: true);
             return;
         }
 
-        double offset = scrollViewer.VerticalOffset;
-        double delta = offset - _lastRepositoryScrollOffset;
-        _lastRepositoryScrollOffset = offset;
-
-        if (_isRepositoryScrollHeaderShy)
+        ShyHeaderScrollAction action = _repositoryScrollHeader.Observe(
+            offset,
+            scrollableHeight,
+            CanHideRepositoryHeader(scrollViewer),
+            isIntermediate);
+        if (action != ShyHeaderScrollAction.None)
         {
-            if (offset <= RepositoryShyHeaderRestoreOffset)
-            {
-                RevealRepositoryScrollHeader(revealedByUpwardScroll: false);
-            }
-            else if (delta < -RepositoryScrollDirectionEpsilon)
-            {
-                _repositoryUpwardRevealTravel += -delta;
-                if (_repositoryUpwardRevealTravel >= RepositoryShyHeaderRevealTravel)
-                {
-                    RevealRepositoryScrollHeader(revealedByUpwardScroll: true);
-                }
-            }
-            else if (delta > RepositoryScrollDirectionEpsilon)
-            {
-                _repositoryUpwardRevealTravel = Math.Max(0, _repositoryUpwardRevealTravel - delta);
-            }
-
-            return;
-        }
-
-        if (offset <= RepositoryShyHeaderRestoreOffset)
-        {
-            _repositoryHeaderRevealedByUpwardScroll = false;
-            _repositoryDownwardRehideTravel = 0;
-        }
-        else if (_repositoryHeaderRevealedByUpwardScroll)
-        {
-            if (delta > RepositoryScrollDirectionEpsilon)
-            {
-                _repositoryDownwardRehideTravel += delta;
-                if (_repositoryDownwardRehideTravel >= RepositoryShyHeaderRehideTravel)
-                {
-                    HideRepositoryScrollHeader();
-                }
-            }
-            else if (delta < -RepositoryScrollDirectionEpsilon)
-            {
-                _repositoryDownwardRehideTravel = 0;
-            }
-        }
-        else if (offset >= RepositoryShyHeaderStartOffset)
-        {
-            HideRepositoryScrollHeader();
+            SetRepositoryHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
         }
     }
 
-    private void RevealRepositoryScrollHeader(bool revealedByUpwardScroll)
-    {
-        _isRepositoryScrollHeaderShy = false;
-        _repositoryHeaderRevealedByUpwardScroll = revealedByUpwardScroll;
-        _repositoryUpwardRevealTravel = 0;
-        _repositoryDownwardRehideTravel = 0;
-        SetRepositoryHeaderShy(false, animate: true);
-    }
-
-    private void HideRepositoryScrollHeader()
-    {
-        _isRepositoryScrollHeaderShy = true;
-        _repositoryHeaderRevealedByUpwardScroll = false;
-        _repositoryUpwardRevealTravel = 0;
-        _repositoryDownwardRehideTravel = 0;
-        SetRepositoryHeaderShy(true, animate: true);
-    }
+    private bool CanHideRepositoryHeader(ScrollViewer scrollViewer) =>
+        ShyHeaderScrollPolicy.CanCollapse(
+            scrollViewer.ScrollableHeight,
+            RepositoryExpandedHeaderSurface.ActualHeight,
+            RepositoryShyHeaderRestoreOffset);
 
     private void SetRepositoryHeaderShy(bool isShy, bool animate)
     {
@@ -2071,7 +2022,7 @@ public sealed partial class ShellPage : Page
                 _isRepositoryHeaderLayoutTransitionActive = false;
                 if (_repositoryScrollViewer is ScrollViewer scrollViewer)
                 {
-                    _lastRepositoryScrollOffset = scrollViewer.VerticalOffset;
+                    _repositoryScrollHeader.SyncLayout(scrollViewer.VerticalOffset, scrollViewer.ScrollableHeight);
                 }
             }
         }

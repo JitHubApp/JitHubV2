@@ -71,6 +71,7 @@ public sealed partial class RepoPullRequestPage : Page
         ShyHeaderRehideTravel,
         ScrollDirectionEpsilon);
     private ScrollViewer? _activeShyHeaderScrollViewer;
+    private ShyHeaderManipulationBinding? _shyHeaderManipulation;
     private bool _isDetailHeaderShy;
     private bool _synchronizingSectionSelection;
     private int _headerTransitionGeneration;
@@ -179,7 +180,7 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         _sectionScrollViewers.Clear();
-        _activeShyHeaderScrollViewer = null;
+        ClearActiveShyHeaderScrollViewer();
         StopDetailHeaderTransition();
         base.OnNavigatedFrom(e);
     }
@@ -319,6 +320,11 @@ public sealed partial class RepoPullRequestPage : Page
         {
             if (_sectionScrollViewers.Remove(scrollViewer, out long callbackToken))
             {
+                if (ReferenceEquals(_activeShyHeaderScrollViewer, scrollViewer))
+                {
+                    ClearActiveShyHeaderScrollViewer();
+                }
+
                 scrollViewer.ViewChanged -= PullRequestSectionScrollViewer_ViewChanged;
                 scrollViewer.UnregisterPropertyChangedCallback(ScrollViewer.VerticalOffsetProperty, callbackToken);
             }
@@ -333,7 +339,7 @@ public sealed partial class RepoPullRequestPage : Page
             return;
         }
 
-        UpdateDetailHeaderForScrollViewer(scrollViewer);
+        UpdateDetailHeaderForScrollViewer(scrollViewer, e.IsIntermediate);
     }
 
     private void PullRequestSectionScrollViewer_VerticalOffsetChanged(
@@ -361,7 +367,18 @@ public sealed partial class RepoPullRequestPage : Page
             return;
         }
 
+        ClearActiveShyHeaderScrollViewer();
         _activeShyHeaderScrollViewer = scrollViewer;
+        _shyHeaderManipulation = new ShyHeaderManipulationBinding(
+            scrollViewer,
+            _scrollHeader,
+            () =>
+            {
+                if (!IsCompactWorkspace)
+                {
+                    UpdateDetailHeaderForScrollViewer(scrollViewer, isIntermediate: false);
+                }
+            });
         _scrollHeader.Reset(
             scrollViewer.VerticalOffset,
             scrollViewer.ScrollableHeight,
@@ -369,7 +386,14 @@ public sealed partial class RepoPullRequestPage : Page
         SetDetailHeaderShy(IsCompactWorkspace || _scrollHeader.IsShy, animate: false);
     }
 
-    private void UpdateDetailHeaderForScrollViewer(ScrollViewer scrollViewer)
+    private void ClearActiveShyHeaderScrollViewer()
+    {
+        _shyHeaderManipulation?.Dispose();
+        _shyHeaderManipulation = null;
+        _activeShyHeaderScrollViewer = null;
+    }
+
+    private void UpdateDetailHeaderForScrollViewer(ScrollViewer scrollViewer, bool isIntermediate = true)
     {
         if (!IsShyHeaderScrollCandidate(scrollViewer))
         {
@@ -385,7 +409,8 @@ public sealed partial class RepoPullRequestPage : Page
         ShyHeaderScrollAction action = _scrollHeader.Observe(
             scrollViewer.VerticalOffset,
             scrollViewer.ScrollableHeight,
-            CanHideScrollHeader(scrollViewer));
+            CanHideScrollHeader(scrollViewer),
+            isIntermediate);
         if (action != ShyHeaderScrollAction.None)
         {
             SetDetailHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
@@ -1102,7 +1127,7 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         ViewModel.SetSection(PullRequestSectionSelectionPolicy.FromIndex(selectedIndex));
-        _activeShyHeaderScrollViewer = null;
+        ClearActiveShyHeaderScrollViewer();
         _scrollHeader.Reset(0, 0, isShy: false);
         SetDetailHeaderShy(IsCompactWorkspace, animate: false);
         _ = DispatcherQueue.TryEnqueue(

@@ -29,6 +29,7 @@ public sealed partial class RepoIssueDetailPane : UserControl
         ShyHeaderRevealTravel,
         ShyHeaderRehideTravel,
         ScrollDirectionEpsilon);
+    private ShyHeaderManipulationBinding? _scrollManipulation;
     private AdaptiveWorkspaceState? _responsiveState;
     private bool _isDetailHeaderShy;
     private int _headerTransitionGeneration;
@@ -69,6 +70,10 @@ public sealed partial class RepoIssueDetailPane : UserControl
 
     private void RepoIssueDetailPane_Loaded(object sender, RoutedEventArgs e)
     {
+        _scrollManipulation ??= new ShyHeaderManipulationBinding(
+            IssueConversationScrollViewer,
+            _scrollHeader,
+            () => UpdateHeaderForScroll(isIntermediate: false));
         _headerTransitionGeneration++;
         MorphTransitionSafety.TryResetVisibilityState(
             _headerTransition,
@@ -80,6 +85,8 @@ public sealed partial class RepoIssueDetailPane : UserControl
 
     private void RepoIssueDetailPane_Unloaded(object sender, RoutedEventArgs e)
     {
+        _scrollManipulation?.Dispose();
+        _scrollManipulation = null;
         _headerTransitionGeneration++;
         MorphTransitionSafety.TryStop(_headerTransition);
     }
@@ -148,7 +155,10 @@ public sealed partial class RepoIssueDetailPane : UserControl
             : double.NaN;
     }
 
-    private void IssueConversationScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    private void IssueConversationScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e) =>
+        UpdateHeaderForScroll(e.IsIntermediate);
+
+    private void UpdateHeaderForScroll(bool isIntermediate)
     {
         if (IsCompactWorkspace)
         {
@@ -158,7 +168,8 @@ public sealed partial class RepoIssueDetailPane : UserControl
         ShyHeaderScrollAction action = _scrollHeader.Observe(
             IssueConversationScrollViewer.VerticalOffset,
             IssueConversationScrollViewer.ScrollableHeight,
-            CanHideScrollHeader());
+            CanHideScrollHeader(),
+            isIntermediate);
         if (action != ShyHeaderScrollAction.None)
         {
             SetDetailHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
