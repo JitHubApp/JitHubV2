@@ -35,6 +35,7 @@ public sealed class AuthService : IAuthService
     private readonly IDeviceAuthorizationPrompt _devicePrompt;
     private readonly IGitHubDeviceFlowClient _deviceClient;
     private readonly LaunchOptions _launchOptions;
+    private readonly AuthSessionActivityTracker _activity;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly object _proactiveRefreshGate = new();
     private Task? _proactiveRefreshTask;
@@ -67,6 +68,7 @@ public sealed class AuthService : IAuthService
         _devicePrompt = devicePrompt;
         _deviceClient = deviceClient;
         _launchOptions = launchOptions;
+        _activity = new AuthSessionActivityTracker(() => ActivityChanged?.Invoke(this, EventArgs.Empty));
     }
 
     public bool Authenticated { get; set; }
@@ -74,6 +76,10 @@ public sealed class AuthService : IAuthService
     public GitHubUser? AuthenticatedUser { get; set; }
 
     public AuthSessionRecoveryState RecoveryState { get; private set; }
+
+    public AuthSessionActivity Activity => _activity.Current;
+
+    public event EventHandler? ActivityChanged;
 
     public Task InitializeAsync()
     {
@@ -271,6 +277,7 @@ public sealed class AuthService : IAuthService
     {
         RecoveryState = AuthSessionRecoveryState.None;
         long generation = Interlocked.Increment(ref _sessionGeneration);
+        _activity.Clear();
         string[] scopes = OAuthScopePolicy.BuildRequestedScopes(additionalScopes)
             .Append("offline_access").ToArray();
         GitHubTokenSession? session = await _devicePrompt.AuthorizeAsync(
@@ -282,6 +289,7 @@ public sealed class AuthService : IAuthService
 
         ValidateDeviceSession(session);
 
+        using AuthSessionActivityTracker.Lease completing = _activity.Begin(AuthSessionActivity.CompletingSignIn);
         GitHubUser user = await _gitHubClientService.GetCurrentUserAsync(session.AccessToken);
         IReadOnlySet<string> grantedScopes = await _gitHubClientService.GetTokenScopesAsync(session.AccessToken);
         if (!OAuthScopePolicy.HasAll(grantedScopes, OAuthScopePolicy.BuildRequestedScopes()))
@@ -699,6 +707,8 @@ public sealed class AuthService : IAuthService
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         long userId = _accountService.GetUser();
+        using AuthSessionActivityTracker.Lease? restoring =
+            userId > 0 ? _activity.Begin(AuthSessionActivity.RestoringSession) : null;
         long generation = Interlocked.Read(ref _sessionGeneration);
         string? token;
         try

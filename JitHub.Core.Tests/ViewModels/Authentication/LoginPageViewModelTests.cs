@@ -222,6 +222,139 @@ public sealed class LoginPageViewModelTests
         Assert.False(viewModel.IsSavedSessionRecoveryPending);
     }
 
+    [Fact]
+    public void SessionRestore_HidesSignInAndSaysNoActionIsNeeded()
+    {
+        TestAuthService authService = new() { Activity = AuthSessionActivity.RestoringSession };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+
+        viewModel.PrepareForDisplay();
+        viewModel.BeginObservingSessionActivity();
+
+        Assert.True(viewModel.IsSessionWorkInProgress);
+        Assert.False(viewModel.IsSignInActionVisible);
+        Assert.Equal("Signing you back in", viewModel.CardTitle);
+        Assert.Equal("You don't need to do anything.", viewModel.NoActionNeededText);
+    }
+
+    [Fact]
+    public void SessionRestore_FailureReturnsToSignIn()
+    {
+        TestAuthService authService = new() { Activity = AuthSessionActivity.RestoringSession };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+        viewModel.PrepareForDisplay();
+        viewModel.BeginObservingSessionActivity();
+
+        authService.SetActivity(AuthSessionActivity.Idle);
+
+        Assert.False(viewModel.IsSessionWorkInProgress);
+        Assert.True(viewModel.IsSignInActionVisible);
+        Assert.Equal(viewModel.SignInTitle, viewModel.CardTitle);
+        Assert.Equal(viewModel.SignInDescription, viewModel.StatusText);
+    }
+
+    [Fact]
+    public void SessionRestore_SlowRequestReturnsSignInAction()
+    {
+        TestAuthService authService = new() { Activity = AuthSessionActivity.RestoringSession };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+        viewModel.PrepareForDisplay();
+        viewModel.BeginObservingSessionActivity();
+
+        viewModel.ShowSlowSessionRestore();
+
+        Assert.False(viewModel.IsSessionWorkInProgress);
+        Assert.True(viewModel.IsSignInActionVisible);
+        Assert.Contains("slow to respond", viewModel.StatusText, StringComparison.Ordinal);
+
+        authService.SetActivity(AuthSessionActivity.Idle);
+
+        Assert.Equal(viewModel.SignInDescription, viewModel.StatusText);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_ApprovedSignInStaysBusyUntilNavigation()
+    {
+        TestAuthService authService = new();
+        bool wasBusyDuringCompletion = false;
+        LoginPageViewModel? viewModel = null;
+        authService.AuthenticateHandler = () =>
+        {
+            authService.SetActivity(AuthSessionActivity.CompletingSignIn);
+            wasBusyDuringCompletion = viewModel!.IsSessionWorkInProgress && !viewModel.IsSignInActionVisible;
+            authService.Authenticated = true;
+            authService.SetActivity(AuthSessionActivity.Idle);
+            return Task.CompletedTask;
+        };
+        viewModel = CreateViewModel(authService);
+        viewModel.PrepareForDisplay();
+        viewModel.BeginObservingSessionActivity();
+
+        await viewModel.StartLoginAsync();
+
+        Assert.True(wasBusyDuringCompletion);
+        Assert.True(viewModel.IsSessionWorkInProgress);
+        Assert.False(viewModel.IsSignInActionVisible);
+        Assert.False(viewModel.IsLoginEnabled);
+        Assert.Equal("Finishing sign-in", viewModel.CardTitle);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_FailureAfterApprovalReturnsToSignIn()
+    {
+        TestAuthService authService = new();
+        authService.AuthenticateHandler = () =>
+        {
+            authService.SetActivity(AuthSessionActivity.CompletingSignIn);
+            authService.SetActivity(AuthSessionActivity.Idle);
+            return Task.FromException(new HttpRequestException("offline"));
+        };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+        viewModel.PrepareForDisplay();
+        viewModel.BeginObservingSessionActivity();
+
+        await viewModel.StartLoginAsync();
+
+        Assert.False(viewModel.IsSessionWorkInProgress);
+        Assert.True(viewModel.IsSignInActionVisible);
+        Assert.True(viewModel.IsLoginEnabled);
+        Assert.True(viewModel.HasLoginError);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_DuringSlowRestoreKeepsRequestStatus()
+    {
+        TestAuthService authService = new() { Activity = AuthSessionActivity.RestoringSession };
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+        string? statusAfterRestoreEnded = null;
+        authService.AuthenticateHandler = () =>
+        {
+            authService.SetActivity(AuthSessionActivity.Idle);
+            statusAfterRestoreEnded = viewModel.StatusText;
+            return Task.CompletedTask;
+        };
+        viewModel.PrepareForDisplay();
+        viewModel.BeginObservingSessionActivity();
+        viewModel.ShowSlowSessionRestore();
+
+        await viewModel.StartLoginAsync();
+
+        Assert.Equal("Requesting a sign-in code from GitHub...", statusAfterRestoreEnded);
+    }
+
+    [Fact]
+    public void EndObservingSessionActivity_StopsUpdates()
+    {
+        TestAuthService authService = new();
+        LoginPageViewModel viewModel = CreateViewModel(authService);
+        viewModel.BeginObservingSessionActivity();
+
+        viewModel.EndObservingSessionActivity();
+        authService.SetActivity(AuthSessionActivity.RestoringSession);
+
+        Assert.False(viewModel.IsSessionWorkInProgress);
+    }
+
     private static LoginPageViewModel CreateViewModel(
         IAuthService authService,
         ITelemetryService? telemetry = null) =>
@@ -232,10 +365,17 @@ public sealed class LoginPageViewModelTests
 
     private sealed class TestAuthService : IAuthService
     {
-        public Func<Task> AuthenticateHandler { get; init; } = static () => Task.CompletedTask;
+        public Func<Task> AuthenticateHandler { get; set; } = static () => Task.CompletedTask;
         public bool Authenticated { get; set; }
         public GitHubUser? AuthenticatedUser { get; set; }
         public AuthSessionRecoveryState RecoveryState { get; set; } = AuthSessionRecoveryState.None;
+        public AuthSessionActivity Activity { get; set; }
+        public event EventHandler? ActivityChanged;
+        public void SetActivity(AuthSessionActivity activity)
+        {
+            Activity = activity;
+            ActivityChanged?.Invoke(this, EventArgs.Empty);
+        }
         public Func<Task<GitHubUser?>>? RefreshHandler { get; set; }
         public Task InitializeAsync() => Task.CompletedTask;
         public Task Authenticate() => AuthenticateHandler();

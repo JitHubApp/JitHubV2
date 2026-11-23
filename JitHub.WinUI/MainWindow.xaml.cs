@@ -4,10 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using JitHub.Core.Models.Startup;
 using JitHub.Core.Models.Theming;
+using JitHub.Core.Services.Startup;
 using JitHub.Core.Services.Theming;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
+using JitHub.WinUI.Services.Startup;
 using JitHub.WinUI.Services.Theming;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
@@ -49,10 +52,6 @@ public sealed partial class MainWindow : Window
     private const int SmCxSmIcon = 49;
     private const int SmCySmIcon = 50;
     private const int SwRestore = 9;
-    private const int DefaultLaunchWidthDip = 1360;
-    private const int DefaultLaunchHeightDip = 900;
-    private const int MinimumLaunchWidthDip = 960;
-    private const int MinimumLaunchHeightDip = 640;
     private static readonly TimeSpan StatusDisplayDuration = TimeSpan.FromSeconds(5);
     private static readonly nuint KeyboardSubclassId = 0x4A484B31;
     private readonly UISettings _uiSettings = new();
@@ -76,6 +75,8 @@ public sealed partial class MainWindow : Window
     private readonly Border _titleBarTransparentTokenProbe;
     private readonly ProductPerformanceVisualProbe? _productPerformanceVisualProbe;
     private readonly bool _websiteShowcasePresentationMode;
+    private readonly StartupLaunchExperience _launchExperience;
+    private readonly StartupFirstFrameObserver _firstFrameObserver;
     private nint _largeIconHandle;
     private nint _smallIconHandle;
     private AppThemeSettingsMonitor? _themeSettings;
@@ -137,8 +138,9 @@ public sealed partial class MainWindow : Window
 
     public event EventHandler? ClosingRequested;
 
-    public MainWindow()
+    internal MainWindow(StartupLaunchExperience launchExperience)
     {
+        _launchExperience = launchExperience;
         InitializeComponent();
 
         _rootLayout = ResolveRequiredElement(RootLayout, nameof(RootLayout));
@@ -179,6 +181,8 @@ public sealed partial class MainWindow : Window
         _keyboardSubclassProc = KeyboardSubclassProc;
         _ = SetWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId, 0);
 
+        _launchExperience.CloakWindow(_hwnd);
+        _firstFrameObserver = new StartupFirstFrameObserver(_contentFrame, DispatcherQueue, _launchExperience.Complete);
         ApplyDefaultLaunchPlacement();
         ConfigureWindowIcon();
         _rootLayout.Loaded += RootLayout_Loaded;
@@ -193,6 +197,8 @@ public sealed partial class MainWindow : Window
         AppWindow.Closing += AppWindow_Closing;
         Closed += (_, _) =>
         {
+            _firstFrameObserver.Stop();
+            _launchExperience.Complete();
             _productPerformanceVisualProbe?.Dispose();
             _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
             _rootLayout.Loaded -= RootLayout_Loaded;
@@ -222,6 +228,8 @@ public sealed partial class MainWindow : Window
 
     public void ShowActivationError(string message)
     {
+        _firstFrameObserver.Stop();
+        _launchExperience.Complete();
         ShowStatus($"Activation failed: {message}");
     }
 
@@ -800,28 +808,17 @@ public sealed partial class MainWindow : Window
 
     private void ApplyDefaultLaunchPlacement()
     {
-        DisplayArea displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
-        RectInt32 workArea = displayArea.WorkArea;
-        double scale = Math.Max(1d, GetDpiForWindow(_hwnd) / 96d);
-
-        int preferredWidth = DipToPixels(DefaultLaunchWidthDip, scale);
-        int preferredHeight = DipToPixels(DefaultLaunchHeightDip, scale);
-        int minimumWidth = DipToPixels(MinimumLaunchWidthDip, scale);
-        int minimumHeight = DipToPixels(MinimumLaunchHeightDip, scale);
-
-        int maxWidth = Math.Max(1, (int)Math.Round(workArea.Width * 0.88));
-        int maxHeight = Math.Max(1, (int)Math.Round(workArea.Height * 0.88));
-        int width = Math.Clamp(preferredWidth, Math.Min(minimumWidth, maxWidth), maxWidth);
-        int height = Math.Clamp(preferredHeight, Math.Min(minimumHeight, maxHeight), maxHeight);
-
-        int x = workArea.X + Math.Max(0, (workArea.Width - width) / 2);
-        int y = workArea.Y + Math.Max(0, (workArea.Height - height) / 2);
-
-        AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
+        StartupWindowBounds bounds = _launchExperience.PreferredWindowBounds ?? CalculateLaunchBounds();
+        AppWindow.MoveAndResize(new RectInt32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
     }
 
-    private static int DipToPixels(int dips, double scale)
-        => Math.Max(1, (int)Math.Round(dips * scale));
+    private StartupWindowBounds CalculateLaunchBounds()
+    {
+        RectInt32 workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        return StartupWindowPlacement.Calculate(
+            new StartupWindowBounds(workArea.X, workArea.Y, workArea.Width, workArea.Height),
+            GetDpiForWindow(_hwnd));
+    }
 
     private void ConfigureWindowIcon()
     {

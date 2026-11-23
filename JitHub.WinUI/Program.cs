@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Activation;
 using JitHub.Core.Models.Activation;
+using JitHub.WinUI.Services.Startup;
 
 namespace JitHub.WinUI;
 
@@ -52,6 +53,11 @@ internal static class Program
 
             keyInstance.Activated += OnActivated;
 
+            // Started only in the instance that will own the window, so a redirected
+            // launch never flashes a splash.
+            StartupLaunchExperience launchExperience = new(CurrentLaunchOptions);
+            LogStartupPhase("main.launch-experience-started");
+
             Application.Start(_ =>
             {
                 try
@@ -66,7 +72,7 @@ internal static class Program
                     // Reapply the automation qualifier on that dispatcher before App.xaml
                     // or any page XAML is constructed.
                     ConfigureAutomationLanguageOverride();
-                    _app = new App();
+                    _app = new App(launchExperience);
                     LogStartupPhase("app-start.app-constructed");
                     _app.HandleActivation(activationArguments);
                     LogStartupPhase("app-start.activation-requested");

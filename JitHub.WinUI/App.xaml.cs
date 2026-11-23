@@ -58,6 +58,7 @@ using JitHub.WinUI.Services.Markdown;
 using JitHub.WinUI.Services.Navigation;
 using JitHub.WinUI.Services.Notifications;
 using JitHub.WinUI.Services.Settings;
+using JitHub.WinUI.Services.Startup;
 using JitHub.WinUI.Services.Telemetry;
 using JitHub.WinUI.Services.Theming;
 using JitHub.WinUI.ViewModels;
@@ -99,9 +100,11 @@ public partial class App : Application
     private Task? _startupSessionRestoreMonitorTask;
     private bool _accountRemovalRecoveryIncomplete;
     private AuthLifecycleAutomationContext? _authLifecycleAutomation;
+    private readonly StartupLaunchExperience _launchExperience;
 
-    public App()
+    internal App(StartupLaunchExperience launchExperience)
     {
+        _launchExperience = launchExperience;
         Program.LogStartupPhase("app.constructor-enter");
         HandledFailureReporter.Configure(LogHandledException, LogHandledFailure);
         UnhandledException += App_UnhandledException;
@@ -531,7 +534,7 @@ public partial class App : Application
         {
             NavigateStartupPage();
         }
-        else if (!authService.Authenticated)
+        else if (!authService.Authenticated && _mainWindow?.ContentFrameHost.Content is not LoginPage)
         {
             GetService<NavigationService>().Unauthorized();
         }
@@ -625,10 +628,11 @@ public partial class App : Application
             Program.LogStartupPhase("window.construct-enter");
             try
             {
-                _mainWindow = new MainWindow();
+                _mainWindow = new MainWindow(_launchExperience);
             }
             catch (Exception exception)
             {
+                _launchExperience.Complete();
                 Program.LogStartupPhase($"window.construct-failed:{exception.GetType().FullName}:0x{exception.HResult:X8}");
                 LogActivationError(exception);
                 throw;

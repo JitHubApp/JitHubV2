@@ -26,7 +26,6 @@
     <x:Double x:Key="AppGap24">24</x:Double>
     <x:Double x:Key="AppReadablePageMaxWidth">1040</x:Double>
     <x:Double x:Key="AppDashboardPageMaxWidth">1180</x:Double>
-    <x:Double x:Key="AppLoginPageMaxWidth">760</x:Double>
     <x:Double x:Key="AppZeroDimension">0</x:Double>
     <x:Double x:Key="AppCommandControlHeight">36</x:Double>
     <x:Double x:Key="AppCompactSegmentHeight">30</x:Double>

@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Core.Services.Authentication;
@@ -6,6 +7,7 @@ using JitHub.Core.Services.Storage;
 using JitHub.Core.ViewModels.Authentication;
 using JitHub.WinUI.Services.Navigation;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Pages;
@@ -41,8 +43,21 @@ public sealed partial class LoginPage : Page
             return;
         }
 
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         ViewModel.PrepareForDisplay();
+        ViewModel.BeginObservingSessionActivity();
         StartOfflineSessionRecovery();
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LoginPageViewModel.StatusText))
+        {
+            FrameworkElementAutomationPeer
+                .CreatePeerForElement(LoginStatusTextBlock)?
+                .RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
     }
 
     private void StartOfflineSessionRecovery()
@@ -55,7 +70,20 @@ public sealed partial class LoginPage : Page
 
     private async Task ObserveStoredSessionAsync(CancellationToken cancellationToken)
     {
-        await ViewModel.WaitForStoredSessionAsync();
+        Task restore = ViewModel.WaitForStoredSessionAsync();
+        if (!restore.IsCompleted)
+        {
+            Task first = await Task.WhenAny(
+                restore,
+                Task.Delay(LoginPageViewModel.SessionRestoreActionDelay, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(first, restore))
+            {
+                ViewModel.ShowSlowSessionRestore();
+            }
+        }
+
+        await restore;
         cancellationToken.ThrowIfCancellationRequested();
         if (ViewModel.IsAuthenticated)
         {
@@ -79,7 +107,12 @@ public sealed partial class LoginPage : Page
         }
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => StopOfflineSessionRecovery();
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        StopOfflineSessionRecovery();
+        ViewModel.EndObservingSessionActivity();
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
 
     private void StopOfflineSessionRecovery()
     {

@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using System.Threading;
 using JitHub.Core.Models.GitHub.Users;
@@ -21,6 +22,16 @@ public interface IAuthService
     GitHubUser? AuthenticatedUser { get; set; }
 
     AuthSessionRecoveryState RecoveryState => AuthSessionRecoveryState.None;
+
+    /// <summary>Gets the work in progress that the user does not need to act on.</summary>
+    AuthSessionActivity Activity => AuthSessionActivity.Idle;
+
+    /// <summary>Raised when <see cref="Activity"/> changes, on the thread that changed it.</summary>
+    event EventHandler? ActivityChanged
+    {
+        add { }
+        remove { }
+    }
 
     Task InitializeAsync();
 
