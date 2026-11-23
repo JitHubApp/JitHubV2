@@ -37,6 +37,12 @@ jobs:
           dotnet build JitHub.Core.Tests/JitHub.Core.Tests.csproj -c Debug -p:Platform=x64 --no-restore
           dotnet build JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -c Debug -p:Platform=x64 --no-restore
 
+      - name: Restore JitHub.Markdown tests
+        run: dotnet restore JitHub.Markdown.Tests/JitHub.Markdown.Tests.csproj -p:Platform=x64
+
+      - name: Build JitHub.Markdown tests
+        run: dotnet build JitHub.Markdown.Tests/JitHub.Markdown.Tests.csproj -c Debug -p:Platform=x64 --no-restore
+
       - name: Run JitHub.Core unit tests
         run: >
           dotnet test JitHub.Core.Tests/JitHub.Core.Tests.csproj
@@ -53,6 +59,15 @@ jobs:
           -p:Platform=x64
           --no-build
           --logger "trx;LogFileName=test-results.trx"
+          --collect:"XPlat Code Coverage"
+
+      - name: Run JitHub.Markdown unit tests
+        run: >
+          dotnet test JitHub.Markdown.Tests/JitHub.Markdown.Tests.csproj
+          -c Debug
+          -p:Platform=x64
+          --no-build
+          --logger "trx;LogFileName=markdown-test-results.trx"
           --collect:"XPlat Code Coverage"
 
       - name: Upload test results
