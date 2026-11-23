@@ -20,8 +20,9 @@ assistive-technology, packaging, signing, or publishing work named below.
   `MarkdownRenderer/src/Directory.Build.props`, so `dotnet pack` fails on a
   binary-breaking change.
 - [ ] Approve the immutable engine/document API and explicit viewport types.
-- [ ] Confirm `MarkdownRendererControl` and its builder `Build()` path remain
-  obsolete compatibility surface.
+- [ ] Confirm `MarkdownRendererControl` remains an abstract base that only
+  `MarkdownScrollView` and `MarkdownDocumentView` derive from, and that its
+  builder creates views only through `BuildScrollView()` and `BuildDocumentView()`.
 - [ ] Give the automated public surface its final human compatibility review;
   test success is not API approval or 1.0 certification.
 - [ ] Check every README and quick start for `MarkdownScrollView` versus
