@@ -62,7 +62,7 @@ owns the scroll viewport:
 ```
 
 Do not nest `MarkdownScrollView` inside another vertical `ScrollViewer`.
-`MarkdownRendererControl` remains only as an obsolete compatibility type.
+`MarkdownRendererControl` is the abstract base of both views; apps construct one.
 
 ## Parse once and reuse immutable documents
 
@@ -120,8 +120,7 @@ var view = new MarkdownRendererControlBuilder()
     .BuildScrollView();
 ```
 
-Call `BuildDocumentView()` instead when an ancestor owns scrolling. `Build()` is
-obsolete for the same reason as the legacy control type.
+Call `BuildDocumentView()` instead when an ancestor owns scrolling.
 
 ## Query a document
 

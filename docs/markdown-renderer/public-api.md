@@ -108,8 +108,7 @@ var view = new MarkdownRendererControlBuilder()
     .BuildScrollView();
 ```
 
-Use `BuildDocumentView()` for an ancestor-owned viewport. The builder's `Build()`
-method is obsolete.
+Use `BuildDocumentView()` for an ancestor-owned viewport.
 
 For the opt-in progressive image pipeline, create one `MarkdownPerformanceSession`
 per account or security partition, and share it between

@@ -45,7 +45,7 @@ var view = new MarkdownScrollView
 ```
 
 Use `MarkdownDocumentView` inside an ancestor-owned scroll surface.
-`MarkdownRendererControl` is obsolete compatibility surface.
+`MarkdownRendererControl` is the abstract base of both views; apps construct one.
 
 The base presentation follows WinUI/Fluent resources. The GitHub README profile
 and any GitHub-themed presentation are opt-in through `UseGitHubReadme()` and
