@@ -62,11 +62,13 @@ public sealed partial class DashboardPage : Page
     private long _verticalOffsetCallbackToken;
     private long _scrollableHeightCallbackToken;
     private bool _scrollCallbacksRegistered;
-    private double _lastScrollOffset;
-    private double _upwardRevealTravel;
-    private double _downwardRehideTravel;
-    private bool _headerRevealedByUpwardScroll;
-    private bool _isScrollHeaderShy;
+    private readonly ShyHeaderScrollTracker _scrollHeader = new(
+        ShyHeaderStartOffset,
+        ShyHeaderRestoreOffset,
+        ShyHeaderRevealTravel,
+        ShyHeaderRehideTravel,
+        ScrollDirectionEpsilon);
+    private ShyHeaderManipulationBinding? _scrollManipulation;
     private bool _isHeaderShy;
     private int _headerTransitionGeneration;
     private long _overviewVerticalOffsetCallbackToken;
@@ -288,13 +290,16 @@ public sealed partial class DashboardPage : Page
             ScrollViewer.ScrollableHeightProperty,
             DashboardMainRailScrollPropertyChanged);
         _scrollCallbacksRegistered = true;
-        _lastScrollOffset = DashboardMainRailScrollViewer.VerticalOffset;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        _headerRevealedByUpwardScroll = false;
-        _isScrollHeaderShy = DashboardMainRailScrollViewer.ScrollableHeight > 0 &&
-            DashboardMainRailScrollViewer.VerticalOffset >= ShyHeaderStartOffset;
-        SetHeaderShy(_isScrollHeaderShy, animate: false);
+        _scrollManipulation = new ShyHeaderManipulationBinding(
+            DashboardMainRailScrollViewer,
+            _scrollHeader,
+            () => UpdateHeaderForScroll(DashboardMainRailScrollViewer, isIntermediate: false));
+        _scrollHeader.Reset(
+            DashboardMainRailScrollViewer.VerticalOffset,
+            DashboardMainRailScrollViewer.ScrollableHeight,
+            isShy: DashboardMainRailScrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
+                CanHideScrollHeader(DashboardMainRailScrollViewer));
+        SetHeaderShy(_scrollHeader.IsShy, animate: false);
     }
 
     private void DetachHeaderScrollTracking()
@@ -304,6 +309,8 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
+        _scrollManipulation?.Dispose();
+        _scrollManipulation = null;
         DashboardMainRailScrollViewer.UnregisterPropertyChangedCallback(
             ScrollViewer.VerticalOffsetProperty,
             _verticalOffsetCallbackToken);
@@ -357,7 +364,7 @@ public sealed partial class DashboardPage : Page
     {
         if (sender is ScrollViewer scrollViewer)
         {
-            UpdateHeaderForScroll(scrollViewer);
+            UpdateHeaderForScroll(scrollViewer, e.IsIntermediate);
         }
     }
 
@@ -630,7 +637,7 @@ public sealed partial class DashboardPage : Page
         }
     }
 
-    private void UpdateHeaderForScroll(ScrollViewer scrollViewer)
+    private void UpdateHeaderForScroll(ScrollViewer scrollViewer, bool isIntermediate = true)
     {
         if (!ReferenceEquals(scrollViewer, DashboardMainRailScrollViewer))
         {
@@ -639,84 +646,27 @@ public sealed partial class DashboardPage : Page
 
         if (scrollViewer.ScrollableHeight <= 0)
         {
-            _lastScrollOffset = 0;
-            _upwardRevealTravel = 0;
-            _downwardRehideTravel = 0;
-            _headerRevealedByUpwardScroll = false;
-            _isScrollHeaderShy = false;
+            _scrollHeader.Reset(0, scrollViewer.ScrollableHeight, isShy: false);
             SetHeaderShy(false, animate: true);
             return;
         }
 
-        double offset = scrollViewer.VerticalOffset;
-        double delta = offset - _lastScrollOffset;
-        _lastScrollOffset = offset;
-
-        if (_isScrollHeaderShy)
+        ShyHeaderScrollAction action = _scrollHeader.Observe(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            CanHideScrollHeader(scrollViewer),
+            isIntermediate);
+        if (action != ShyHeaderScrollAction.None)
         {
-            if (offset <= ShyHeaderRestoreOffset)
-            {
-                RevealScrollHeader(revealedByUpwardScroll: false);
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _upwardRevealTravel += -delta;
-                if (_upwardRevealTravel >= ShyHeaderRevealTravel)
-                {
-                    RevealScrollHeader(revealedByUpwardScroll: true);
-                }
-            }
-            else if (delta > ScrollDirectionEpsilon)
-            {
-                _upwardRevealTravel = 0;
-            }
-
-            return;
-        }
-
-        if (offset <= ShyHeaderRestoreOffset)
-        {
-            _headerRevealedByUpwardScroll = false;
-            _downwardRehideTravel = 0;
-        }
-        else if (_headerRevealedByUpwardScroll)
-        {
-            if (delta > ScrollDirectionEpsilon)
-            {
-                _downwardRehideTravel += delta;
-                if (_downwardRehideTravel >= ShyHeaderRehideTravel)
-                {
-                    HideScrollHeader();
-                }
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _downwardRehideTravel = 0;
-            }
-        }
-        else if (offset >= ShyHeaderStartOffset)
-        {
-            HideScrollHeader();
+            SetHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
         }
     }
 
-    private void RevealScrollHeader(bool revealedByUpwardScroll)
-    {
-        _isScrollHeaderShy = false;
-        _headerRevealedByUpwardScroll = revealedByUpwardScroll;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        SetHeaderShy(false, animate: true);
-    }
-
-    private void HideScrollHeader()
-    {
-        _isScrollHeaderShy = true;
-        _headerRevealedByUpwardScroll = false;
-        _upwardRevealTravel = 0;
-        _downwardRehideTravel = 0;
-        SetHeaderShy(true, animate: true);
-    }
+    private bool CanHideScrollHeader(ScrollViewer scrollViewer) =>
+        ShyHeaderScrollPolicy.CanCollapse(
+            scrollViewer.ScrollableHeight,
+            DashboardHeaderGrid.ActualHeight,
+            ShyHeaderRestoreOffset);
 
     private void SetHeaderShy(bool isShy, bool animate)
     {

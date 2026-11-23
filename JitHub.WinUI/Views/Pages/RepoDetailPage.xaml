@@ -83,6 +83,7 @@
                 </Grid.ColumnDefinitions>
                 <Border
                     x:Name="RepoDetailIdentityChrome"
+                    SizeChanged="RepoDetailHeaderContent_SizeChanged"
                     Height="{ThemeResource AppDimension36}"
                     MaxWidth="{ThemeResource AppDimension280}"
                     Margin="{ThemeResource AppMargin4_0_8_0}"
@@ -158,6 +159,7 @@
                 </Border>
                 <ScrollViewer
                     x:Name="RepoDetailSectionSelectorHost"
+                    SizeChanged="RepoDetailHeaderContent_SizeChanged"
                     Grid.Column="1"
                     MinWidth="{ThemeResource AppDimension0}"
                     HorizontalScrollBarVisibility="Hidden"
@@ -200,6 +202,7 @@
                     Grid.Column="3"
                     HorizontalAlignment="Stretch">
                     <StackPanel
+                        x:Name="RepoDetailCommandStrip"
                         Orientation="Horizontal"
                         Spacing="{ThemeResource AppGap8}"
                         VerticalAlignment="Center"
@@ -223,7 +226,7 @@
                             Height="{ThemeResource AppDimension16}"
                             Width="{ThemeResource AppDimension16}"
                             Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-                        <Grid x:Name="RepoDetailBranchChrome">
+                        <Grid x:Name="RepoDetailBranchChrome" SizeChanged="RepoDetailHeaderContent_SizeChanged">
                             <Button
                                 x:Uid="PagesRepoDetailPageRepoDetailBranchPicker" x:Name="RepoDetailBranchPicker"
                                 Visibility="{x:Bind ViewModel.IsBranchPickerVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
@@ -321,6 +324,7 @@
                         <StackPanel
                             x:Name="RepoDetailStatButtonsGroup"
                             x:Load="{x:Bind ShouldLoadRepositoryStatButtons, Mode=OneWay}"
+                            SizeChanged="RepoDetailHeaderContent_SizeChanged"
                             Orientation="Horizontal"
                             Spacing="{ThemeResource AppGap8}">
                             <appcontrols:AppStatButton

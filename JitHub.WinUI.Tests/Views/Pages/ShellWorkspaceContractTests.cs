@@ -288,10 +288,8 @@ public sealed class ShellWorkspaceContractTests
         Assert.Contains("RepositoryShyHeaderRestoreOffset", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRevealTravel", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRehideTravel", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "_repositoryUpwardRevealTravel = Math.Max(0, _repositoryUpwardRevealTravel - delta);",
-            source,
-            StringComparison.Ordinal);
+        Assert.Contains("_repositoryScrollHeader.Observe(", source, StringComparison.Ordinal);
+        Assert.Contains("new ShyHeaderManipulationBinding(", source, StringComparison.Ordinal);
         Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
         Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
         Assert.Contains(

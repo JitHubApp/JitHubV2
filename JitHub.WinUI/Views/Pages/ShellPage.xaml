@@ -706,8 +706,9 @@
                                     </app:AppSegmented.ItemsPanel>
                                     <app:AppSegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterPublic"
-                                        Height="{ThemeResource AppDimension44}"
-                                        Padding="{ThemeResource AppPadding4_4}"
+                                        Height="Auto"
+                                        MinHeight="{ThemeResource AppDimension28}"
+                                        Padding="{ThemeResource AppPadding4_2}"
                                         Width="{ThemeResource AppDimension80}"
                                         labs:TransitionHelper.Id="RepositoryHeaderFilterPublic"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Public"
@@ -723,8 +724,9 @@
                                     </app:AppSegmentedItem>
                                     <app:AppSegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterPrivate"
-                                        Height="{ThemeResource AppDimension44}"
-                                        Padding="{ThemeResource AppPadding4_4}"
+                                        Height="Auto"
+                                        MinHeight="{ThemeResource AppDimension28}"
+                                        Padding="{ThemeResource AppPadding4_2}"
                                         Width="{ThemeResource AppDimension80}"
                                         labs:TransitionHelper.Id="RepositoryHeaderFilterPrivate"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Private"
@@ -740,8 +742,9 @@
                                     </app:AppSegmentedItem>
                                     <app:AppSegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterForked"
-                                        Height="{ThemeResource AppDimension44}"
-                                        Padding="{ThemeResource AppPadding4_4}"
+                                        Height="Auto"
+                                        MinHeight="{ThemeResource AppDimension28}"
+                                        Padding="{ThemeResource AppPadding4_2}"
                                         Width="{ThemeResource AppDimension80}"
                                         labs:TransitionHelper.Id="RepositoryHeaderFilterForked"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Forked"

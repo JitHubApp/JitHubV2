@@ -59,22 +59,26 @@ public sealed partial class RepoCommitsPage : Page
     private ScrollViewer? _commitListScrollViewer;
     private long _commitListVerticalOffsetCallbackToken;
     private long _commitListScrollableHeightCallbackToken;
-    private double _lastCommitListScrollOffset;
-    private double _commitListUpwardRevealTravel;
-    private double _commitListDownwardRehideTravel;
-    private bool _commitListHeaderRevealedByUpwardScroll;
-    private bool _isCommitListScrollHeaderShy;
+    private readonly ShyHeaderScrollTracker _commitListScrollHeader = new(
+        ShyHeaderStartOffset,
+        ShyHeaderRestoreOffset,
+        ShyHeaderRevealTravel,
+        ShyHeaderRehideTravel,
+        ScrollDirectionEpsilon);
+    private ShyHeaderManipulationBinding? _commitListManipulation;
     private bool _isCommitListHeaderShy;
     private bool _isCommitListHeaderLayoutTransitionActive;
     private int _commitListHeaderTransitionGeneration;
     private ScrollViewer? _activeDetailScrollViewer;
     private long _detailVerticalOffsetCallbackToken;
     private long _detailScrollableHeightCallbackToken;
-    private double _lastDetailScrollOffset;
-    private double _detailUpwardRevealTravel;
-    private double _detailDownwardRehideTravel;
-    private bool _detailHeaderRevealedByUpwardScroll;
-    private bool _isDetailScrollHeaderShy;
+    private readonly ShyHeaderScrollTracker _detailScrollHeader = new(
+        ShyHeaderStartOffset,
+        ShyHeaderRestoreOffset,
+        ShyHeaderRevealTravel,
+        ShyHeaderRehideTravel,
+        ScrollDirectionEpsilon);
+    private ShyHeaderManipulationBinding? _detailManipulation;
     private bool _isDetailHeaderShy;
     private bool _isDetailHeaderLayoutTransitionActive;
     private int _detailHeaderTransitionGeneration;
@@ -533,14 +537,16 @@ public sealed partial class RepoCommitsPage : Page
         _commitListScrollableHeightCallbackToken = scrollViewer.RegisterPropertyChangedCallback(
             ScrollViewer.ScrollableHeightProperty,
             CommitListScrollViewer_ScrollPropertyChanged);
-        _lastCommitListScrollOffset = scrollViewer.VerticalOffset;
-        _commitListUpwardRevealTravel = 0;
-        _commitListDownwardRehideTravel = 0;
-        _commitListHeaderRevealedByUpwardScroll = false;
-        _isCommitListScrollHeaderShy =
-            scrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
-            CanHideCommitListHeader(scrollViewer);
-        SetCommitListHeaderShy(_isCommitListScrollHeaderShy, animate: false);
+        _commitListManipulation = new ShyHeaderManipulationBinding(
+            scrollViewer,
+            _commitListScrollHeader,
+            () => UpdateCommitListHeaderForScroll(scrollViewer, isIntermediate: false));
+        _commitListScrollHeader.Reset(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            isShy: scrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
+                CanHideCommitListHeader(scrollViewer));
+        SetCommitListHeaderShy(_commitListScrollHeader.IsShy, animate: false);
     }
 
     private void DetachCommitListScrollViewer()
@@ -550,6 +556,8 @@ public sealed partial class RepoCommitsPage : Page
             return;
         }
 
+        _commitListManipulation?.Dispose();
+        _commitListManipulation = null;
         scrollViewer.ViewChanged -= CommitListScrollViewer_ViewChanged;
         scrollViewer.UnregisterPropertyChangedCallback(
             ScrollViewer.VerticalOffsetProperty,
@@ -566,7 +574,7 @@ public sealed partial class RepoCommitsPage : Page
     {
         if (sender is ScrollViewer scrollViewer)
         {
-            UpdateCommitListHeaderForScroll(scrollViewer);
+            UpdateCommitListHeaderForScroll(scrollViewer, e.IsIntermediate);
         }
     }
 
@@ -580,103 +588,37 @@ public sealed partial class RepoCommitsPage : Page
         }
     }
 
-    private void UpdateCommitListHeaderForScroll(ScrollViewer scrollViewer)
+    private void UpdateCommitListHeaderForScroll(ScrollViewer scrollViewer, bool isIntermediate = true)
     {
         if (!ReferenceEquals(_commitListScrollViewer, scrollViewer))
         {
             return;
         }
 
+        double offset = scrollViewer.VerticalOffset;
+        double scrollableHeight = scrollViewer.ScrollableHeight;
         if (_isCommitListHeaderLayoutTransitionActive)
         {
-            _lastCommitListScrollOffset = scrollViewer.VerticalOffset;
+            _commitListScrollHeader.SyncLayout(offset, scrollableHeight);
             return;
         }
 
         if (!CanHideCommitListHeader(scrollViewer))
         {
-            _lastCommitListScrollOffset = scrollViewer.VerticalOffset;
-            _commitListUpwardRevealTravel = 0;
-            _commitListDownwardRehideTravel = 0;
-            _commitListHeaderRevealedByUpwardScroll = false;
-            _isCommitListScrollHeaderShy = false;
+            _commitListScrollHeader.Reset(offset, scrollableHeight, isShy: false);
             SetCommitListHeaderShy(false, animate: true);
             return;
         }
 
-        double offset = scrollViewer.VerticalOffset;
-        double delta = offset - _lastCommitListScrollOffset;
-        _lastCommitListScrollOffset = offset;
-
-        if (_isCommitListScrollHeaderShy)
+        ShyHeaderScrollAction action = _commitListScrollHeader.Observe(
+            offset,
+            scrollableHeight,
+            canHide: true,
+            isIntermediate);
+        if (action != ShyHeaderScrollAction.None)
         {
-            if (offset <= ShyHeaderRestoreOffset)
-            {
-                RevealCommitListHeader(revealedByUpwardScroll: false);
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _commitListUpwardRevealTravel += -delta;
-                if (_commitListUpwardRevealTravel >= ShyHeaderRevealTravel)
-                {
-                    RevealCommitListHeader(revealedByUpwardScroll: true);
-                }
-            }
-            else if (delta > ScrollDirectionEpsilon)
-            {
-                _commitListUpwardRevealTravel = Math.Max(0, _commitListUpwardRevealTravel - delta);
-            }
-
-            return;
+            SetCommitListHeaderShy(action == ShyHeaderScrollAction.Hide, animate: true);
         }
-
-        if (offset <= ShyHeaderRestoreOffset)
-        {
-            _commitListHeaderRevealedByUpwardScroll = false;
-            _commitListDownwardRehideTravel = 0;
-        }
-        else if (_commitListHeaderRevealedByUpwardScroll)
-        {
-            if (delta > ScrollDirectionEpsilon)
-            {
-                _commitListDownwardRehideTravel += delta;
-                if (_commitListDownwardRehideTravel >= ShyHeaderRehideTravel)
-                {
-                    HideCommitListHeader();
-                }
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _commitListDownwardRehideTravel = 0;
-            }
-        }
-        else if (offset >= ShyHeaderStartOffset)
-        {
-            HideCommitListHeader();
-        }
-    }
-
-    private void RevealCommitListHeader(bool revealedByUpwardScroll)
-    {
-        _isCommitListScrollHeaderShy = false;
-        _commitListHeaderRevealedByUpwardScroll = revealedByUpwardScroll;
-        _commitListUpwardRevealTravel = 0;
-        _commitListDownwardRehideTravel = 0;
-        SetCommitListHeaderShy(false, animate: true);
-    }
-
-    private void HideCommitListHeader()
-    {
-        if (!CanHideCommitListHeader(_commitListScrollViewer))
-        {
-            return;
-        }
-
-        _isCommitListScrollHeaderShy = true;
-        _commitListHeaderRevealedByUpwardScroll = false;
-        _commitListUpwardRevealTravel = 0;
-        _commitListDownwardRehideTravel = 0;
-        SetCommitListHeaderShy(true, animate: true);
     }
 
     private bool CanHideCommitListHeader(ScrollViewer? scrollViewer) =>
@@ -788,7 +730,7 @@ public sealed partial class RepoCommitsPage : Page
                 _isCommitListHeaderLayoutTransitionActive = false;
                 if (_commitListScrollViewer is ScrollViewer scrollViewer)
                 {
-                    _lastCommitListScrollOffset = scrollViewer.VerticalOffset;
+                    _commitListScrollHeader.SyncLayout(scrollViewer.VerticalOffset, scrollViewer.ScrollableHeight);
                 }
             }
         }
@@ -827,7 +769,7 @@ public sealed partial class RepoCommitsPage : Page
         if (scrollViewer is null)
         {
             DetachDetailScrollViewer();
-            _isDetailScrollHeaderShy = false;
+            _detailScrollHeader.Reset(0, 0, isShy: false);
             SetDetailHeaderShy(IsCompactWorkspace, animate: false);
             return;
         }
@@ -852,14 +794,22 @@ public sealed partial class RepoCommitsPage : Page
         _detailScrollableHeightCallbackToken = scrollViewer.RegisterPropertyChangedCallback(
             ScrollViewer.ScrollableHeightProperty,
             DetailScrollViewer_ScrollPropertyChanged);
-        _lastDetailScrollOffset = scrollViewer.VerticalOffset;
-        _detailUpwardRevealTravel = 0;
-        _detailDownwardRehideTravel = 0;
-        _detailHeaderRevealedByUpwardScroll = false;
-        _isDetailScrollHeaderShy =
-            scrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
-            CanHideDetailHeader(scrollViewer);
-        SetDetailHeaderShy(IsCompactWorkspace || _isDetailScrollHeaderShy, animate: false);
+        _detailManipulation = new ShyHeaderManipulationBinding(
+            scrollViewer,
+            _detailScrollHeader,
+            () =>
+            {
+                if (!IsCompactWorkspace)
+                {
+                    UpdateDetailHeaderForScroll(scrollViewer, isIntermediate: false);
+                }
+            });
+        _detailScrollHeader.Reset(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            isShy: scrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
+                CanHideDetailHeader(scrollViewer));
+        SetDetailHeaderShy(IsCompactWorkspace || _detailScrollHeader.IsShy, animate: false);
     }
 
     private void DetachDetailScrollViewer()
@@ -869,6 +819,8 @@ public sealed partial class RepoCommitsPage : Page
             return;
         }
 
+        _detailManipulation?.Dispose();
+        _detailManipulation = null;
         scrollViewer.ViewChanged -= DetailScrollViewer_ViewChanged;
         scrollViewer.UnregisterPropertyChangedCallback(
             ScrollViewer.VerticalOffsetProperty,
@@ -885,7 +837,7 @@ public sealed partial class RepoCommitsPage : Page
     {
         if (!IsCompactWorkspace && sender is ScrollViewer scrollViewer)
         {
-            UpdateDetailHeaderForScroll(scrollViewer);
+            UpdateDetailHeaderForScroll(scrollViewer, e.IsIntermediate);
         }
     }
 
@@ -899,103 +851,37 @@ public sealed partial class RepoCommitsPage : Page
         }
     }
 
-    private void UpdateDetailHeaderForScroll(ScrollViewer scrollViewer)
+    private void UpdateDetailHeaderForScroll(ScrollViewer scrollViewer, bool isIntermediate = true)
     {
         if (!ReferenceEquals(_activeDetailScrollViewer, scrollViewer))
         {
             return;
         }
 
+        double offset = scrollViewer.VerticalOffset;
+        double scrollableHeight = scrollViewer.ScrollableHeight;
         if (_isDetailHeaderLayoutTransitionActive)
         {
-            _lastDetailScrollOffset = scrollViewer.VerticalOffset;
+            _detailScrollHeader.SyncLayout(offset, scrollableHeight);
             return;
         }
 
         if (!CanHideDetailHeader(scrollViewer))
         {
-            _lastDetailScrollOffset = scrollViewer.VerticalOffset;
-            _detailUpwardRevealTravel = 0;
-            _detailDownwardRehideTravel = 0;
-            _detailHeaderRevealedByUpwardScroll = false;
-            _isDetailScrollHeaderShy = false;
+            _detailScrollHeader.Reset(offset, scrollableHeight, isShy: false);
             SetDetailHeaderShy(IsCompactWorkspace, animate: true);
             return;
         }
 
-        double offset = scrollViewer.VerticalOffset;
-        double delta = offset - _lastDetailScrollOffset;
-        _lastDetailScrollOffset = offset;
-
-        if (_isDetailScrollHeaderShy)
+        ShyHeaderScrollAction action = _detailScrollHeader.Observe(
+            offset,
+            scrollableHeight,
+            canHide: true,
+            isIntermediate);
+        if (action != ShyHeaderScrollAction.None)
         {
-            if (offset <= ShyHeaderRestoreOffset)
-            {
-                RevealDetailScrollHeader(revealedByUpwardScroll: false);
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _detailUpwardRevealTravel += -delta;
-                if (_detailUpwardRevealTravel >= ShyHeaderRevealTravel)
-                {
-                    RevealDetailScrollHeader(revealedByUpwardScroll: true);
-                }
-            }
-            else if (delta > ScrollDirectionEpsilon)
-            {
-                _detailUpwardRevealTravel = Math.Max(0, _detailUpwardRevealTravel - delta);
-            }
-
-            return;
+            SetDetailHeaderShy(action == ShyHeaderScrollAction.Hide || IsCompactWorkspace, animate: true);
         }
-
-        if (offset <= ShyHeaderRestoreOffset)
-        {
-            _detailHeaderRevealedByUpwardScroll = false;
-            _detailDownwardRehideTravel = 0;
-        }
-        else if (_detailHeaderRevealedByUpwardScroll)
-        {
-            if (delta > ScrollDirectionEpsilon)
-            {
-                _detailDownwardRehideTravel += delta;
-                if (_detailDownwardRehideTravel >= ShyHeaderRehideTravel)
-                {
-                    HideDetailScrollHeader();
-                }
-            }
-            else if (delta < -ScrollDirectionEpsilon)
-            {
-                _detailDownwardRehideTravel = 0;
-            }
-        }
-        else if (offset >= ShyHeaderStartOffset)
-        {
-            HideDetailScrollHeader();
-        }
-    }
-
-    private void RevealDetailScrollHeader(bool revealedByUpwardScroll)
-    {
-        _isDetailScrollHeaderShy = false;
-        _detailHeaderRevealedByUpwardScroll = revealedByUpwardScroll;
-        _detailUpwardRevealTravel = 0;
-        _detailDownwardRehideTravel = 0;
-        SetDetailHeaderShy(IsCompactWorkspace, animate: true);
-    }
-
-    private void HideDetailScrollHeader()
-    {
-        if (!CanHideDetailHeader(_activeDetailScrollViewer))
-        {
-            return;
-        }
-
-        _isDetailScrollHeaderShy = true;
-        _detailHeaderRevealedByUpwardScroll = false;
-        _detailUpwardRevealTravel = 0;
-        _detailDownwardRehideTravel = 0;
-        SetDetailHeaderShy(true, animate: true);
     }
 
     private bool CanHideDetailHeader(ScrollViewer? scrollViewer) =>
@@ -1112,7 +998,7 @@ public sealed partial class RepoCommitsPage : Page
                 _isDetailHeaderLayoutTransitionActive = false;
                 if (_activeDetailScrollViewer is ScrollViewer scrollViewer)
                 {
-                    _lastDetailScrollOffset = scrollViewer.VerticalOffset;
+                    _detailScrollHeader.SyncLayout(scrollViewer.VerticalOffset, scrollViewer.ScrollableHeight);
                 }
             }
         }
@@ -1268,7 +1154,7 @@ public sealed partial class RepoCommitsPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        SetDetailHeaderShy(IsCompactWorkspace || _isDetailScrollHeaderShy, animate: false);
+        SetDetailHeaderShy(IsCompactWorkspace || _detailScrollHeader.IsShy, animate: false);
     }
 
     private void MaybeOpenInitialCommitListDrawer()
@@ -1296,7 +1182,7 @@ public sealed partial class RepoCommitsPage : Page
         CommitDetailContentHost.Padding = isCompact
             ? new Thickness(12, CompactShyHeaderContentInset, 12, 12)
             : new Thickness(12);
-        SetDetailHeaderShy(isCompact || _isDetailScrollHeaderShy, animate: false);
+        SetDetailHeaderShy(isCompact || _detailScrollHeader.IsShy, animate: false);
         UpdateDiffFilePaneDisplayMode();
 
     }
@@ -1345,10 +1231,7 @@ public sealed partial class RepoCommitsPage : Page
         }
 
         ViewModel.SetSection(selectedSection);
-        _isDetailScrollHeaderShy = false;
-        _detailHeaderRevealedByUpwardScroll = false;
-        _detailUpwardRevealTravel = 0;
-        _detailDownwardRehideTravel = 0;
+        _detailScrollHeader.Reset(0, 0, isShy: false);
         SetDetailHeaderShy(IsCompactWorkspace, animate: false);
         _ = DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,

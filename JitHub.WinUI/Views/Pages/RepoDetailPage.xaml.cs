@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Layout;
 using JitHub.Core.Services.Localization;
 using JitHub.WinUI.Models.LegacyGitHub;
 using JitHub.WinUI.Models.Navigation;
@@ -31,6 +32,7 @@ namespace JitHub.WinUI.Views.Pages
         private bool _syncingSectionSelection;
         private MainWindow? _mainWindow;
         private bool _shouldLoadRepositoryStatButtons;
+        private double _statButtonsWidth = RepositoryHeaderCommandLayout.EstimatedStatButtonsWidth;
 
         public InfoBarSeverity RepositoryActionStatusSeverity => ViewModel.ActionStatusKind switch
         {
@@ -224,7 +226,6 @@ namespace JitHub.WinUI.Views.Pages
         private void ApplyResponsiveChrome(double width)
         {
             bool compact = width < 760;
-            bool condensed = width < 1180;
             bool hideIdentity = width < 980;
             _isCompact = compact;
             RepoDetailIdentityChrome.Visibility = compact || !hideIdentity
@@ -233,16 +234,56 @@ namespace JitHub.WinUI.Views.Pages
             RepoDetailIdentityStatusBadge.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
             RepoDetailSectionSelectorHost.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
             RepoDetailBranchChrome.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-            ShouldLoadRepositoryStatButtons = !compact && !condensed;
-            RepoDetailActionsMenuButton.Visibility = !compact && condensed
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            UpdateStatButtonPlacement(width);
             RepoDetailCompactCommandsButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
             if (!compact)
             {
                 SyncSectionSelection();
             }
         }
+
+        private void RepoDetailHeaderContent_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (ReferenceEquals(sender, RepoDetailStatButtonsGroup) && e.NewSize.Width > 0)
+            {
+                _statButtonsWidth = e.NewSize.Width;
+            }
+
+            UpdateStatButtonPlacement(ActualWidth);
+        }
+
+        private void UpdateStatButtonPlacement(double width)
+        {
+            bool showInline = !_isCompact && RepositoryHeaderCommandLayout.CanShowStatButtons(
+                GetHeaderContentWidth(width),
+                GetHeaderOccupiedWidth(),
+                _statButtonsWidth,
+                ShouldLoadRepositoryStatButtons);
+            ShouldLoadRepositoryStatButtons = showInline;
+            RepoDetailActionsMenuButton.Visibility = !_isCompact && !showInline
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private double GetHeaderContentWidth(double width)
+        {
+            int gaps = RepoDetailHeader.ColumnDefinitions.Count - 1;
+            return width
+                - RepoDetailHeader.Padding.Left
+                - RepoDetailHeader.Padding.Right
+                - (gaps * RepoDetailHeader.ColumnSpacing);
+        }
+
+        private double GetHeaderOccupiedWidth() =>
+            GetSlotWidth(RepoDetailIdentityChrome) +
+            GetSlotWidth(RepoDetailSectionSelectorHost) +
+            GetSlotWidth(RepoDetailBranchChrome) +
+            RepoDetailCommandStrip.Spacing;
+
+        private static double GetSlotWidth(FrameworkElement element) =>
+            element.Visibility == Visibility.Visible
+                ? element.ActualWidth + element.Margin.Left + element.Margin.Right
+                : 0;
 
         private void RepoDetailSectionSelector_SelectionChanged(
             SelectorBar sender,
