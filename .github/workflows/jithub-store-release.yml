@@ -100,6 +100,19 @@ jobs:
             throw "msstore --help failed with exit code $LASTEXITCODE."
           }
 
+      # Sign in before the build, not after it: reconfigure tests the
+      # credentials against the Store API, so an expired or revoked client
+      # secret fails here in seconds instead of after the package build. The
+      # CLI keeps the configuration for the publish step.
+      - name: Configure Store credentials
+        shell: pwsh
+        run: >
+          msstore reconfigure
+          --tenantId "$env:STORE_TENANT_ID"
+          --sellerId "$env:STORE_SELLER_ID"
+          --clientId "$env:STORE_CLIENT_ID"
+          --clientSecret "$env:STORE_CLIENT_SECRET"
+
       - name: Patch Store manifest values
         shell: pwsh
         run: >
@@ -189,15 +202,6 @@ jobs:
           name: jithub-store-package-${{ inputs.release_version }}
           path: ${{ env.APP_PACKAGES_DIR }}
           if-no-files-found: error
-
-      - name: Configure Store credentials
-        shell: pwsh
-        run: >
-          msstore reconfigure
-          --tenantId "$env:STORE_TENANT_ID"
-          --sellerId "$env:STORE_SELLER_ID"
-          --clientId "$env:STORE_CLIENT_ID"
-          --clientSecret "$env:STORE_CLIENT_SECRET"
 
       - name: Publish package to Microsoft Store
         shell: pwsh
