@@ -1,6 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Declare the measured architectures before restore. Otherwise the
+         Windows App SDK build props (imported only after a restore) default
+         RuntimeIdentifiers to win-x86;win-x64;win-arm64, the next Visual
+         Studio restore no longer matches the locked Release graph (NU1004),
+         the failed restore drops those props again, and NuGet reports a
+         restore loop. -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
