@@ -412,9 +412,6 @@ function Invoke-StoreUploadBuild {
         [Parameter(Mandatory = $true)]
         [string]$PackageOutputDirectory,
 
-        [Parameter(Mandatory = $true)]
-        [string]$ResolvedTargetPlatformVersion,
-
         [switch]$SignPackage,
         [string]$CertificatePath,
         [string]$CertificatePasswordValue,
@@ -426,6 +423,12 @@ function Invoke-StoreUploadBuild {
     $runtimeIdentifier = "win-$nativeArchitecture"
     $bundleMode = if ($Platforms.Count -gt 1) { 'Always' } else { 'Never' }
 
+    # The app's TargetFramework sets the Windows SDK version, and the script
+    # checks it against -TargetPlatformVersion before building. Do not pass
+    # TargetPlatformVersion as a command-line global property: it reaches
+    # every project reference, and the plain net10.0 ones (JitHub.Shared,
+    # JitHub.Performance) cannot evaluate a platform version without a
+    # platform (MSB4184).
     $buildArguments = @(
         'msbuild'
         $ResolvedProjectPath
@@ -439,7 +442,6 @@ function Invoke-StoreUploadBuild {
         '/p:PublishReadyToRun=false'
         '/p:RestoreLockedMode=true'
         '/p:SkipReleaseSecurityGate=true'
-        "/p:TargetPlatformVersion=$ResolvedTargetPlatformVersion"
         '/p:GenerateAppxPackageOnBuild=True'
         '/p:UapAppxPackageBuildMode=StoreUpload'
         "/p:AppxBundle=$bundleMode"
@@ -476,6 +478,19 @@ if (-not (Test-Path -LiteralPath $resolvedProjectPath)) {
     throw "Project not found: $resolvedProjectPath"
 }
 
+# -TargetPlatformVersion selects the Windows SDK tools used to bundle the
+# packages; the build itself uses the version in the app's TargetFramework.
+$projectTargetPlatformVersion = & dotnet msbuild $resolvedProjectPath -nologo `
+    -getProperty:TargetPlatformVersion `
+    -p:Configuration=Release
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not evaluate TargetPlatformVersion for $resolvedProjectPath."
+}
+$projectTargetPlatformVersion = ($projectTargetPlatformVersion | Out-String).Trim()
+if ($projectTargetPlatformVersion -ne $TargetPlatformVersion) {
+    throw "TargetPlatformVersion $TargetPlatformVersion does not match the app's TargetFramework, which targets Windows SDK $projectTargetPlatformVersion."
+}
+
 $resolvedOutputDirectory = Resolve-AbsolutePath -Path $OutputDirectory
 $platforms = Get-BuildPlatforms -Value $BundlePlatforms
 $repositoryRoot = Resolve-AbsolutePath -Path (Join-Path $PSScriptRoot '..')
@@ -497,14 +512,17 @@ try {
     & (Join-Path $PSScriptRoot 'Update-NativeAotDependencyLedger.ps1') -Verify
 
     # The ReleaseSecurity tests live in the tests of JitHub.Core and in the
-    # tests of the app's own files.
+    # tests of the app's own files. Each test project derives win-x64 from
+    # Platform=x64. Do not pass RuntimeIdentifier as a command-line global
+    # property: it reaches every project reference, and the RID-neutral ones
+    # (JitHub.Shared, JitHub.Performance) lock no RID graph, so a locked
+    # Release restore fails with NU1004.
     foreach ($testProjectName in @('JitHub.Core.Tests', 'JitHub.WinUI.Tests')) {
         $testProjectPath = Join-Path (Split-Path -Parent $resolvedProjectPath) "..\$testProjectName\$testProjectName.csproj"
         $resolvedTestProjectPath = Resolve-AbsolutePath -Path $testProjectPath
         & dotnet restore $resolvedTestProjectPath `
             -p:Configuration=Release `
             -p:Platform=x64 `
-            -p:RuntimeIdentifier=win-x64 `
             --locked-mode
         if ($LASTEXITCODE -ne 0) {
             throw "Locked release-security test restore failed for $testProjectName."
@@ -513,7 +531,6 @@ try {
         & dotnet test $resolvedTestProjectPath `
             -c Release `
             -p:Platform=x64 `
-            -p:RuntimeIdentifier=win-x64 `
             -p:SkipReleaseSecurityGate=true `
             --filter 'Category=ReleaseSecurity' `
             --no-restore
@@ -556,7 +573,6 @@ try {
             ResolvedProjectPath = $resolvedProjectPath
             Platforms = @($platform)
             PackageOutputDirectory = $resolvedOutputDirectory
-            ResolvedTargetPlatformVersion = $TargetPlatformVersion
         }
 
         if ($UseSigningCertificate) {
