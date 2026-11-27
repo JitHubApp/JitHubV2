@@ -36,8 +36,9 @@ namespace MarkdownRenderer.Controls;
 /// The native Win2D + DirectWrite markdown renderer shared by
 /// <see cref="MarkdownScrollView"/>, which owns its scroll viewport, and
 /// <see cref="MarkdownDocumentView"/>, which uses an ancestor's viewport.
-/// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
-/// <see cref="Canvas"/> overlay for hosted WinUI embeds.
+/// Paints the document into composition tiles kept ready around the
+/// viewport, under a sibling <see cref="Canvas"/> overlay for hosted WinUI
+/// embeds.
 /// </summary>
 /// <remarks>
 /// This file is longer than 500 lines because it is the renderer's public

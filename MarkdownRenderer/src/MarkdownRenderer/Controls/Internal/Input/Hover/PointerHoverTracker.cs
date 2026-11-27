@@ -126,8 +126,8 @@ internal sealed class PointerHoverTracker
     /// </summary>
     /// <remarks>
     /// Never invalidates the canvas: hover does not change the text layout,
-    /// and a partial CanvasVirtualControl repaint exposes DirectWrite
-    /// sub-pixel glyph variance at tile edges as visible text shake.
+    /// and a partial tile repaint exposes DirectWrite sub-pixel glyph
+    /// variance at tile edges as visible text shake.
     /// </remarks>
     internal void Clear()
     {

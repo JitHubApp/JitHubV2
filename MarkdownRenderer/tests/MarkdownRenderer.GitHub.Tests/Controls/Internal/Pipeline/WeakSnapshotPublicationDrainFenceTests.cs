@@ -131,7 +131,7 @@ public sealed class WeakSnapshotPublicationDrainFenceTests
 
         Task worker = LazyLayoutWork.RunAsync(
             snapshot, band, band, anchorOffset: 10, pipelineGeneration: 1, RealizationGeneration,
-            CancellationToken.None, scheduler, session: null, sceneOwner, receiver, handoff);
+            CancellationToken.None, new LazyBandYield(), scheduler, session: null, sceneOwner, receiver, handoff);
         Assert.True(worker.Wait(TimeSpan.FromSeconds(10)));
 
         return new LazyWorkProbe(worker, new WeakReference(snapshot), new WeakReference(sceneOwner));

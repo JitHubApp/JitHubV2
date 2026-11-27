@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Windows.Foundation;
 using MarkdownRenderer.Controls.Internal.Pipeline;
 using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Layout.Internal.LazyLayout;
@@ -16,6 +15,7 @@ namespace MarkdownRenderer.Controls.Internal.LazyLayout;
 internal sealed class LazyLayoutViewportRequests
 {
     private readonly LazyLayoutRealization _realization;
+    private readonly LazyLayoutDocumentPrefetch _prefetch;
     private readonly ILazyLayoutHost _host;
     private readonly PublishedLayout _published;
     private readonly MarkdownViewSurface _surface;
@@ -28,6 +28,7 @@ internal sealed class LazyLayoutViewportRequests
 
     internal LazyLayoutViewportRequests(
         LazyLayoutRealization realization,
+        LazyLayoutDocumentPrefetch prefetch,
         ILazyLayoutHost host,
         PublishedLayout published,
         MarkdownViewSurface surface,
@@ -35,6 +36,7 @@ internal sealed class LazyLayoutViewportRequests
         VectorCapacityRetry vectorCapacity)
     {
         _realization = realization;
+        _prefetch = prefetch;
         _host = host;
         _published = published;
         _surface = surface;
@@ -122,55 +124,12 @@ internal sealed class LazyLayoutViewportRequests
         }
 
         if (snapshot.IsBandWorkSettled(band, visibleVectorBand) && !capacityRetryDue)
-            return;
-
-        _realization.QueueForBand(
-            snapshot,
-            band,
-            visibleVectorBand,
-            preserveScrollAnchor: _surface.Scroll is not null);
-    }
-
-    /// <summary>Queues measurement of the band a paint request reached.</summary>
-    internal void QueueForPaintRegion(Rect region)
-    {
-        var snapshot = _published.Snapshot;
-        if (_host.RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
-            return;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
-            viewportTop, viewportHeight);
-
-        var band = _host.PerformanceSession is { } performanceSession
-            ? LazyLayoutBand.FromDirectionalViewport(
-                region.Top,
-                region.Height,
-                performanceSession.Options.LookAheadViewports,
-                _scrollVelocity)
-            : LazyLayoutBand.FromViewport(region.Top, region.Height, MarkdownLazyLayoutPolicy.OverscanPx);
-        band = LazyLayoutBand.Union(band, visibleVectorBand);
-        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
-        bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
-        if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
-            return;
-        bool forceCapacityRetry = false;
-        if (capacityAdmissionEnabled)
         {
-            _vectorCapacity.Synchronize(snapshot);
-            bool wake = _vectorCapacity.ConsumePendingWake(snapshot);
-            if (capacityDeferred && wake)
-                forceCapacityRetry = true;
-            if (capacityDeferred && !wake &&
-                !_vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry) &&
-                snapshot.IsRealizationBandMeasured(band))
-            {
-                return;
-            }
-        }
-        if (snapshot.IsBandWorkSettled(band, visibleVectorBand) &&
-            !(capacityDeferred && _vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry)))
+            // The viewport is ready: spend the spare capacity on the rest of
+            // the document so a later jump finds its layout measured.
+            _prefetch.Queue();
             return;
+        }
 
         _realization.QueueForBand(
             snapshot,

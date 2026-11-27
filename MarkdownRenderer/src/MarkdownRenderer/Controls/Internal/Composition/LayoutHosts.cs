@@ -154,6 +154,8 @@ internal sealed class LayoutHosts :
 
     void ILayoutCommitHost.InvalidateCanvas() => Owners.CanvasInvalidation.Invalidate();
 
+    void ILayoutCommitHost.InvalidateCanvasFrom(double top) => Owners.CanvasInvalidation.InvalidateFrom(top);
+
     void ILayoutCommitHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
         Owners.BlockScroll.TryResumePending(snapshot, snapshotGeneration);
 
@@ -201,6 +203,10 @@ internal sealed class LayoutHosts :
     Microsoft.UI.Dispatching.DispatcherQueue? ICanvasTilePainterHost.DispatcherQueue => _control.DispatcherQueue;
 
     bool ICanvasTilePainterHost.IsLoaded => _control.IsLoaded;
+
+    Microsoft.UI.Xaml.XamlRoot? ICanvasTilePainterHost.XamlRoot => _control.XamlRoot;
+
+    double ICanvasTilePainterHost.RasterizationScale => _control.XamlRoot?.RasterizationScale ?? 1.0;
 
     bool ICanvasTilePainterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         Owners.GeometryRecovery.RequestIfRequired(snapshot);

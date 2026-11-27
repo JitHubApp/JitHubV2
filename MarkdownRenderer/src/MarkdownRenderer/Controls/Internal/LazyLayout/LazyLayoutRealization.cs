@@ -14,23 +14,28 @@ using MarkdownRenderer.Layout.Internal.LazyLayout;
 using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Performance.Internal;
-using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Internal.LazyLayout;
 
 /// <summary>
 /// Viewport-relative measurement of the published snapshot. Viewport, paint
 /// and focus requests coalesce into one pending band; one low-priority
-/// dispatch starts a worker for it, superseding older work, and its weak
-/// completion applies the measured band as a layout commit. The recovery
-/// clock retries any dispatch the UI thread rejected or withheld.
+/// dispatch starts a worker for it, and its weak completion applies the
+/// measured band as a layout commit. A newer request asks the active worker
+/// to yield at its next root boundary rather than cancelling it, and starts
+/// once that worker's completion is published. The recovery clock retries
+/// any dispatch the UI thread rejected or withheld.
 /// </summary>
 /// <remarks>
-/// Kept as one type because request admission, dispatch, cancellation and
-/// completion all read and write the same pending/active band state. The
+/// Kept as one type, and so longer than 500 lines, because request
+/// admission, dispatch, yielding, cancellation and completion all read and
+/// write the same pending/active band state under one set of invariants;
+/// splitting them would hand that state between classes. The
 /// viewport band policy lives in <see cref="LazyLayoutViewportRequests"/>,
-/// applying a current result in <see cref="LazyLayoutCompletionPublisher"/>
-/// and the worker side in <see cref="LazyLayoutWork"/>.
+/// idle measurement of the rest of the document in
+/// <see cref="LazyLayoutDocumentPrefetch"/>, applying a current result in
+/// <see cref="LazyLayoutCompletionPublisher"/> and the worker side in
+/// <see cref="LazyLayoutWork"/>.
 /// </remarks>
 internal sealed class LazyLayoutRealization
 {
@@ -44,9 +49,11 @@ internal sealed class LazyLayoutRealization
     private readonly KeyboardFocusModel _focus;
     private readonly WeakSnapshotPublicationDrainFence<LayoutSnapshot> _publicationHandoff = new();
     private readonly LazyLayoutViewportRequests _viewportRequests;
+    private readonly LazyLayoutDocumentPrefetch _prefetch;
     private readonly LazyLayoutCompletionPublisher _completion;
 
     private RetirableCancellationTokenSource? _cts;
+    private LazyBandYield? _activeYield;
     private Task? _task;
     private LayoutSnapshot? _pendingSnapshot;
     private LayoutSnapshot? _activeSnapshot;
@@ -85,8 +92,9 @@ internal sealed class LazyLayoutRealization
         _vectorCapacity = vectorCapacity;
         _pointerInput = pointerInput;
         _focus = focus;
+        _prefetch = new LazyLayoutDocumentPrefetch(this, host, lifetime, published, surface, viewport);
         _viewportRequests = new LazyLayoutViewportRequests(
-            this, host, published, surface, viewport, vectorCapacity);
+            this, _prefetch, host, published, surface, viewport, vectorCapacity);
         _completion = new LazyLayoutCompletionPublisher(
             host, layoutCommit, layoutPublisher, surface, vectorCapacity, pointerInput, focusCommit);
     }
@@ -110,7 +118,7 @@ internal sealed class LazyLayoutRealization
     /// <summary>True when active or pending work for <paramref name="snapshot"/> covers <paramref name="band"/>.</summary>
     internal bool IsBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band)
     {
-        bool active = _cts is { IsCancellationRequested: false } &&
+        bool active = IsActiveWorkRunningToCompletion &&
             ReferenceEquals(snapshot, _activeSnapshot) &&
             _activeRevision == snapshot.LayoutRevision &&
             band.Top >= _activeBand.Top && band.Bottom <= _activeBand.Bottom;
@@ -119,6 +127,14 @@ internal sealed class LazyLayoutRealization
             band.Top >= _pendingBand.Top && band.Bottom <= _pendingBand.Bottom;
         return active || pending;
     }
+
+    /// <summary>
+    /// True while the active worker is neither cancelled nor asked to yield,
+    /// so it will measure its whole band.
+    /// </summary>
+    private bool IsActiveWorkRunningToCompletion =>
+        _cts is { IsCancellationRequested: false } &&
+        _activeYield is { IsRequested: false };
 
     /// <summary>True while any request for <paramref name="snapshot"/> is active, pending or dispatched.</summary>
     internal bool HasSupersedingRequest(LayoutSnapshot snapshot) =>
@@ -135,13 +151,18 @@ internal sealed class LazyLayoutRealization
     internal void QueueForViewport(bool forceCapacityRetry = false) =>
         _viewportRequests.QueueForViewport(forceCapacityRetry);
 
-    /// <summary>Queues measurement of the band a paint request reached.</summary>
-    internal void QueueForPaintRegion(Rect region) => _viewportRequests.QueueForPaintRegion(region);
+    /// <summary>
+    /// Asks running band measurement to stop at its next root boundary,
+    /// because a visible tile is waiting for the layout. The yielded band is
+    /// requeued by the viewport that still needs it.
+    /// </summary>
+    internal void YieldToPaint() => _activeYield?.Request();
 
     /// <summary>
     /// Requests measurement of <paramref name="band"/> in
     /// <paramref name="snapshot"/>. Requests coalesce into one pending band
-    /// and one low-priority dispatch; work already covering the band is kept.
+    /// and one low-priority dispatch; work already covering the band is kept,
+    /// and other active work is asked to yield.
     /// </summary>
     internal void QueueForBand(
         LayoutSnapshot snapshot,
@@ -160,8 +181,10 @@ internal sealed class LazyLayoutRealization
             return;
         }
 
-        if (_cts is { } activeCancellation)
-            _ = CancellationTokenSourceRetirement.RequestCancellation(activeCancellation);
+        // Yield, never cancel: a pass cancelled after it measured a root
+        // cannot be rolled back with certainty, and its snapshot would then
+        // demand a full rebuild. The yielded worker publishes what it measured.
+        _activeYield?.Request();
 
         if (_hasPendingBand && ReferenceEquals(snapshot, _pendingSnapshot))
         {
@@ -198,7 +221,7 @@ internal sealed class LazyLayoutRealization
         LazyLayoutBand band,
         LazyLayoutBand visibleVectorBand,
         bool preserveScrollAnchor) =>
-        _cts is { IsCancellationRequested: false } &&
+        IsActiveWorkRunningToCompletion &&
             ReferenceEquals(snapshot, _activeSnapshot) &&
             // Same-band work from an older image-reflow revision must not
             // absorb the retry needed to refresh scene indexes/graph bindings.
@@ -267,8 +290,9 @@ internal sealed class LazyLayoutRealization
     internal void ProcessQueued() => ProcessQueued(_dispatchTicket);
 
     /// <summary>
-    /// Starts the pending band dispatched with <paramref name="dispatchTicket"/>,
-    /// superseding any active realization.
+    /// Starts the pending band dispatched with <paramref name="dispatchTicket"/>.
+    /// While an earlier worker for the same snapshot is still yielding, the
+    /// band stays pending and starts when that worker's completion publishes.
     /// </summary>
     internal void ProcessQueued(long dispatchTicket)
     {
@@ -276,6 +300,15 @@ internal sealed class LazyLayoutRealization
             return;
 
         _dispatchQueued = false;
+        if (_task is { IsCompleted: false } &&
+            ReferenceEquals(_activeSnapshot, _pendingSnapshot) &&
+            !_lifetime.IsDisposed &&
+            !_lifetime.IsUnloaded)
+        {
+            _activeYield?.Request();
+            return;
+        }
+
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_hasPendingBand)
         {
             _pendingSnapshot = null;
@@ -299,6 +332,7 @@ internal sealed class LazyLayoutRealization
         var oldCts = _cts;
         var oldTask = _task;
         var cts = RetirableCancellationTokenSource.CreateLinked(_host.PipelineToken);
+        var yieldSignal = new LazyBandYield();
         long realizationGeneration = ++_generation;
         _publicationHandoff.Reset(realizationGeneration);
         long pipelineGeneration = _host.PipelineGeneration;
@@ -309,6 +343,7 @@ internal sealed class LazyLayoutRealization
         var dispatcher = _host.UiScheduler;
 
         _cts = cts;
+        _activeYield = yieldSignal;
         _activeSnapshot = snapshot;
         _activeRevision = snapshot.LayoutRevision;
         _activeBand = band;
@@ -329,6 +364,7 @@ internal sealed class LazyLayoutRealization
             pipelineGeneration,
             realizationGeneration,
             operationToken,
+            yieldSignal,
             dispatcher,
             _host.PerformanceSession as IMarkdownPerformanceSessionInternal,
             _host.DeferredSceneOwner,
@@ -400,6 +436,7 @@ internal sealed class LazyLayoutRealization
         // for superseded work merely because this method is now retiring its CTS.
         bool operationWasCanceled = canceled || operationToken.IsCancellationRequested;
         _cts = null;
+        _activeYield = null;
         _task = null;
         _activeSnapshot = null;
         _activeRevision = -1;
@@ -419,6 +456,7 @@ internal sealed class LazyLayoutRealization
             _host.StopRecoveryClockIfIdle();
             if (snapshot is not null)
                 _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
+            DispatchDeferredBand();
             return;
         }
 
@@ -430,6 +468,28 @@ internal sealed class LazyLayoutRealization
             pipelineGeneration,
             attemptedVisibleBand,
             attemptedCapacityGeneration);
+        if (!DispatchDeferredBand() && failure is null)
+            _prefetch.Dispatch();
+    }
+
+    /// <summary>
+    /// Starts a band that arrived while the completed worker was yielding.
+    /// It is dispatched, not started inline, because this runs inside the
+    /// completion handoff that a new worker would reset. Returns true when a
+    /// band is pending.
+    /// </summary>
+    private bool DispatchDeferredBand()
+    {
+        if (!_hasPendingBand)
+            return false;
+
+        if (!_dispatchQueued && _task is null &&
+            !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
+        {
+            DispatchPendingBand();
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -456,6 +516,7 @@ internal sealed class LazyLayoutRealization
         var oldCts = _cts;
         var oldTask = _task;
         _cts = null;
+        _activeYield = null;
         _task = null;
         _ = _host.RetireCancellationTokenSource(oldCts, oldTask);
         _host.StopRecoveryClockIfIdle();

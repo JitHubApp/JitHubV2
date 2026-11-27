@@ -80,6 +80,15 @@ public sealed record MarkdownPerformanceOptions
     public bool PrefetchDocumentImages { get; init; } = true;
 
     /// <summary>
+    /// Measures the rest of a lazily laid out document in spare capacity once
+    /// the viewport's own layout settles, nearest the viewport first and
+    /// below it before above it, so long scrolls and jumps land on prepared
+    /// layout. Any viewport request preempts it at the next block boundary.
+    /// A fully prefetched document holds the text layouts of every block.
+    /// </summary>
+    public bool PrefetchDocumentLayout { get; init; } = true;
+
+    /// <summary>
     /// Releases per-image decoded/source/native resources after an image leaves the active layout band
     /// and its in-flight work drains. This is a live-box residency policy, not source-cache eviction:
     /// <see cref="SourceCacheBudgetBytes"/> independently controls the shared resolved-source cache.

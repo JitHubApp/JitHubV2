@@ -14,9 +14,11 @@ internal sealed class LazyBandRealizationPass
     internal LazyBandRealizationPass(
         LayoutSnapshotGeometry geometry,
         LayoutPlanCandidateIndex planCandidates,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LazyBandYield? yieldSignal = null)
     {
         CancellationToken = cancellationToken;
+        YieldSignal = yieldSignal;
         OldHeight = geometry.Size.Height;
         OldRevision = geometry.LayoutRevision;
         OldMeasuredTopLevelBlockCount = geometry.MeasuredTopLevelBlockCount;
@@ -26,6 +28,21 @@ internal sealed class LazyBandRealizationPass
     }
 
     internal CancellationToken CancellationToken { get; }
+
+    /// <summary>
+    /// Asks the pass to stop before measuring its next root. Null when the
+    /// band must be measured completely, such as the visible viewport.
+    /// </summary>
+    internal LazyBandYield? YieldSignal { get; }
+
+    /// <summary>True when the pass stopped early because <see cref="YieldSignal"/> was requested.</summary>
+    internal bool Yielded { get; set; }
+
+    /// <summary>
+    /// The lowest committed top of a root this pass measured or reflowed
+    /// from, or positive infinity when it changed no geometry.
+    /// </summary>
+    internal double FirstChangedTop { get; set; } = double.PositiveInfinity;
 
     internal double OldHeight { get; }
 

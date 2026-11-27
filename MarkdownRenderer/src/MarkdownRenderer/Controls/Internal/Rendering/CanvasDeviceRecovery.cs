@@ -62,7 +62,7 @@ internal sealed class CanvasDeviceRecovery
         CanvasDevice? layoutDevice = _published.LayoutDevice;
         CanvasDevice? surfaceDevice = _adorner.SurfaceDevice;
         CanvasDevice? canvasDevice = null;
-        try { canvasDevice = _surface.Canvas?.Device; }
+        try { canvasDevice = _surface.Tiles?.CanvasDevice; }
         catch (Exception deviceException)
         {
             MarkdownDiagnostics.WriteLine(
@@ -72,7 +72,7 @@ internal sealed class CanvasDeviceRecovery
         MarkdownRenderResources? resources = _published.RenderResources;
         _adorner.TryReleaseSurface();
         // Snapshot bitmaps are cached under the layout (shared) device, which
-        // need not be the CanvasVirtualControl device.
+        // need not be the device the document tiles draw with.
         ReleaseImageDeviceResources(resources, layoutDevice);
         if (!ReferenceEquals(canvasDevice, layoutDevice))
             ReleaseImageDeviceResources(resources, canvasDevice);

@@ -1,21 +1,24 @@
 using System;
-using Microsoft.Graphics.Canvas.UI.Xaml;
+using MarkdownRenderer.Controls.Internal.Rendering.Tiles;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Internal.View;
 
 /// <summary>
 /// Owns a renderer's XAML visual tree: an optional scroll viewer around a
-/// root grid that stacks the Win2D canvas under the overlay canvas for hosted
-/// embeds and selection chrome.
+/// root grid that stacks the document canvas under the overlay canvas for
+/// hosted embeds and selection chrome. The document canvas is a plain
+/// hit-testable element whose child visual is the composition
+/// <see cref="DocumentTileLayer"/> that presents the painted document.
 /// </summary>
 /// <remarks>
 /// The scroll viewer, root and overlay live until <see cref="Detach"/>. The
-/// Win2D canvas is created on load and removed on unload, because Win2D
-/// requires <see cref="CanvasVirtualControl.RemoveFromVisualTree"/> at the
-/// containing control's Unloaded boundary.
+/// document canvas and its tiles are created on load and removed on unload,
+/// so an unloaded, retained view holds no GPU surfaces.
 /// </remarks>
 internal sealed class MarkdownViewSurface
 {
@@ -71,38 +74,50 @@ internal sealed class MarkdownViewSurface
 
     public Canvas? Overlay { get; private set; }
 
-    public CanvasVirtualControl? Canvas { get; private set; }
+    /// <summary>The hit-testable document canvas element, sized to the document.</summary>
+    public Border? Canvas { get; private set; }
+
+    /// <summary>The composition tiles presenting the document on <see cref="Canvas"/>.</summary>
+    public DocumentTileLayer? Tiles { get; private set; }
 
     /// <summary>The element the renderer hosts as its content.</summary>
     public UIElement? ContentElement => Scroll is not null ? Scroll : Root;
 
     /// <summary>
-    /// Creates the Win2D canvas beneath the overlay. Returns the new canvas,
-    /// or null when one already exists or the surface is detached.
+    /// Creates the document canvas and its tile layer beneath the overlay.
+    /// Returns the new canvas, or null when one already exists or the surface
+    /// is detached.
     /// </summary>
-    public CanvasVirtualControl? TryCreateCanvas()
+    public Border? TryCreateCanvas()
     {
         if (Canvas is not null || Root is null)
             return null;
-        Canvas = new CanvasVirtualControl
+        var canvas = new Border
         {
+            // A brush, even transparent, makes the whole document hit-testable.
+            Background = new SolidColorBrush(Colors.Transparent),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             IsDoubleTapEnabled = true,
             IsHoldingEnabled = true,
             IsTapEnabled = true,
             VerticalAlignment = VerticalAlignment.Top,
         };
-        Root.Children.Insert(0, Canvas);
-        return Canvas;
+        Root.Children.Insert(0, canvas);
+        Canvas = canvas;
+        Tiles = new DocumentTileLayer(canvas);
+        return canvas;
     }
 
     /// <summary>
-    /// Removes the Win2D canvas from the visual tree. Call from the renderer's
-    /// Unloaded boundary.
+    /// Releases the document tiles and removes the canvas from the visual
+    /// tree. Call from the renderer's Unloaded boundary.
     /// </summary>
     public void RemoveCanvas()
     {
-        Canvas?.RemoveFromVisualTree();
+        Tiles?.Dispose();
+        Tiles = null;
+        if (Canvas is { } canvas && Root is not null)
+            _ = Root.Children.Remove(canvas);
         Canvas = null;
     }
 
@@ -136,6 +151,8 @@ internal sealed class MarkdownViewSurface
     /// <summary>Drops every element reference during disposal.</summary>
     public void Detach()
     {
+        Tiles?.Dispose();
+        Tiles = null;
         Canvas = null;
         Overlay = null;
         Scroll = null;

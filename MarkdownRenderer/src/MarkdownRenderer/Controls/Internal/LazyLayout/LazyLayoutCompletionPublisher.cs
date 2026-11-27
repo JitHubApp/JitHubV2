@@ -120,7 +120,12 @@ internal sealed class LazyLayoutCompletionPublisher
         // over a newer viewport position.
         bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
             anchorOffset, _surface.Scroll?.VerticalOffset, _host.IsScrollViewIntermediate);
-        _layoutPublisher.Apply(snapshot, restoreAnchor ? result.ScrollAnchor : null);
+        // Native scene changes repaint their whole band; geometry-only
+        // commits repaint from the first root they measured or moved.
+        _layoutPublisher.Apply(
+            snapshot,
+            restoreAnchor ? result.ScrollAnchor : null,
+            repaintChangedGeometryOnly: !result.Commit.NativeSceneResourcesChanged);
         _vectorCapacity.Synchronize(snapshot);
         if (result.Commit.NativeSceneResourcesChanged)
             _host.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Internal.Pipeline;
@@ -19,9 +20,12 @@ namespace MarkdownRenderer.Controls.Internal.LazyLayout;
 internal static class LazyLayoutWork
 {
     /// <summary>
-    /// Measures <paramref name="band"/> off the UI thread, preparing deferred
+    /// Measures <paramref name="band"/> off the UI thread, visible viewport
+    /// first and then look-ahead chunks nearest-first, preparing deferred
     /// scenes when the scene graph needs rebinding, then stages one weak
-    /// completion with <paramref name="handoff"/> and dispatches it.
+    /// completion with <paramref name="handoff"/> and dispatches it. A
+    /// requested <paramref name="yieldSignal"/> ends the look-ahead early and
+    /// still publishes everything measured.
     /// </summary>
     /// <remarks>
     /// Kept whole apart from the staging: the layout closure captures the snapshot in this
@@ -35,6 +39,7 @@ internal static class LazyLayoutWork
         long pipelineGeneration,
         long realizationGeneration,
         CancellationToken operationToken,
+        LazyBandYield yieldSignal,
         IMarkdownUiScheduler? dispatcher,
         IMarkdownPerformanceSessionInternal? session,
         object sceneOwner,
@@ -52,8 +57,8 @@ internal static class LazyLayoutWork
                 var anchor = anchorOffset is { } offset
                     ? snapshot.CaptureScrollAnchor(offset)
                     : null;
-                LazyLayoutCommit commit = snapshot.EnsureMeasuredBand(
-                    band, visibleVectorBand, layoutToken);
+                LazyLayoutCommit commit = MeasureInPriorityOrder(
+                    snapshot, band, visibleVectorBand, layoutToken, yieldSignal);
                 return new LazyLayoutWorkResult(commit, anchor);
             };
             bool restoredSceneResources = false;
@@ -117,6 +122,32 @@ internal static class LazyLayoutWork
             layoutWork = null;
             snapshot = null!;
         }
+    }
+
+    /// <summary>
+    /// Measures the visible part of <paramref name="band"/> completely, then
+    /// each look-ahead chunk under its own gate hold until the band is done or
+    /// <paramref name="yieldSignal"/> is requested.
+    /// </summary>
+    private static LazyLayoutCommit MeasureInPriorityOrder(
+        LayoutSnapshot snapshot,
+        LazyLayoutBand band,
+        LazyLayoutBand visibleVectorBand,
+        CancellationToken token,
+        LazyBandYield yieldSignal)
+    {
+        IReadOnlyList<LazyLayoutBand> parts = LazyBandRealizationOrder.Plan(
+            band, visibleVectorBand, visibleVectorBand.Bottom - visibleVectorBand.Top);
+        // The visible part is never yielded: it is what the user is looking at.
+        LazyLayoutCommit commit = snapshot.EnsureMeasuredBand(parts[0], visibleVectorBand, token);
+        for (int i = 1; i < parts.Count && !yieldSignal.IsRequested; i++)
+        {
+            commit = LazyLayoutCommit.Merge(
+                commit,
+                snapshot.EnsureMeasuredBand(parts[i], visibleVectorBand, token, yieldSignal));
+        }
+
+        return commit;
     }
 
     private static void StageAndDispatchCompletion(

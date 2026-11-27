@@ -23,5 +23,8 @@ internal interface ILayoutCommitHost
 
     void InvalidateCanvas();
 
+    /// <summary>Repaints the canvas from document Y <paramref name="top"/> down.</summary>
+    void InvalidateCanvasFrom(double top);
+
     void TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration);
 }

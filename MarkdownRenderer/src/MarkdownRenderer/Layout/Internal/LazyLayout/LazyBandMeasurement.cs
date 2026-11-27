@@ -26,7 +26,9 @@ internal sealed class LazyBandMeasurement
 
     /// <summary>
     /// Measures every unmeasured root in the band, reflowing after each batch
-    /// until no further root enters it.
+    /// until no further root enters it. A requested yield stops before the
+    /// next root; the roots measured so far are complete, so they are
+    /// reflowed and kept rather than rolled back.
     /// </summary>
     internal void MeasureBandNoLock(LazyBandRealizationPass pass, LazyLayoutBand realizationBand)
     {
@@ -54,6 +56,9 @@ internal sealed class LazyBandMeasurement
             // previously unmeasured block newly entering the band.
             if (!geometryUnchanged)
                 _geometry.ReflowNoLock(incrementRevision: false, firstOrdinal: firstAffectedOrdinal);
+
+            if (pass.Yielded)
+                break;
         }
     }
 
@@ -114,6 +119,14 @@ internal sealed class LazyBandMeasurement
                 continue;
             }
 
+            // Stop between roots, never inside one: every root measured so
+            // far is complete, so the caller can reflow and commit them.
+            if (pass.YieldSignal is { IsRequested: true })
+            {
+                pass.Yielded = true;
+                break;
+            }
+
             // Measure resets most block bounds to local (0,0).
             // Preserve the candidate's old top until reflow assigns
             // its authoritative position after new heights settle.
@@ -144,8 +157,15 @@ internal sealed class LazyBandMeasurement
                 block.Margin.Equals(priorMargin) &&
                 flowWithPrevious == priorFlowWithPrevious &&
                 flowWithNext == priorFlowWithNext;
-            firstAffectedOrdinal = Math.Min(firstAffectedOrdinal,
-                flowWithPrevious != priorFlowWithPrevious ? Math.Max(0, ordinal - 1) : ordinal);
+            int affectedOrdinal = flowWithPrevious != priorFlowWithPrevious ? Math.Max(0, ordinal - 1) : ordinal;
+            firstAffectedOrdinal = Math.Min(firstAffectedOrdinal, affectedOrdinal);
+            // Placements change only on reflow, so this is still the
+            // committed top every pixel below which may now move or appear.
+            pass.FirstChangedTop = Math.Min(
+                pass.FirstChangedTop,
+                Math.Min(
+                    committedPlacement.Top,
+                    _geometry.CurrentPlacementGenerationNoLock().GetPlacement(affectedOrdinal).Top));
             (newlyMeasured ??= []).Add(ordinal);
         }
         return newlyMeasured;

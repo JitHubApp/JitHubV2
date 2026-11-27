@@ -1306,6 +1306,8 @@ MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxRasterOutputPixels.ge
 MarkdownRenderer.Performance.MarkdownPerformanceOptions.MaxRasterOutputPixels.init -> void
 MarkdownRenderer.Performance.MarkdownPerformanceOptions.PrefetchDocumentImages.get -> bool
 MarkdownRenderer.Performance.MarkdownPerformanceOptions.PrefetchDocumentImages.init -> void
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.PrefetchDocumentLayout.get -> bool
+MarkdownRenderer.Performance.MarkdownPerformanceOptions.PrefetchDocumentLayout.init -> void
 MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReleaseOffscreenImageResources.get -> bool
 MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReleaseOffscreenImageResources.init -> void
 MarkdownRenderer.Performance.MarkdownPerformanceOptions.ReservedVisibleImageFetches.get -> int
