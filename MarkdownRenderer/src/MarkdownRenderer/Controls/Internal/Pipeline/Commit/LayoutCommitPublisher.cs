@@ -83,9 +83,17 @@ internal sealed class LayoutCommitPublisher
     /// when given. A commit that arrives while another publishes, or whose
     /// geometry read is not admitted yet, is deferred to the recovery clock.
     /// </summary>
+    /// <param name="snapshot">The published snapshot whose current revision is published.</param>
+    /// <param name="scrollAnchor">The block and offset to keep in place, if any.</param>
+    /// <param name="repaintChangedGeometryOnly">
+    /// True for a lazy band commit: repaint only from the lowest Y lazy
+    /// commits changed, rather than the whole canvas. A deferred commit
+    /// replaced by this one always repaints everything.
+    /// </param>
     internal void Apply(
         LayoutSnapshot snapshot,
-        (int BlockIndex, double OffsetFromTop)? scrollAnchor)
+        (int BlockIndex, double OffsetFromTop)? scrollAnchor,
+        bool repaintChangedGeometryOnly = false)
     {
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _published.Snapshot))
             return;
@@ -99,6 +107,9 @@ internal sealed class LayoutCommitPublisher
         _layoutCommit.BeginPublishing();
         try
         {
+            // A deferred commit this one replaces may have been any kind of
+            // change, so it cannot be narrowed to the lazy watermark.
+            repaintChangedGeometryOnly &= _layoutCommit.Pending is null;
             _layoutCommit.ClearPending();
             if (!TryRebuildPlans(snapshot, preserveRealized: true, out Size size,
                     out double? anchorOffset, scrollAnchor))
@@ -118,7 +129,13 @@ internal sealed class LayoutCommitPublisher
                 _focusRing.Update();
             _host.RefreshInteractiveTextAdornerAfterLayoutChange();
             _host.InvalidateAutomationLayout();
-            _host.InvalidateCanvas();
+            // Take the watermark on every publication so a full repaint also
+            // retires it; only a lazy commit narrows the repaint to it.
+            double repaintTop = snapshot.TakeLazyRepaintTop();
+            if (repaintChangedGeometryOnly)
+                _host.InvalidateCanvasFrom(repaintTop);
+            else
+                _host.InvalidateCanvas();
         }
         finally
         {

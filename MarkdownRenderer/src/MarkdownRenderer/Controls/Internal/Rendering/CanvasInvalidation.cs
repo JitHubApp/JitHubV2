@@ -1,32 +1,27 @@
-using System;
 using Microsoft.UI.Xaml;
 using MarkdownRenderer.Controls.Internal.View;
-using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.Controls.Internal.Rendering;
 
 /// <summary>
-/// Requests a repaint of the document canvas while the view is loaded. A
-/// lost device during the request starts device recovery; a canvas that is
-/// already shutting down is ignored.
+/// Requests a repaint of the document canvas while the view is loaded by
+/// marking its tiles stale. Stale tiles keep their pixels until the painter
+/// repaints them on the next composition frame.
 /// </summary>
 internal sealed class CanvasInvalidation
 {
     private readonly FrameworkElement _renderer;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly MarkdownViewSurface _surface;
-    private readonly CanvasDeviceRecovery _deviceRecovery;
 
     internal CanvasInvalidation(
         FrameworkElement renderer,
         MarkdownViewLifetime lifetime,
-        MarkdownViewSurface surface,
-        CanvasDeviceRecovery deviceRecovery)
+        MarkdownViewSurface surface)
     {
         _renderer = renderer;
         _lifetime = lifetime;
         _surface = surface;
-        _deviceRecovery = deviceRecovery;
     }
 
     internal void Invalidate()
@@ -34,18 +29,19 @@ internal sealed class CanvasInvalidation
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
             return;
 
-        try
-        {
-            _surface.Canvas?.Invalidate();
-        }
-        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
-        {
-            _deviceRecovery.HandleDeviceLost(ex);
-        }
-        catch (Exception ex) when (GraphicsDeviceErrors.IsShutdownOrDisposed(ex))
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] ignored canvas invalidate during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-        }
+        _surface.Tiles?.MarkAllStale();
+    }
+
+    /// <summary>
+    /// Repaints the canvas from document Y <paramref name="top"/> to its
+    /// bottom. Positive infinity repaints nothing; a non-finite or
+    /// non-positive top repaints everything.
+    /// </summary>
+    internal void InvalidateFrom(double top)
+    {
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
+            return;
+
+        _surface.Tiles?.MarkStaleFrom(top);
     }
 }

@@ -7,7 +7,7 @@ namespace MarkdownRenderer.Layout.Internal.Inlines;
 /// The integer-pixel-snapped origin of an inline container's text layout in
 /// document coordinates.  Snapping eliminates fractional sub-pixel
 /// positioning that otherwise causes DirectWrite glyphs straddling
-/// CanvasVirtualControl tile / dirty-rect boundaries to be re-rasterised
+/// document tile boundaries to be re-rasterised
 /// at slightly different sub-pixel offsets when the dirty rect changes
 /// shape (e.g. as a selection-drag extends a highlight rect across the
 /// text), which reads as visible "shake" of the rendered glyphs.

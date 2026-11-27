@@ -408,21 +408,11 @@ internal sealed class HorizontalOverflowScrollVisuals
             state.Viewport,
             state.IsRightToLeft);
 
-        if (_surface.Canvas is { } canvas)
-        {
-            if (MarkdownCanvasInvalidationPolicy.TryClipToCanvas(
-                    new Rect(
-                        state.ViewportBounds.X - 1,
-                        state.ViewportBounds.Y - 1,
-                        state.ViewportBounds.Width + 2,
-                        Math.Max(state.ViewportBounds.Bottom, state.TrackBounds.Bottom) - state.ViewportBounds.Y + 2),
-                    canvas.Width,
-                    canvas.Height,
-                    out Rect invalidation))
-            {
-                canvas.Invalidate(invalidation);
-            }
-        }
+        // Tiles span the document's width, so only the region's rows,
+        // including its scroll track and a pixel of anti-aliasing, repaint.
+        _surface.Tiles?.MarkStale(
+            state.ViewportBounds.Y - 1,
+            Math.Max(state.ViewportBounds.Bottom, state.TrackBounds.Bottom) + 1);
     }
 
     private static bool Contains(

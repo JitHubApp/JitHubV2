@@ -3,6 +3,7 @@ using System.Diagnostics;
 using MarkdownRenderer.Controls.Internal.Embeds;
 using MarkdownRenderer.Controls.Internal.LazyLayout;
 using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Rendering;
 using MarkdownRenderer.Controls.Internal.Selection.Adorner;
 using MarkdownRenderer.Diagnostics.Internal;
 using Microsoft.UI.Xaml;
@@ -12,9 +13,9 @@ namespace MarkdownRenderer.Controls.Internal.View;
 
 /// <summary>
 /// Follows the viewport: the owned scroll viewer's view changes, or the
-/// ancestor viewport's effective-viewport changes. Each change queues lazy
-/// layout, refreshes the text adorner when it has state that can move,
-/// realises visible embeds and schedules visible work.
+/// ancestor viewport's effective-viewport changes. Each change wakes the
+/// tile painter, queues lazy layout, refreshes the text adorner when it has
+/// state that can move, realises visible embeds and schedules visible work.
 /// </summary>
 internal sealed class ScrollViewTracking
 {
@@ -26,6 +27,7 @@ internal sealed class ScrollViewTracking
     private readonly InteractiveTextAdorner _textAdorner;
     private readonly EmbedRealization _embeds;
     private readonly VisibleWorkScheduler _visibleWork;
+    private readonly CanvasTilePainter _painter;
     private bool _isIntermediate;
 
     internal ScrollViewTracking(
@@ -36,7 +38,8 @@ internal sealed class ScrollViewTracking
         SelectionAdornerPresenter adorner,
         InteractiveTextAdorner textAdorner,
         EmbedRealization embeds,
-        VisibleWorkScheduler visibleWork)
+        VisibleWorkScheduler visibleWork,
+        CanvasTilePainter painter)
     {
         _surface = surface;
         _lifetime = lifetime;
@@ -46,6 +49,7 @@ internal sealed class ScrollViewTracking
         _textAdorner = textAdorner;
         _embeds = embeds;
         _visibleWork = visibleWork;
+        _painter = painter;
     }
 
     /// <summary>True while the owned scroll viewer reports an intermediate (gesture or inertia) view.</summary>
@@ -60,6 +64,7 @@ internal sealed class ScrollViewTracking
             !materiallyChanged || _lifetime.IsUnloaded)
             return;
 
+        _painter.RequestFrame();
         _lazyLayout.QueueForViewport();
         _adorner.InvalidateGeometry();
         _adorner.Invalidate();
@@ -105,11 +110,14 @@ internal sealed class ScrollViewTracking
         long afterRealization = allocatedBefore;
         try
         {
+            // Paint newly visible tiles inside this view change, so a jump
+            // never presents a frame before its tiles; the frame pump then
+            // paints ahead of the viewport.
+            _painter.PaintVisibleNow();
             _lazyLayout.QueueForViewport();
             if (measure)
                 afterLazyLayout = GC.GetAllocatedBytesForCurrentThread();
-            // CanvasVirtualControl already requests newly exposed document
-            // tiles. Only viewport-refresh the separate text adorner when it
+            // Only viewport-refresh the separate text adorner when it
             // has visible, pending, or interactive state that can change.
             // UpdateSelectionAdornerViewport includes the invalidation, so do
             // not issue a second request for the same scroll callback.

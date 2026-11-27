@@ -91,6 +91,24 @@ internal sealed class MarkdownViewport
     }
 
     /// <summary>
+    /// The viewport in document coordinates. Inside an ancestor's viewport it
+    /// is not clamped to the document, so it can lie wholly above or below
+    /// it. Returns false, with the same estimate as <see cref="TryGet"/>,
+    /// when no viewport is known yet.
+    /// </summary>
+    internal bool TryGetUnclamped(out double top, out double height)
+    {
+        if (_surface.Scroll is null && _hasExternal)
+        {
+            top = _external.Top;
+            height = Math.Max(1, _external.Height);
+            return true;
+        }
+
+        return TryGet(out top, out height, out _);
+    }
+
+    /// <summary>
     /// The visible document band as a rectangle at the document's left edge.
     /// Returns false, with the same estimate as <see cref="TryGet"/>, when no
     /// viewport is known yet.

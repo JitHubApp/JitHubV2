@@ -220,5 +220,11 @@
       <Platform Solution="Debug|Any CPU" Project="x64" />
       <Platform Solution="Release|Any CPU" Project="x64" />
     </Project>
+    <Project Path="perf/MarkdownRenderer.ScrollFidelityProbe/MarkdownRenderer.ScrollFidelityProbe.csproj">
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="Debug|Any CPU" Project="x64" />
+      <Platform Solution="Release|Any CPU" Project="x64" />
+    </Project>
   </Folder>
 </Solution>

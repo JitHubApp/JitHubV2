@@ -186,7 +186,7 @@ internal sealed class MarkdownRendererComposition
         var abbreviationTooltip = new AbbreviationTooltipPresenter(control, Surface, Lifetime, Hover);
         Adorner = new SelectionAdornerPresenter(selectionHosts, control, Surface, Lifetime, Published, Viewport, Selection, Hover);
         DeviceRecovery = new CanvasDeviceRecovery(layoutHosts, Lifetime, Published, Surface, Adorner, control.DispatcherQueue);
-        CanvasInvalidation = new CanvasInvalidation(control, Lifetime, Surface, DeviceRecovery);
+        CanvasInvalidation = new CanvasInvalidation(control, Lifetime, Surface);
         SelectionCommands = new SelectionCommands(selectionHosts, Published, Selection);
         var selectionDismissal = new SelectionDismissalHook(selectionHosts, control, Surface, Lifetime, Published, Selection, SelectionCommands);
         var autoScroll = new SelectionDragAutoScroll(Surface, Viewport);
@@ -238,9 +238,9 @@ internal sealed class MarkdownRendererComposition
         Automation = new RendererAutomation(control, Lifetime, Surface, Viewport, Published, AutomationDocumentGenerations, Localization, Selection, focus, focusRing, focusCommit, focusEntry, links, Handles, OverflowScroll);
         DeferredScenes = new DeferredSceneReadiness(pipelineHosts, Lifetime, Published, Viewport, Rebuild);
         ImageReadiness = new VisibleImageReadiness(Published, imagePlans, Viewport);
-        Painter = new CanvasTilePainter(layoutHosts, Lifetime, Published, Surface, LazyLayout, DeviceRecovery, Rebuild, DeferredScenes);
+        Painter = new CanvasTilePainter(layoutHosts, Lifetime, Published, Surface, Viewport, LazyLayout, DeviceRecovery, Rebuild, DeferredScenes);
         DeviceReset = new SyntheticDeviceReset(Published, SnapshotRetirements, AutomationDocumentGenerations, LayoutCommit, Automation, Painter, LazyLayout, vectorCapacity);
-        CanvasEvents = new CanvasEvents(Lifetime, Surface, canvasPointerEvents, Painter, Rebuild);
+        CanvasEvents = new CanvasEvents(Lifetime, Surface, canvasPointerEvents, Painter);
         var imageRelayout = new ImageRelayout(imageHosts, Lifetime, Published, LayoutCommit, imageSubscriptions, recoveryClock, uiScheduler);
         var imageLoadCompletion = new ImageLoadCompletion(imageHosts, Lifetime, Published, LayoutCommit, imageSubscriptions, imageRelayout, uiScheduler);
         imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;
@@ -250,7 +250,7 @@ internal sealed class MarkdownRendererComposition
         Keyboard = new KeyboardInput(control, Published, Selection, SelectionCommands, contextMenu, focus, focusRing, focusCommit, hostedFocus, navigator, geometryRecovery);
         RecoveryWork = new RecoveryClockWork(layoutHosts, Lifetime, Published, recoveryClock, LayoutCommit, imageSubscriptions, imageRelayout, focusRefresh);
         var textAdorner = new InteractiveTextAdorner(Surface, Published, Selection, TouchSelection, Hover, focus, Adorner, geometryRecovery);
-        Scrolling = new ScrollViewTracking(Surface, Lifetime, Viewport, LazyLayout, Adorner, textAdorner, Embeds, VisibleWork);
+        Scrolling = new ScrollViewTracking(Surface, Lifetime, Viewport, LazyLayout, Adorner, textAdorner, Embeds, VisibleWork, Painter);
         PerformanceSession = new PerformanceSessionSubscription(control, Lifetime, SnapshotRetirements, Rebuild, Selection, Adorner, textAdorner);
         SvgRenderer = new SvgRendererSubscription(control, Lifetime, Rebuild, CanvasInvalidation);
         Theme = new ThemeSubscription(control, Lifetime, Rebuild);

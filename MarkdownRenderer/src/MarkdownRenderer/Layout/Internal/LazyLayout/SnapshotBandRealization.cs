@@ -18,6 +18,7 @@ internal sealed class SnapshotBandRealization
     private readonly LayoutPlanCandidateIndex _planCandidates;
     private readonly LazyBandMeasurement _measurement;
     private readonly SnapshotSceneResidency _scenes;
+    private readonly LazyRepaintWatermark _repaint = new();
 
     internal SnapshotBandRealization(
         LayoutSnapshotGeometry geometry,
@@ -179,6 +180,64 @@ internal sealed class SnapshotBandRealization
         }
     }
 
+    /// <summary>
+    /// Finds up to <paramref name="maximumHeight"/> DIPs of unmeasured roots
+    /// nearest the viewport: the first run below it, else the nearest run
+    /// above it. Returns false when the snapshot is fully measured, not
+    /// lazy, busy or unhealthy; a busy snapshot is simply retried later.
+    /// </summary>
+    internal bool TryFindUnmeasuredBand(
+        double viewportTop,
+        double viewportBottom,
+        double maximumHeight,
+        out LazyLayoutBand band)
+    {
+        band = default;
+        if (!double.IsFinite(viewportTop) || !double.IsFinite(viewportBottom) ||
+            !double.IsFinite(maximumHeight) || maximumHeight <= 0 ||
+            !Monitor.TryEnter(_geometry.Gate))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (_recovery.IsRequired || _retirement.IsRetiringOrDisposed ||
+                !_geometry.LazyLayoutEnabled || _geometry.MeasuredTopLevelBlocks is not { } measured ||
+                _geometry.MeasuredTopLevelBlockCount >= measured.Length)
+            {
+                return false;
+            }
+
+            LayoutPlacementGeneration placements = _geometry.CurrentPlacementGenerationNoLock();
+            ViewportRange below = _geometry.FindViewportRangeNoLock(viewportBottom, viewportBottom);
+            int start = below.Start < below.End ? placements.GetBlockOrdinal(below.Start) : measured.Length;
+            for (int ordinal = start; ordinal < measured.Length; ordinal++)
+            {
+                if (measured[ordinal])
+                    continue;
+                double top = Math.Max(0, placements.GetPlacement(ordinal).Top);
+                band = new LazyLayoutBand(top, top + maximumHeight);
+                return true;
+            }
+
+            for (int ordinal = Math.Min(start, measured.Length) - 1; ordinal >= 0; ordinal--)
+            {
+                if (measured[ordinal])
+                    continue;
+                double bottom = Math.Max(0, placements.GetPlacement(ordinal).Bottom);
+                band = new LazyLayoutBand(Math.Max(0, bottom - maximumHeight), bottom);
+                return true;
+            }
+
+            return false;
+        }
+        finally
+        {
+            Monitor.Exit(_geometry.Gate);
+        }
+    }
+
     private bool IsRealizationBandMeasuredNoLock(LazyLayoutBand band)
     {
         if (!_geometry.LazyLayoutEnabled || _geometry.MeasuredTopLevelBlocks is null)
@@ -204,14 +263,23 @@ internal sealed class SnapshotBandRealization
         => EnsureMeasuredBand(band, band, cancellationToken);
 
     /// <summary>
+    /// Returns the lowest document Y lazy commits changed since the last
+    /// call and resets it; positive infinity when none changed geometry.
+    /// </summary>
+    internal double TakeRepaintTop() => _repaint.Take();
+
+    /// <summary>
     /// Measures/reflows only the realization band, then refreshes vector
     /// residency against the visible band. Eager snapshots still refresh
-    /// residency but never repeat their full document measure pass.
+    /// residency but never repeat their full document measure pass. When
+    /// <paramref name="yieldSignal"/> is requested the pass stops at the next
+    /// root boundary and commits what it measured.
     /// </summary>
     internal LazyLayoutCommit EnsureMeasuredBand(
         LazyLayoutBand realizationBand,
         LazyLayoutBand visibleVectorBand,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LazyBandYield? yieldSignal = null)
     {
         lock (_geometry.Gate)
         {
@@ -240,7 +308,8 @@ internal sealed class SnapshotBandRealization
                 _scenes.VectorSceneResidencyPolicy is null)
                 return LazyLayoutCommit.Unchanged(_geometry.Size.Height, _geometry.LayoutRevision);
 
-            var pass = new LazyBandRealizationPass(_geometry, _planCandidates, effectiveCancellationToken);
+            var pass = new LazyBandRealizationPass(
+                _geometry, _planCandidates, effectiveCancellationToken, yieldSignal);
             try
             {
                 if (_geometry.LazyLayoutEnabled && _geometry.MeasuredTopLevelBlocks is not null)
@@ -334,6 +403,8 @@ internal sealed class SnapshotBandRealization
         {
             _geometry.PublishCommittedMetadataNoLock();
             _geometry.PaintOnlyGeometryTainted = pass.PriorPaintOnlyGeometryTainted;
+            if (pass.MeasuredOrdinals is { Count: > 0 })
+                _repaint.Lower(pass.FirstChangedTop);
             LazyLayoutCommit commit = pass.MeasuredOrdinals is { Count: > 0 } measuredOrdinals
                 ? new LazyLayoutCommit(
                     true,

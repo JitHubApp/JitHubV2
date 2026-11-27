@@ -263,6 +263,60 @@ work, lazy-load images, and virtualize hosted WinUI elements. Use
 `MarkdownDocumentView` when a page already owns scrolling so layout and
 realization observe the page's viewport instead of creating a nested one.
 
+### Viewport painting and scroll fidelity
+
+The document paints into composition tiles, not a XAML virtual surface. Each
+tile is a full-width `CompositionDrawingSurface` 512 device pixels tall, shown
+by a sprite in the document canvas's child visual, so the compositor scrolls
+painted content without UI-thread work. Every composition frame while there
+is work, the painter plans the tiles around the viewport: visible tiles paint
+in the frame they go stale, and tiles ahead of and behind the viewport paint
+within a 6 ms per-frame budget, three ahead for every one behind once the view
+moves faster than 500 DIPs per second. An owned scroll viewer's view change
+also paints newly visible tiles at once, so a jump does not present a frame
+before its tiles. A stale tile keeps its pixels until it is repainted, so
+invalidation never exposes blank area. Tiles hold at most
+96 MiB on x64/ARM64 or 32 MiB on x86 per renderer, 128 tiles, and about four
+viewports of look-ahead. A document shorter than one tile gets a single tile
+rounded up to 128 pixel rows. An offscreen `MarkdownDocumentView` keeps tiles
+only within four viewports of its page's viewport, spare tiles are released
+when scrolling settles, and an unloaded view holds no tiles.
+
+Lazy layout never cancels band measurement that has started measuring roots:
+cancelling after a root was measured forced a full rebuild, which showed as
+blank space while scrolling. A newer viewport, or a visible tile waiting for
+the layout, asks the running band to yield at its next root boundary instead.
+A band measures the visible rows first, then the leading and trailing sides in
+viewport-sized chunks, releasing the layout lock between chunks so tiles can
+paint. A layout commit repaints only the tiles from its first changed row
+down.
+
+`MarkdownPerformanceOptions.PrefetchDocumentLayout`, on by default, measures
+the rest of the document while the viewport is settled. It works in bands of
+four viewports (at least 4,000 DIPs), nearest the viewport and below it first,
+dispatched at low priority after each commit; any viewport request makes it
+yield. A later fling or jump then lands on measured layout.
+
+`MarkdownRenderer/eng/Invoke-ScrollFidelityProbe.ps1 -Label <name>` measures
+this in Windows Sandbox. It builds `perf/MarkdownRenderer.ScrollFidelityProbe`,
+loads a 768 KiB README-shaped document, scrolls it with a wheel storm,
+animated flings, an unanimated thumb drag and random jumps, and captures every
+presented frame with Windows.Graphics.Capture. It reports the share of each
+frame that is unrendered, UI tick percentiles, and peak working set. A probe
+that crashes leaves a first-chance exception log beside its report. Mean blank
+share on the same sandbox (4055x1039 viewport at 100% scale, software
+rendering, about 32 frames per second):
+
+| Scenario | Before | Yielding layout | Composition tiles |
+| --- | ---: | ---: | ---: |
+| Wheel storm, 60 notches/s | 52.6% | 0.8% | 0% |
+| Animated flings | 22.2% | 23.4% | 0% |
+| Thumb drag | 36.3% | 0% | 0% |
+| Random jumps | 12.5% | 13.8% | 3.9% |
+
+A random jump can still land on layout that prefetch has not reached yet;
+its first frame then waits for that band to be measured.
+
 Applications should avoid repeatedly assigning equivalent source, performing
 blocking work in host services, or returning heavyweight hosted elements for
 large repeated sets. Hosted-element creation is asynchronous and

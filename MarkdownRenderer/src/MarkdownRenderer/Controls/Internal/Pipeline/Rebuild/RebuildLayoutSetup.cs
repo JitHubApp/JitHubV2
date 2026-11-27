@@ -104,9 +104,8 @@ internal sealed class RebuildLayoutSetup
             parsed, layoutRegistry, inputs, ref performanceSession);
         (ThemeSnapshot theme, double themeMilliseconds) = CreateThemeSnapshot(
             inputs, semanticDocument, layoutRegistry, performanceSession, ct);
-        // Use the shared CanvasDevice (always available, no visual-tree required).
-        // CanvasVirtualControl only has a device after CreateResources fires, so
-        // passing the canvas directly would crash if layout runs before first draw.
+        // Use the shared CanvasDevice: it is always available, needs no visual
+        // tree, and is the device the document tiles draw with.
         var device = CanvasDevice.GetSharedDevice();
         MarkdownLayoutDiagnostics? layoutDiagnostics =
             performanceSession?.IsLayoutDiagnosticCaptureEnabled == true ||

@@ -539,8 +539,27 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
     internal LazyLayoutCommit EnsureMeasuredBand(
         LazyLayoutBand realizationBand,
         LazyLayoutBand visibleVectorBand,
-        CancellationToken cancellationToken)
-        => _bands.EnsureMeasuredBand(realizationBand, visibleVectorBand, cancellationToken);
+        CancellationToken cancellationToken,
+        LazyBandYield? yieldSignal = null)
+        => _bands.EnsureMeasuredBand(realizationBand, visibleVectorBand, cancellationToken, yieldSignal);
+
+    /// <summary>
+    /// Returns the lowest document Y lazy band commits changed since the last
+    /// call and resets it; positive infinity when none changed geometry.
+    /// </summary>
+    internal double TakeLazyRepaintTop() => _bands.TakeRepaintTop();
+
+    /// <summary>
+    /// Finds up to <paramref name="maximumHeight"/> DIPs of unmeasured roots
+    /// nearest the viewport, below it first. False when none remain or the
+    /// layout is busy.
+    /// </summary>
+    internal bool TryFindUnmeasuredBand(
+        double viewportTop,
+        double viewportBottom,
+        double maximumHeight,
+        out LazyLayoutBand band)
+        => _bands.TryFindUnmeasuredBand(viewportTop, viewportBottom, maximumHeight, out band);
 
     internal (int BlockIndex, double OffsetFromTop)? CaptureScrollAnchor(double verticalOffset) =>
         _locator.CaptureScrollAnchor(verticalOffset);
